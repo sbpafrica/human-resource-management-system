@@ -359,7 +359,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                 throw lastError || new Error("Network request failed after multiple retries");
             };
 
-            const batchSize = 8;
+            const batchSize = 5;
             const batchId =
                 typeof crypto !== "undefined" && crypto.randomUUID
                     ? crypto.randomUUID()

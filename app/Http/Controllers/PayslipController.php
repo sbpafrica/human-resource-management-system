@@ -1104,7 +1104,7 @@ class PayslipController extends Controller
             }
 
             $client    = $this->resolveClient($clientSlug);
-            $root      = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'payslip_batches';
+            $root      = storage_path('app/payslip_batches');
             $batchDir  = $root . DIRECTORY_SEPARATOR . $request->user()->id . '_' . $batchId;
             $safeShort = preg_replace('/[^A-Za-z0-9_-]/', '_', $client->short_name);
 
@@ -1116,7 +1116,11 @@ class PayslipController extends Controller
                     return response()->json(['error' => 'No generated payslips found for this batch'], 404);
                 }
 
-                $zipPath = tempnam(sys_get_temp_dir(), 'payslips_');
+                $tempDir = storage_path('app/tmp');
+                if (!is_dir($tempDir)) {
+                    @mkdir($tempDir, 0775, true);
+                }
+                $zipPath = $tempDir . DIRECTORY_SEPARATOR . 'payslips_' . uniqid() . '.zip';
                 $zip = new ZipArchive();
 
                 if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
