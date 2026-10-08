@@ -98,7 +98,7 @@
         </tr>
         <tr>
             <td>Basic Salary</td>
-            <td>{{ number_format((float)($payslip->basic ?: ($payslip->BASIC_SALARY_GHC ?: ($payslip->BASIC_SALARY_EARNED_GHC ?: 0))), 2) }}</td>
+            <td>{{ number_format((float)($payslip->BASIC_SALARY_GHC ?: ($payslip->basic ?: ($payslip->BASIC_SALARY_EARNED_GHC ?: 0))), 2) }}</td>
             <td></td>
             <td>Days Worked</td>
             <td>{{ $payslip->workdays ?? $payslip->NUMBER_OF_DAYS_WORKED ?? 0 }}</td>
@@ -116,7 +116,7 @@
         <tr>
             <td colspan="2">Basic Salary Earned</td>
             <td class="text-right">{{ (int)($payslip->workdays ?? $payslip->NUMBER_OF_DAYS_WORKED ?? 0) }}</td>
-            <td class="text-center">{{ number_format((float)($payslip->basic ?: ($payslip->BASIC_SALARY_EARNED_GHC ?: ($payslip->BASIC_SALARY_GHC ?: 0))), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->BASIC_SALARY_EARNED_GHC ?: ($payslip->basic_earned ?: ($payslip->basic ?: 0))), 2) }}</td>
             <td></td>
         </tr>
         @if(($payslip->absentdays ?? $payslip->ABSENT_DAYS ?? 0) > 0 || ($payslip->absentwithoutpay ?? $payslip->ABSENT_DAYS_DEDUCTIONS_GHC ?? 0) > 0)

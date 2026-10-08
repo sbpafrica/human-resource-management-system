@@ -398,9 +398,12 @@ class PayslipController extends Controller
             ?? ($getP('city') ?? '-');
     
         // ---------- BASIC & WORK DAYS ----------
-        $basicEarned = $getP('basicsalaryearned') ?? $getP('basicsalaryearnedghc');
-        $basicBase   = $getP('basicsalary') ?? $getP('basicsalaryghc') ?? $getP('basic') ?? $getP('basic_earned') ?? $getP('actualbasic');
-        $payslip->basic = (float) ($basicEarned ?: ($basicBase ?: 0));
+        $basicEarned = $getP('basicsalaryearned') ?? $getP('basicsalaryearnedghc') ?? $getP('basic_earned');
+        $basicBase   = $getP('basicsalary') ?? $getP('basicsalaryghc') ?? $getP('basic') ?? $getP('actualbasic');
+        $payslip->BASIC_SALARY_GHC        = (float) ($basicBase ?: ($basicEarned ?: 0));
+        $payslip->BASIC_SALARY_EARNED_GHC = (float) ($basicEarned ?: ($basicBase ?: 0));
+        $payslip->basic_earned            = $payslip->BASIC_SALARY_EARNED_GHC;
+        $payslip->basic                   = $payslip->BASIC_SALARY_GHC;
     
         $payslip->workdays = $getP('workdays') 
             ?? $getP('numberofdaysworked') 
