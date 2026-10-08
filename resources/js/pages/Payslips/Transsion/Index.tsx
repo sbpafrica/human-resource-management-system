@@ -353,7 +353,28 @@ export default function Transsion({ payslip, month, formattedMonth, employees, f
         }
         setIsDownloadingMultiple(true);
         try {
-            const response = await fetch(route("payslips.transsion.download-multiple"), {
+            const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3, delayMs = 1200): Promise<Response> => {
+                let lastError: any = null;
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        const res = await fetch(url, options);
+                        if (res.ok) return res;
+                        if ([502, 503, 504, 429].includes(res.status) && attempt < maxRetries) {
+                            await new Promise(r => setTimeout(r, delayMs));
+                            continue;
+                        }
+                        return res;
+                    } catch (err: any) {
+                        lastError = err;
+                        if (attempt < maxRetries) {
+                            await new Promise(r => setTimeout(r, delayMs));
+                        }
+                    }
+                }
+                throw lastError || new Error("Network request failed after multiple retries");
+            };
+
+            const response = await fetchWithRetry(route("payslips.transsion.download-multiple"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

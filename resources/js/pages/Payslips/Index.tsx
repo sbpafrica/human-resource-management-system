@@ -336,7 +336,30 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         setIsDownloadingMultiple(true);
 
         try {
-            const batchSize = 5;
+            const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3, delayMs = 1200): Promise<Response> => {
+                let lastError: any = null;
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        const res = await fetch(url, options);
+                        if (res.ok) return res;
+                        if ([502, 503, 504, 429].includes(res.status) && attempt < maxRetries) {
+                            console.warn(`Attempt ${attempt} failed with status ${res.status}. Retrying in ${delayMs}ms...`);
+                            await new Promise(r => setTimeout(r, delayMs));
+                            continue;
+                        }
+                        return res;
+                    } catch (err: any) {
+                        lastError = err;
+                        if (attempt < maxRetries) {
+                            console.warn(`Attempt ${attempt} failed (${err?.message}). Retrying in ${delayMs}ms...`);
+                            await new Promise(r => setTimeout(r, delayMs));
+                        }
+                    }
+                }
+                throw lastError || new Error("Network request failed after multiple retries");
+            };
+
+            const batchSize = 8;
             const batchId =
                 typeof crypto !== "undefined" && crypto.randomUUID
                     ? crypto.randomUUID()
@@ -355,7 +378,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                 setToastType("success");
                 setShowToast(true);
 
-                const batchResponse = await fetch(
+                const batchResponse = await fetchWithRetry(
                     route("payslips.download-multiple", {
                         client: clientSlug,
                     }),
@@ -404,6 +427,9 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                         result.failed
                     );
                 }
+
+                // Short pacing pause to allow server FPM workers to free memory
+                await new Promise((r) => setTimeout(r, 250));
             }
 
             if (generated === 0) {
@@ -414,7 +440,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             setToastType("success");
             setShowToast(true);
 
-            const finalResponse = await fetch(
+            const finalResponse = await fetchWithRetry(
                 route("payslips.download-multiple", {
                     client: clientSlug,
                 }),
