@@ -10,6 +10,11 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+
 class SheferssnitController extends Controller
 {
     public function index(Request $request)
@@ -176,23 +181,61 @@ class SheferssnitController extends Controller
             // Use ISNULL to push NULLs to the end for MariaDB compatibility
             $query->orderByRaw("ISNULL({$sortColumn}), {$sortColumn} {$order}");
 
-            $records = $query->get()->map(function ($record) {
-                return [
-                    'staff_id' => $record->staff_id,
-                    'shop' => $record->shop,
-                    'lastname' => $record->lastname,
-                    'firstname' => $record->firstname,
-                    'othername' => $record->othername,
-                    'ssnit_number' => $record->ssnit_number,
-                    'gh_card_number' => $record->gh_card_number,
-                    'basic_earned' => $record->basic_earned !== null ? (float) $record->basic_earned : null,
-                    'ssnit_amount' => $record->ssnit_amount !== null ? (float) $record->ssnit_amount : null,
-                ];
-            });
+            $records = $query->get();
 
-            Log::info("SheferssnitPay Export: Retrieved records", ['count' => count($records), 'sample' => $records->first()]);
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $headers = ['Staff ID', 'Shop', 'Last Name', 'First Name', 'Other Name', 'SSNIT Number', 'Ghana Card', 'Basic Salary', 'SSNIT (13.5%)'];
+            $sheet->fromArray($headers, null, 'A1');
 
-            return response()->json($records);
+            $row = 2;
+            $totalBasic = 0;
+            $totalSsnit = 0;
+
+            foreach ($records as $r) {
+                $basicVal = (float)($r->basic_earned ?? 0);
+                $ssnitVal = (float)($r->ssnit_amount ?? 0);
+                $totalBasic += $basicVal;
+                $totalSsnit += $ssnitVal;
+
+                $sheet->setCellValueExplicit("A{$row}", $r->staff_id ?? '', DataType::TYPE_STRING);
+                $sheet->setCellValue("B{$row}", $r->shop ?? '');
+                $sheet->setCellValue("C{$row}", $r->lastname ?? '');
+                $sheet->setCellValue("D{$row}", $r->firstname ?? '');
+                $sheet->setCellValue("E{$row}", $r->othername ?? '');
+                $sheet->setCellValueExplicit("F{$row}", $r->ssnit_number ?? '', DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("G{$row}", $r->gh_card_number ?? '', DataType::TYPE_STRING);
+                $sheet->setCellValue("H{$row}", number_format($basicVal, 2, '.', ''));
+                $sheet->setCellValue("I{$row}", number_format($ssnitVal, 2, '.', ''));
+                $row++;
+            }
+
+            // Total row
+            $sheet->setCellValue("A{$row}", "TOTAL");
+            $sheet->setCellValue("H{$row}", number_format($totalBasic, 2, '.', ''));
+            $sheet->setCellValue("I{$row}", number_format($totalSsnit, 2, '.', ''));
+
+            $sheet->getParent()->getDefaultStyle()->getFont()->setName('Calibri')->setSize(11);
+            $headerStyle = $sheet->getStyle('A1:I1');
+            $headerStyle->getFont()->setBold(true);
+            $headerStyle->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('D9E1F2');
+
+            $totalStyle = $sheet->getStyle("A{$row}:I{$row}");
+            $totalStyle->getFont()->setBold(true);
+
+            foreach (range('A', 'I') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+
+            $writer = new Xlsx($spreadsheet);
+            $filename = "shefer_ssnit_{$month}.xlsx";
+
+            return response()->streamDownload(function () use ($writer) {
+                $writer->save('php://output');
+            }, $filename, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Cache-Control' => 'no-store, no-cache, must-revalidate',
+            ]);
         } catch (\Exception $e) {
             Log::error("SheferssnitPay Export failed", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Failed to export data: ' . $e->getMessage()], 500);

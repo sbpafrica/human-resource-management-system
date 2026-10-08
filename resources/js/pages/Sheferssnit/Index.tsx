@@ -126,7 +126,7 @@ export default function SheferssnitPay({ records, selectedMonth, formattedMonth,
             const [sortColumn, sortOrder] = sort.split(':');
 
             const response = await fetch(
-                route('sheferssnitpay.index', { month: data.month, search, sort: sortColumn, order: sortOrder }),
+                route('sheferssnitpay.export', { month: data.month, search, sort: sortColumn, order: sortOrder }),
                 {
                     method: 'GET',
                     headers: {

@@ -125,8 +125,7 @@ export default function OfihygienessnitPay({ records, selectedMonth, formattedMo
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
             const [sortColumn, sortOrder] = sort.split(':');
 
-            const response = await fetch(
-                route('ofihygienessnitpay.index', { month: data.month, search, sort: sortColumn, order: sortOrder }),
+            const response = await fetch(route('ofihygienessnitpay.export', { month: data.month, search, sort: sortColumn, order: sortOrder }),
                 {
                     method: 'GET',
                     headers: {

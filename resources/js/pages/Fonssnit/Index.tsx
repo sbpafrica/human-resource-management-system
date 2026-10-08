@@ -125,8 +125,7 @@ export default function FonssnitPay({ records, selectedMonth, formattedMonth, to
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
             const [sortColumn, sortOrder] = sort.split(':');
 
-            const response = await fetch(
-                route('fonssnitpay.index', { month: data.month, search, sort: sortColumn, order: sortOrder }),
+            const response = await fetch(route('fonssnitpay.export', { month: data.month, search, sort: sortColumn, order: sortOrder }),
                 {
                     method: 'GET',
                     headers: {

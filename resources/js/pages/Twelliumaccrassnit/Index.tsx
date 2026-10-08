@@ -125,8 +125,7 @@ export default function TwelliumaccrassnitPay({ records, selectedMonth, formatte
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
             const [sortColumn, sortOrder] = sort.split(':');
 
-            const response = await fetch(
-                route('twelliumaccrassnitpay.index', { month: data.month, search, sort: sortColumn, order: sortOrder }),
+            const response = await fetch(route('twelliumaccrassnitpay.export', { month: data.month, search, sort: sortColumn, order: sortOrder }),
                 {
                     method: 'GET',
                     headers: {

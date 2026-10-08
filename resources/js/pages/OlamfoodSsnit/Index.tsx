@@ -126,8 +126,7 @@ export default function OlamfoodSsnitPay({ records, selectedMonth, formattedMont
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
             const [sortColumn, sortOrder] = sort.split(':');
 
-            const response = await fetch(
-                route('olamfoodssnitpay.index', { month: data.month, search, sort: sortColumn, order: sortOrder }),
+            const response = await fetch(route('olamfoodssnitpay.export', { month: data.month, search, sort: sortColumn, order: sortOrder }),
                 {
                     method: 'GET',
                     headers: {

@@ -125,8 +125,7 @@ export default function A2feedssnitPay({ records, selectedMonth, formattedMonth,
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
             const [sortColumn, sortOrder] = sort.split(':');
 
-            const response = await fetch(
-                route('a2feedssnitpay.index', { month: data.month, search, sort: sortColumn, order: sortOrder }),
+            const response = await fetch(route('a2feedssnitpay.export', { month: data.month, search, sort: sortColumn, order: sortOrder }),
                 {
                     method: 'GET',
                     headers: {
