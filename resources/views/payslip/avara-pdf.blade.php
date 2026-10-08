@@ -191,7 +191,7 @@
 
         <!-- Deductions -->
         <tr>
-            <td colspan="2">SSNIT EE (5.5%)</td>
+            <td colspan="2">SSNIT EE (0.5%)</td>
             <td></td>
             <td></td>
             <td class="text-center">{{ number_format((float)($payslip->ssnitee ?: ($payslip->SSNIT_EE_0_5_PERCENT ?: 0)), 2) }}</td>
