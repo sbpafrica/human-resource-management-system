@@ -1,0 +1,103 @@
+name: Deploy HRS to Production
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Package Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP Environment
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql, gd, bcmath, xml, zip, json
+          coverage: none
+
+      - name: Install Composer Dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Node Dependencies & Build Frontend Assets
+        run: |
+          npm ci || npm install
+          npm run build
+
+      - name: Package Deployment Archive
+        run: |
+          mkdir -p build_artifact
+          tar --exclude='./.git' \
+              --exclude='./node_modules' \
+              --exclude='./.env' \
+              --exclude='./storage/logs/*' \
+              --exclude='./storage/framework/cache/data/*' \
+              --exclude='./storage/framework/sessions/*' \
+              --exclude='./storage/framework/views/*' \
+              -czf build_artifact/deploy.tar.gz .
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-package
+          path: build_artifact/deploy.tar.gz
+          retention-days: 1
+
+  deploy:
+    name: Deploy via SSH to Production
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: deploy-package
+          path: .
+
+      - name: Copy Deployment Archive via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "deploy.tar.gz"
+          target: ${{ secrets.TARGET_DIR || '/home/sbpafrica/jobportal.sbpafrica.group' }}
+
+      - name: Execute Server Commands via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            cd ${{ secrets.TARGET_DIR || '/home/sbpafrica/jobportal.sbpafrica.group' }}
+            
+            # Extract new files over release directory
+            tar -xzf deploy.tar.gz
+            rm -f deploy.tar.gz
+            
+            # Ensure proper permissions for storage & cache
+            chmod -R 775 storage bootstrap/cache
+            
+            # Run Laravel production optimization & migration commands
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            php artisan storage:link || true

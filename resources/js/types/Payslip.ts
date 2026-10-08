@@ -1,0 +1,43 @@
+// resources/js/types/Payslip.ts
+export interface Payslip {
+    staffida: string;
+    name: string;
+    department: string;
+    position: string;
+    brandname: string;
+    ssnit: string;
+    workdays: number;
+    basic: number;
+    coefficient: number;
+    performstand: number;
+    allowance: number;
+    otworkingday: number;
+    otholiday: number;
+    otworkdays?: number;
+    otweekend?: number;
+    normalovertime: number;
+    saturdayovertime: number;
+    normalOThrs: number;
+    weekdaysOT: number;
+    weekendOThrs: number;
+    weekendOT: number;
+    other: number;
+    commission: number;
+    grosspay: number;
+    annaulbonus: number;
+    leavedays: number;
+    leavededuction: number;
+    otherdeduction: number;
+    loan: number;
+    paye: number;
+    annaultax: number;
+    netpay: number;
+    bankname: string;
+    alcnum: string;
+    branch: string;
+    email: string;
+    phone: string;
+    ssnit_contribution: number;
+    total_earnings: number;
+    total_deductions: number;
+}

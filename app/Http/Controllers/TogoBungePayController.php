@@ -1,0 +1,435 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
+use PhpOffice\PhpSpreadsheet\Reader\Xls as XlsReader;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Color;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+
+class TogoBungePayController extends Controller
+{
+    // ─────────────────────────────────────────────────────────────────
+    // HELPERS
+    // ─────────────────────────────────────────────────────────────────
+
+    private function buildTableName(string $month): string
+    {
+        $date = Carbon::createFromFormat('Y-m', $month);
+        return 'togobunge' . strtolower($date->format('F')) . $date->format('y');
+    }
+
+    private function createTableIfNotExists(string $tableName): void
+    {
+        DB::statement("
+            CREATE TABLE IF NOT EXISTS `{$tableName}` (
+                `staffid` VARCHAR(15) NOT NULL,
+                `nom` VARCHAR(255) DEFAULT NULL,
+                `prenom` VARCHAR(255) DEFAULT NULL,
+                `department` VARCHAR(255) DEFAULT NULL,
+                `joindate` VARCHAR(255) DEFAULT NULL,
+                `constart` VARCHAR(255) DEFAULT NULL,
+                `conend` VARCHAR(255) DEFAULT NULL,
+                `position` VARCHAR(255) DEFAULT NULL,
+                `grade` VARCHAR(255) DEFAULT NULL,
+                `travail` VARCHAR(255) DEFAULT NULL,
+                `banques` VARCHAR(255) DEFAULT NULL,
+                `numero` VARCHAR(255) DEFAULT NULL,
+                `ssnitno` VARCHAR(255) DEFAULT NULL,
+                `legale` INT(11) DEFAULT NULL,
+                `reelle` INT(11) DEFAULT NULL,
+                `salarybase` DOUBLE DEFAULT NULL,
+                `sursalaire` DOUBLE DEFAULT NULL,
+                `performstand` DOUBLE DEFAULT NULL,
+                `coefficient` DOUBLE DEFAULT NULL,
+                `performprimes` DOUBLE DEFAULT NULL,
+                `commission` DOUBLE DEFAULT NULL,
+                `indconges` DOUBLE DEFAULT NULL,
+                `indcom` DOUBLE DEFAULT NULL,
+                `indtransport` DOUBLE DEFAULT NULL,
+                `autressbonus` DOUBLE DEFAULT NULL,
+                `salairebrut` DOUBLE DEFAULT NULL,
+                `deduction` DOUBLE DEFAULT NULL,
+                `brutglobal` DOUBLE DEFAULT NULL,
+                `remark` INT(11) DEFAULT NULL,
+                `cnss` DOUBLE DEFAULT NULL,
+                `amu` DOUBLE DEFAULT NULL,
+                `r1cnss` DOUBLE DEFAULT NULL,
+                `abt28` DOUBLE DEFAULT NULL,
+                `pac` DOUBLE DEFAULT NULL,
+                `netimpo` DOUBLE DEFAULT NULL,
+                `arrondi` DOUBLE DEFAULT NULL,
+                `irpprch` DOUBLE DEFAULT NULL,
+                `irppdu` DOUBLE DEFAULT NULL,
+                `irpp` DOUBLE DEFAULT NULL,
+                `totaldeduction` DOUBLE DEFAULT NULL,
+                `netpayer` DOUBLE DEFAULT NULL,
+                `prestation` DOUBLE DEFAULT NULL,
+                `pension` DOUBLE DEFAULT NULL,
+                `risques` DOUBLE DEFAULT NULL,
+                `amutax` DOUBLE DEFAULT NULL,
+                `totalcnss` DOUBLE DEFAULT NULL,
+                `client` VARCHAR(255) DEFAULT NULL,
+                PRIMARY KEY (`staffid`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        ");
+    }
+
+    // String columns for Togo Bunge
+    private array $stringCols = [
+        'staffid', 'nom', 'prenom', 'department', 'joindate', 'constart',
+        'conend', 'position', 'grade', 'travail', 'banques', 'numero', 'ssnitno', 'client',
+    ];
+
+    // Int columns
+    private array $intCols = ['legale', 'reelle', 'remark'];
+
+    // ─────────────────────────────────────────────────────────────────
+    // INDEX
+    // ─────────────────────────────────────────────────────────────────
+    public function index(Request $request)
+    {
+        $request->validate([
+            'month' => ['nullable', 'date_format:Y-m', 'after_or_equal:2020-01'],
+        ]);
+
+        $month     = $request->input('month', now()->format('Y-m'));
+        $date      = Carbon::createFromFormat('Y-m', $month);
+        $tableName = $this->buildTableName($month);
+
+        if (!DB::getSchemaBuilder()->hasTable($tableName)) {
+            return Inertia::render('TogoBunge/Index', [
+                'records'        => [],
+                'selectedMonth'  => $month,
+                'formattedMonth' => $date->format('F Y'),
+                'totalRecords'   => 0,
+                'flash'          => ['error' => "No data available for {$date->format('F Y')}. Please upload data."],
+            ]);
+        }
+
+        $records      = DB::table($tableName)->orderBy('nom')->get();
+        $totalRecords = $records->count();
+
+        return Inertia::render('TogoBunge/Index', [
+            'records'        => $records,
+            'selectedMonth'  => $month,
+            'formattedMonth' => $date->format('F Y'),
+            'totalRecords'   => $totalRecords,
+            'flash'          => [
+                'success' => session('success'),
+                'error'   => session('error'),
+            ],
+        ]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // UPLOAD
+    // ─────────────────────────────────────────────────────────────────
+    public function upload(Request $request)
+    {
+        $request->validate([
+            'file'  => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
+            'month' => ['required', 'date_format:Y-m'],
+        ]);
+
+        $selectedMonth = $request->input('month');
+
+        try {
+            $tableName = $this->buildTableName($selectedMonth);
+            $this->createTableIfNotExists($tableName);
+
+            $file      = $request->file('file');
+            $extension = strtolower($file->getClientOriginalExtension());
+
+            $reader = $extension === 'xls' ? new XlsReader() : new XlsxReader();
+
+            $spreadsheet = $reader->load($file->getRealPath());
+            $rows        = $spreadsheet->getActiveSheet()->toArray();
+
+            if (empty($rows)) {
+                return redirect()->route('togo-bunge.pay.index', ['month' => $selectedMonth])
+                    ->with('error', 'The uploaded file is empty.');
+            }
+
+            $headerRow = array_shift($rows);
+            $headerMap = [
+                'staff id'        => 'staffid',
+                'nom'             => 'nom',
+                'prenom'          => 'prenom',
+                'department'      => 'department',
+                'join date'       => 'joindate',
+                'contract start'  => 'constart',
+                'contract end'    => 'conend',
+                'position'        => 'position',
+                'grade'           => 'grade',
+                'travail'         => 'travail',
+                'banques'         => 'banques',
+                'numero'          => 'numero',
+                'ssnit no'        => 'ssnitno',
+                'legale'          => 'legale',
+                'reelle'          => 'reelle',
+                'salary base'     => 'salarybase',
+                'sursalaire'      => 'sursalaire',
+                'perform stand'   => 'performstand',
+                'coefficient'     => 'coefficient',
+                'perform primes'  => 'performprimes',
+                'commission'      => 'commission',
+                'ind. conges'     => 'indconges',
+                'ind. com'        => 'indcom',
+                'ind. transport'  => 'indtransport',
+                'autres bonus'    => 'autressbonus',
+                'salaire brut'    => 'salairebrut',
+                'deduction'       => 'deduction',
+                'brut global'     => 'brutglobal',
+                'remark'          => 'remark',
+                'cnss'            => 'cnss',
+                'amu'             => 'amu',
+                'r1 cnss'         => 'r1cnss',
+                'abt28'           => 'abt28',
+                'pac'             => 'pac',
+                'net impo'        => 'netimpo',
+                'arrondi'         => 'arrondi',
+                'irpp rch'        => 'irpprch',
+                'irpp du'         => 'irppdu',
+                'irpp'            => 'irpp',
+                'total deduction' => 'totaldeduction',
+                'net payer'       => 'netpayer',
+                'prestation'      => 'prestation',
+                'pension'         => 'pension',
+                'risques'         => 'risques',
+                'amu tax'         => 'amutax',
+                'total cnss'      => 'totalcnss',
+                'client'          => 'client',
+            ];
+
+            $colMap = [];
+            foreach ($headerRow as $idx => $hdr) {
+                $key = strtolower(trim((string) $hdr));
+                if (isset($headerMap[$key])) {
+                    $colMap[$idx] = $headerMap[$key];
+                }
+            }
+
+            if (empty($colMap)) {
+                return redirect()->route('togo-bunge.pay.index', ['month' => $selectedMonth])
+                    ->with('error', 'No recognisable column headers found in the uploaded file.');
+            }
+
+            DB::table($tableName)->truncate();
+
+            $validRecords = [];
+            $errors       = [];
+
+            foreach ($rows as $index => $row) {
+                $rowNum = $index + 2;
+
+                $allEmpty = true;
+                foreach ($row as $cell) {
+                    if (trim((string) $cell) !== '') { $allEmpty = false; break; }
+                }
+                if ($allEmpty) continue;
+
+                $record = [];
+                foreach ($colMap as $idx => $dbCol) {
+                    $val = $row[$idx] ?? null;
+                    if (in_array($dbCol, $this->stringCols)) {
+                        $record[$dbCol] = trim((string) $val);
+                    } elseif (in_array($dbCol, $this->intCols)) {
+                        $record[$dbCol] = is_numeric($val) ? (int) $val : 0;
+                    } else {
+                        $record[$dbCol] = is_numeric($val) ? (float) $val : 0;
+                    }
+                }
+
+                if (empty($record['staffid'] ?? '')) {
+                    $errors[] = "Row {$rowNum}: Staff ID cannot be empty.";
+                    continue;
+                }
+
+                $validRecords[] = $record;
+            }
+
+            if (!empty($errors)) {
+                $msg = count($errors) > 3
+                    ? implode(' | ', array_slice($errors, 0, 3)) . ' | ... and ' . (count($errors) - 3) . ' more errors.'
+                    : implode(' | ', $errors);
+                return redirect()->route('togo-bunge.pay.index', ['month' => $selectedMonth])
+                    ->with('error', $msg);
+            }
+
+            if (!empty($validRecords)) {
+                foreach (array_chunk($validRecords, 500) as $chunk) {
+                    DB::table($tableName)->insert($chunk);
+                }
+                Log::info("TogoBungePay upload: inserted " . count($validRecords) . " rows into {$tableName}");
+            }
+
+            return redirect()->route('togo-bunge.pay.index', ['month' => $selectedMonth])
+                ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
+
+        } catch (\Exception $e) {
+            Log::error('TogoBungePay upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return redirect()->route('togo-bunge.pay.index', ['month' => $selectedMonth])
+                ->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // DOWNLOAD TEMPLATE
+    // ─────────────────────────────────────────────────────────────────
+    public function downloadTemplate()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet       = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Togo Bunge Payroll');
+
+        $headers = [
+            'Staff ID', 'Nom', 'Prenom', 'Department', 'Join Date', 'Contract Start',
+            'Contract End', 'Position', 'Grade', 'Travail', 'Banques', 'Numero',
+            'SSNIT No', 'Legale', 'Reelle', 'Salary Base', 'Sursalaire', 'Perform Stand',
+            'Coefficient', 'Perform Primes', 'Commission', 'Ind. Conges', 'Ind. Com',
+            'Ind. Transport', 'Autres Bonus', 'Salaire Brut', 'Deduction', 'Brut Global',
+            'Remark', 'CNSS', 'AMU', 'R1 CNSS', 'ABT28', 'PAC', 'Net Impo', 'Arrondi',
+            'IRPP RCH', 'IRPP DU', 'IRPP', 'Total Deduction', 'Net Payer', 'Prestation',
+            'Pension', 'Risques', 'AMU Tax', 'Total CNSS', 'Client',
+        ];
+
+        $totalCols = count($headers);
+
+        foreach ($headers as $i => $header) {
+            $sheet->setCellValue(Coordinate::stringFromColumnIndex($i + 1) . "1", $header);
+        }
+
+        $lastCol = Coordinate::stringFromColumnIndex($totalCols);
+        $sheet->getStyle("A1:{$lastCol}1")->applyFromArray([
+            'font' => [
+                'bold'  => true,
+                'color' => ['argb' => Color::COLOR_WHITE],
+                'size'  => 11,
+                'name'  => 'Calibri',
+            ],
+            'fill' => [
+                'fillType'   => Fill::FILL_SOLID,
+                'startColor' => ['argb' => 'FF1e40af'],
+            ],
+        ]);
+
+        $sheet->freezePane('A2');
+
+        for ($i = 1; $i <= $totalCols; $i++) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($i))->setAutoSize(true);
+        }
+
+        $writer   = new Xlsx($spreadsheet);
+        $filename = 'togo_bunge_payroll_template.xlsx';
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Cache-Control'       => 'no-store, no-cache',
+        ]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // EXPORT
+    // ─────────────────────────────────────────────────────────────────
+    public function export(Request $request)
+    {
+        try {
+            $request->validate(['month' => ['required', 'date_format:Y-m']]);
+
+            $month     = $request->input('month');
+            $date      = Carbon::createFromFormat('Y-m', $month);
+            $tableName = $this->buildTableName($month);
+
+            if (!DB::getSchemaBuilder()->hasTable($tableName)) {
+                return response()->json(['error' => "No data for {$date->format('F Y')}"], 404);
+            }
+
+            $records = DB::table($tableName)->orderBy('nom')->get();
+
+            $spreadsheet = new Spreadsheet();
+            $sheet       = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Togo Bunge Payroll');
+
+            $headers = ['Staff ID', 'Nom', 'Net Payer'];
+            foreach ($headers as $i => $header) {
+                $sheet->setCellValue(Coordinate::stringFromColumnIndex($i + 1) . "1", $header);
+            }
+
+            $lastCol = Coordinate::stringFromColumnIndex(count($headers));
+            $sheet->getStyle("A1:{$lastCol}1")->applyFromArray([
+                'font' => [
+                    'bold'  => true,
+                    'color' => ['argb' => Color::COLOR_WHITE],
+                    'size'  => 11,
+                    'name'  => 'Calibri',
+                ],
+                'fill' => [
+                    'fillType'   => Fill::FILL_SOLID,
+                    'startColor' => ['argb' => 'FF1e40af'],
+                ],
+            ]);
+
+            $row = 2;
+            foreach ($records as $r) {
+                $sheet->setCellValue("A{$row}", $r->staffid);
+                $sheet->setCellValue("B{$row}", $r->nom ?? '');
+                $sheet->setCellValue("C{$row}", $r->netpayer ?? '');
+                $row++;
+            }
+
+            for ($i = 1; $i <= 3; $i++) {
+                $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($i))->setAutoSize(true);
+            }
+
+            $sheet->freezePane('A2');
+
+            $writer   = new Xlsx($spreadsheet);
+            $filename = "togo_bunge_payroll_{$month}.xlsx";
+
+            return response()->streamDownload(function () use ($writer) {
+                $writer->save('php://output');
+            }, $filename, [
+                'Content-Type'  => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Cache-Control' => 'no-store, no-cache, must-revalidate',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('TogoBungePay export failed', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Export failed. Please try again.'], 500);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // DELETE MONTH
+    // ─────────────────────────────────────────────────────────────────
+    public function deleteMonth(Request $request)
+    {
+        $request->validate(['month' => ['required', 'date_format:Y-m']]);
+
+        $month     = $request->input('month');
+        $tableName = $this->buildTableName($month);
+
+        try {
+            if (DB::getSchemaBuilder()->hasTable($tableName)) {
+                DB::table($tableName)->truncate();
+                return response()->json(['success' => true, 'message' => 'Records deleted successfully.']);
+            }
+            return response()->json(['success' => false, 'message' => 'No records found for the selected month.'], 404);
+        } catch (\Exception $e) {
+            Log::error('TogoBungePay deleteMonth failed', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Failed to delete records: ' . $e->getMessage()], 500);
+        }
+    }
+}
