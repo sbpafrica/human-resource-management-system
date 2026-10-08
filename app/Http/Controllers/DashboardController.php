@@ -133,17 +133,32 @@ class DashboardController extends Controller
         }
 
         foreach ($allowedClients as $client) {
-            $dbName       = $client->client_dbname;
+            $dbName = strtolower(trim($client->client_dbname ?? ''));
+            if (!$dbName) continue;
+
             $clientTables = [];
 
             foreach ($months as $m) {
-                $tableWithPay    = "{$dbName}{$m['name']}{$m['year']}pay";
-                $tableWithoutPay = "{$dbName}{$m['name']}{$m['year']}";
-                $table = Schema::hasTable($tableWithPay) ? $tableWithPay : $tableWithoutPay;
+                $date       = $m['date'];
+                $fullMonth  = strtolower($date->format('F'));
+                $shortMonth = strtolower($date->format('M'));
+                $year       = $date->format('y');
 
-                if (Schema::hasTable($table) && DB::table($table)->count() > 0) {
-                    $clientTables[] = ['table' => $table, 'date' => $m['date']];
-                    $tableToClientMap[$table] = $client;
+                $candidates = [
+                    "{$dbName}{$fullMonth}{$year}pay",
+                    "{$dbName}{$fullMonth}{$year}",
+                    "{$dbName}{$shortMonth}{$year}pay",
+                    "{$dbName}{$shortMonth}{$year}",
+                    "{$dbName}sept{$year}pay",
+                    "{$dbName}sept{$year}",
+                ];
+
+                foreach ($candidates as $cand) {
+                    if (Schema::hasTable($cand) && DB::table($cand)->count() > 0) {
+                        $clientTables[] = ['table' => $cand, 'date' => $m['date']];
+                        $tableToClientMap[$cand] = $client;
+                        break;
+                    }
                 }
             }
 
@@ -334,31 +349,31 @@ class DashboardController extends Controller
         // ====================================================================
         $complianceData = [
             'totalEmployees' => [
-                'count'  => $totalEmployeesCount,
+                'count'  => count($totalEmployeesList),
                 'change' => $totalChange,
                 'list'   => $totalEmployeesList,
             ],
             'staffOnPayroll' => [
-                'count'  => $staffOnPayrollCount,
+                'count'  => count($staffOnPayrollList),
                 'change' => $staffOnPayrollChange,
                 'list'   => $staffOnPayrollList,
             ],
             'newHires' => [
-                'count'  => $newHiresCount,
+                'count'  => count($newHiresList),
                 'change' => $newHiresChange,
                 'list'   => $newHiresList,
             ],
             'resignedTerminated' => [
-                'count'  => $resignedCount,
+                'count'  => count($resignedList),
                 'change' => $resignedChange,
                 'list'   => $resignedList,
             ],
             'notOnboarded' => [
-                'count' => count($notOnboardedIds),
+                'count' => count($notOnboardedList),
                 'list'  => $notOnboardedList,
             ],
             'noContactDetails' => [
-                'count' => count($noContactIds),
+                'count' => count($noContactList),
                 'list'  => $noContactList,
             ],
             'expiringContracts' => [
@@ -385,11 +400,11 @@ class DashboardController extends Controller
                 'count' => $renewalUnsigned->count(),
                 'list'  => $renewalUnsigned->values(),
             ],
-            'withoutBank'        => ['count' => $withoutBank['count'],        'list' => $withoutBank['list']],
-            'withoutSsnit'       => ['count' => $withoutSsnit['count'],       'list' => $withoutSsnit['list']],
-            'withoutPetra'       => ['count' => $withoutPetra['count'],       'list' => $withoutPetra['list']],
-            'withoutGhanaCard'   => ['count' => count($withoutGhanaCardIds),  'list' => $withoutGhanaCardList],
-            'incompleteProfiles' => ['count' => count($notOnboardedIds),      'list' => $notOnboardedList],
+            'withoutBank'        => ['count' => count($withoutBank['list']),        'list' => $withoutBank['list']],
+            'withoutSsnit'       => ['count' => count($withoutSsnit['list']),       'list' => $withoutSsnit['list']],
+            'withoutPetra'       => ['count' => count($withoutPetra['list']),       'list' => $withoutPetra['list']],
+            'withoutGhanaCard'   => ['count' => count($withoutGhanaCardList),  'list' => $withoutGhanaCardList],
+            'incompleteProfiles' => ['count' => count($notOnboardedList),      'list' => $notOnboardedList],
             'pendingDocuments'   => ['count' => 0, 'list' => collect()],
             'upcomingBirthdays'  => ['count' => 0, 'list' => collect()],
             'employeesOnLeave'   => ['count' => 0, 'list' => collect()],
@@ -475,16 +490,26 @@ class DashboardController extends Controller
      */
     private function matchClientName(string $company, $knownClients): ?string
     {
-        if ($company === '') return null;
+        if (trim($company) === '') return null;
 
-        $companyLower = strtolower($company);
+        $companyLower = strtolower(trim($company));
+        $cleanCompany = preg_replace('/[^a-z0-9]/', '', $companyLower);
+        if ($cleanCompany === '') return null;
 
         if (isset($knownClients[$companyLower])) {
             return $knownClients[$companyLower]->client_name;
         }
 
         foreach ($knownClients as $clientNameLower => $clientRow) {
-            if (str_contains($companyLower, $clientNameLower) || str_contains($clientNameLower, $companyLower)) {
+            $cleanClientName = preg_replace('/[^a-z0-9]/', '', $clientNameLower);
+            $cleanShortName  = preg_replace('/[^a-z0-9]/', '', strtolower($clientRow->short_name ?? ''));
+
+            if ($cleanCompany === $cleanClientName || ($cleanShortName !== '' && $cleanCompany === $cleanShortName)) {
+                return $clientRow->client_name;
+            }
+
+            if (($cleanClientName !== '' && (str_contains($cleanCompany, $cleanClientName) || str_contains($cleanClientName, $cleanCompany))) ||
+                ($cleanShortName !== '' && (str_contains($cleanCompany, $cleanShortName) || str_contains($cleanShortName, $cleanCompany)))) {
                 return $clientRow->client_name;
             }
         }
