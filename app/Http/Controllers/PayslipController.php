@@ -553,8 +553,8 @@ class PayslipController extends Controller
             $getP('deductions_surcharge_student_loan_ghc')
             ?? $getP('otherdeduction') 
             ?? $getP('otherdeductions') 
-            ?? $getP('totaldeductions') 
-            ?? $getP('totaldeduction') 
+            ?? $getP('student_loan')
+            ?? $getP('surcharge')
             ?? 0
         );
 

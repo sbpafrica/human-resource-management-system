@@ -231,6 +231,10 @@
                 + (float)($payslip->paye ?? 0) 
                 + (float)($payslip->overtimetax ?? 0) 
                 + (float)($payslip->otherdeduction ?? 0);
+
+            if ($totalDeductionsCalculated == 0) {
+                $totalDeductionsCalculated = (float)($payslip->totaldeductions ?? $payslip->TOTAL_DEDUCTIONS_GHC ?? $payslip->TOTALDEDUCTIONS_GHC ?? 0);
+            }
         @endphp
 
         <!-- Total Row -->
