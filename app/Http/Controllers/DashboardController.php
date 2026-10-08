@@ -503,13 +503,17 @@ class DashboardController extends Controller
         foreach ($knownClients as $clientNameLower => $clientRow) {
             $cleanClientName = preg_replace('/[^a-z0-9]/', '', $clientNameLower);
             $cleanShortName  = preg_replace('/[^a-z0-9]/', '', strtolower($clientRow->short_name ?? ''));
+            $cleanDbName     = preg_replace('/[^a-z0-9]/', '', strtolower($clientRow->client_dbname ?? ''));
 
-            if ($cleanCompany === $cleanClientName || ($cleanShortName !== '' && $cleanCompany === $cleanShortName)) {
+            if ($cleanCompany === $cleanClientName ||
+                ($cleanShortName !== '' && $cleanCompany === $cleanShortName) ||
+                ($cleanDbName !== '' && $cleanCompany === $cleanDbName)) {
                 return $clientRow->client_name;
             }
 
             if (($cleanClientName !== '' && (str_contains($cleanCompany, $cleanClientName) || str_contains($cleanClientName, $cleanCompany))) ||
-                ($cleanShortName !== '' && (str_contains($cleanCompany, $cleanShortName) || str_contains($cleanShortName, $cleanCompany)))) {
+                ($cleanShortName !== '' && (str_contains($cleanCompany, $cleanShortName) || str_contains($cleanShortName, $cleanCompany))) ||
+                ($cleanDbName !== '' && (str_contains($cleanCompany, $cleanDbName) || str_contains($cleanDbName, $cleanCompany)))) {
                 return $clientRow->client_name;
             }
         }
