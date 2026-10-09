@@ -124,6 +124,8 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
     const isShefer = client.client_dbname === 'shefer';
     const isInhouse = client.client_dbname === 'inhouse';
     const isAvara = client.client_dbname === 'avara' || client.client_dbname.includes('avara');
+    const isOfiExternal = client.client_dbname === 'ofiexternal' || client.client_dbname === 'hygieneexternal' || clientSlug === 'ofi-hygiene-external' || client.client_dbname.includes('external');
+    const isOfiHygiene = client.client_dbname === 'ofihygiene' || client.client_dbname === 'olamhygiene' || client.client_dbname === 'hygiene' || clientSlug === 'ofi-hygiene';
 
     useEffect(() => {
         if (flash?.success) {
@@ -1175,6 +1177,174 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                                 </tr>
                             </>
                         )}
+                        {/* ==================== OFI HYGIENE / HYGIENE EXTERNAL PAYSLIP ==================== */}
+                        {(isOfiExternal || isOfiHygiene) && (
+                            <>
+                                <tr>
+                                    <td className="p-2">Name</td>
+                                    <td className="p-2">{payslip.name || payslip.employeename || payslip.names || '-'}</td>
+                                    <td className="p-2"></td>
+                                    <td className="p-2">Title</td>
+                                    <td className="p-2">{payslip.position || payslip.workarea || payslip.dept || '-'}</td>
+                                </tr>
+                                <tr>
+                                    <td className="p-2">Employee ID</td>
+                                    <td className="p-2">{payslip.staffid || payslip.staffida || payslip.id || '-'}</td>
+                                    <td className="p-2"></td>
+                                    <td className="p-2">Client Company</td>
+                                    <td className="p-2">{payslip.brandname || (isOfiExternal ? "OFI Hygiene External" : "OFI Hygiene")}</td>
+                                </tr>
+                                <tr>
+                                    <td className="p-2">SSNIT #</td>
+                                    <td className="p-2">{payslip.ssnit_number || payslip.ssnit || payslip.SSNIT || '-'}</td>
+                                    <td className="p-2"></td>
+                                    <td className="p-2">Department / Work Area</td>
+                                    <td className="p-2">{payslip.department || payslip.workarea || payslip.dept || '-'}</td>
+                                </tr>
+                                <tr>
+                                    <td className="p-2">Basic Salary</td>
+                                    <td className="p-2">{Number(payslip.BASIC_SALARY_GHC || payslip.basic || 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td className="p-2"></td>
+                                    <td className="p-2">Days Worked</td>
+                                    <td className="p-2">{payslip.workdays ?? payslip.noofdayspresent ?? payslip.legalworkdays ?? 0}</td>
+                                </tr>
+                                <tr>
+                                    <th colSpan={2} className="text-white text-center">Item</th>
+                                    <th className="text-white text-center">Description/Days/Hours</th>
+                                    <th className="text-white text-center">Earnings (GHS)</th>
+                                    <th className="text-white text-center">Deductions (GHS)</th>
+                                </tr>
+                                <tr>
+                                    <td colSpan={2} className="p-2">Basic Salary Earned</td>
+                                    <td className="p-2 text-right">{Math.round(Number(payslip.workdays ?? payslip.noofdayspresent ?? 0))}</td>
+                                    <td className="p-2 text-center">{Number(payslip.BASIC_SALARY_EARNED_GHC || payslip.basic_earned || payslip.basic || 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={2} className="p-2">Normal Overtime (Weekday)</td>
+                                    <td className="p-2 text-right">{parseFloat(Number(payslip.weekdaysOT ?? 0).toFixed(2))}</td>
+                                    <td className="p-2 text-center">{Number(payslip.normalovertime ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={2} className="p-2">Weekend Overtime</td>
+                                    <td className="p-2 text-right">{parseFloat(Number(payslip.weekendOT ?? 0).toFixed(2))}</td>
+                                    <td className="p-2 text-center">{Number(payslip.saturdayovertime ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td></td>
+                                </tr>
+                                {(Number(payslip.holiday ?? 0) > 0 || Number(payslip.holidayotamt ?? 0) > 0) && (
+                                    <tr>
+                                        <td colSpan={2} className="p-2">Holiday Overtime</td>
+                                        <td className="p-2 text-right">{parseFloat(Number(payslip.holiday ?? 0).toFixed(2))}</td>
+                                        <td className="p-2 text-center">{Number(payslip.holidayotamt ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td></td>
+                                    </tr>
+                                )}
+                                <tr>
+                                    <td colSpan={2} className="p-2">Transport Allowance</td>
+                                    <td className="p-2 text-right">
+                                        {Number(payslip.allowance || payslip.transport || 0) > 0 
+                                            ? Math.round(Number(payslip.workdays ?? payslip.noofdayspresent ?? 0)) 
+                                            : 0}
+                                    </td>
+                                    <td className="p-2 text-center">{Number(payslip.allowance || payslip.transport || 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td></td>
+                                </tr>
+                                {Number(payslip.nightallowance ?? 0) > 0 && (
+                                    <tr>
+                                        <td colSpan={2} className="p-2">Night Allowance</td>
+                                        <td className="p-2 text-right">{Math.round(Number(payslip.night ?? 0))}</td>
+                                        <td className="p-2 text-center">{Number(payslip.nightallowance ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td></td>
+                                    </tr>
+                                )}
+                                {Number(payslip.medical ?? 0) > 0 && (
+                                    <tr>
+                                        <td colSpan={2} className="p-2">Medical Allowance</td>
+                                        <td></td>
+                                        <td className="p-2 text-center">{Number(payslip.medical ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <td></td>
+                                    </tr>
+                                )}
+                                <tr>
+                                    <td colSpan={2} className="p-2 font-bold">Gross Salary</td>
+                                    <td></td>
+                                    <td className="p-2 text-center font-bold">{Number(payslip.grosspay ?? payslip.totalamount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={2} className="p-2">SSNIT EE (5.5%)</td>
+                                    <td></td>
+                                    <td></td>
+                                    <td className="p-2 text-center">{Number(payslip.ssnitee ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={2} className="p-2">Petra (5%)</td>
+                                    <td></td>
+                                    <td></td>
+                                    <td className="p-2 text-center">{Number(payslip.petra ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={2} className="p-2">Normal Tax (PAYE)</td>
+                                    <td></td>
+                                    <td></td>
+                                    <td className="p-2 text-center">{Number(payslip.paye ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                </tr>
+                                {Number(payslip.overtimetax ?? 0) > 0 && (
+                                    <tr>
+                                        <td colSpan={2} className="p-2">Overtime Tax</td>
+                                        <td></td>
+                                        <td></td>
+                                        <td className="p-2 text-center">{Number(payslip.overtimetax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                )}
+                                {Number(payslip.otherdeduction ?? 0) > 0 && (
+                                    <tr>
+                                        <td colSpan={2} className="p-2">Other Deductions</td>
+                                        <td></td>
+                                        <td></td>
+                                        <td className="p-2 text-center">{Number(payslip.otherdeduction ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    </tr>
+                                )}
+                                <tr>
+                                    <td colSpan={3} className="p-2 total">Total</td>
+                                    <td className="p-2 text-center total">{Number(payslip.grosspay ?? payslip.totalamount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td className="p-2 text-center total">
+                                        {(
+                                            Number(payslip.ssnitee ?? 0) +
+                                            Number(payslip.petra ?? 0) +
+                                            Number(payslip.paye ?? 0) +
+                                            Number(payslip.overtimetax ?? 0) +
+                                            Number(payslip.otherdeduction ?? 0)
+                                        ).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td className="p-2">Bank Name</td>
+                                    <td className="p-2">{ payslip.bank ?? payslip.bankname ?? payslip.BANK ?? '-' }</td>
+                                    <td></td>
+                                    <td colSpan={2} className="p-2 net-pay">NET PAY</td>
+                                </tr>
+                                <tr>
+                                    <td className="p-2">Bank Account Name</td>
+                                    <td className="p-2">{ payslip.name ?? payslip.employeename ?? payslip.names ?? '-' }</td>
+                                    <td></td>
+                                    <td colSpan={2} className="p-2 text-center net-pay">
+                                        {Number(payslip.netpay ?? payslip.takehomepay ?? payslip.takehome ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td className="p-2">Bank Account #</td>
+                                    <td className="p-2">{ payslip.accountnumber ?? payslip.account ?? payslip.alcnum ?? payslip.ACCOUNT_NUMBER ?? '-' }</td>
+                                    <td colSpan={3}></td>
+                                </tr>
+                                <tr>
+                                    <td className="p-2">Bank Branch</td>
+                                    <td className="p-2">{ payslip.branch ?? payslip.BRANCH ?? '-' }</td>
+                                    <td colSpan={3}></td>
+                                </tr>
+                            </>
+                        )}
                         {/* ==================== JAYKAY PAYSLIP ==================== */}
 {isJaykay && (
     <>
@@ -2059,7 +2229,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
 
 
                         {/* ==================== TRANSSION PAYSLIP ==================== */}
-                        {!isMelcom && !isAvara && !isHonda && !isJaykay && !isPz && !isTwellium && !isTwelliumAccra && !isShefer && !isInhouse && (
+                        {!isMelcom && !isAvara && !isHonda && !isJaykay && !isPz && !isTwellium && !isTwelliumAccra && !isShefer && !isInhouse && !isOfiExternal && !isOfiHygiene && (
                             <>
                                 <tr>
                                     <td className="p-2">Name</td>
