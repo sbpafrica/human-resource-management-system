@@ -34,7 +34,20 @@
     </style>
 </head>
 <body>
-
+@php
+    $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
+        ? data_get($bank, 'bankname') 
+        : ($payslip->bank ?? $payslip->bankname ?? '-');
+    $displayAccountName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') 
+        ? data_get($bank, 'name') 
+        : ($payslip->name ?? $payslip->names ?? $payslip->employeename ?? '-');
+    $displayAccountNo = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
+        ? data_get($bank, 'alcnum') 
+        : ($payslip->accountnumber ?? $payslip->account_number ?? $payslip->alcnum ?? '-');
+    $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') 
+        ? data_get($bank, 'branch') 
+        : ($payslip->branch ?? '-');
+@endphp
 <table>
     <tr>
         <td colspan="2"><img src="{{ public_path('images/sbpafricalogo.png') }}" class="logo" alt="Company Logo"></td>
@@ -78,25 +91,25 @@
     <tr>
         <td colspan="2">Basic Salary</td>
         <td style="text-align: right;">{{ $payslip->actualwork ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format($payslip->actualbasic ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->actualbasic ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Monthly KPI</td>
         <td style="text-align: right;">{{ $payslip->coefficient ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format($payslip->monthlykpi ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->monthlykpi ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Overtime</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->overtime ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->overtime ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Transport Subsidy</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->transport ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->transport ?? 0), 2) }}</td>
         <td></td>
     </tr>
 
@@ -105,7 +118,7 @@
         <td colspan="2" class="total">Gross Salary</td>
         <td></td>
         <td style="text-align: center;" class="total">
-            {{ number_format(($payslip->actualbasic ?? 0) + ($payslip->monthlykpi ?? 0) + ($payslip->overtime ?? 0) + ($payslip->transport ?? 0), 2) }}
+            {{ number_format((float)($payslip->actualbasic ?? 0) + (float)($payslip->monthlykpi ?? 0) + (float)($payslip->overtime ?? 0) + (float)($payslip->transport ?? 0), 2) }}
         </td>
         <td></td>
     </tr>
@@ -115,69 +128,69 @@
         <td colspan="2">SSNIT</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->ssnitpay ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->ssnitpay ?? 0), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2">PAYE</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->totaltax ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->totaltax ?? 0), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2">Salary Loan</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->loans ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->loans ?? 0), 2) }}</td>
     </tr>
 
     <!-- Annual Bonus (Earnings) -->
     <tr>
         <td colspan="2">Annual Bonus</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->endyearmonth ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->endyearmonth ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Annual Tax</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->endyeartax ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->endyeartax ?? 0), 2) }}</td>
     </tr>
 
     <!-- Total -->
     <tr>
         <td colspan="3" class="total">Total</td>
         <td style="text-align: center;" class="total">
-            {{ number_format(($payslip->actualbasic ?? 0) + ($payslip->monthlykpi ?? 0) + ($payslip->overtime ?? 0) + ($payslip->transport ?? 0) + ($payslip->endyearmonth ?? 0), 2) }}
+            {{ number_format((float)($payslip->actualbasic ?? 0) + (float)($payslip->monthlykpi ?? 0) + (float)($payslip->overtime ?? 0) + (float)($payslip->transport ?? 0) + (float)($payslip->endyearmonth ?? 0), 2) }}
         </td>
         <td style="text-align: center;" class="total">
-            {{ number_format($payslip->totaldeduction ?? 0, 2) }}
+            {{ number_format((float)($payslip->totaldeduction ?? 0), 2) }}
         </td>
     </tr>
 
     <!-- Bank & Net Pay -->
     <tr>
         <td>Bank Name</td>
-        <td>{{ $bank['bankname'] }}</td>
+        <td>{{ $displayBankName }}</td>
         <td></td>
         <td colspan="2" class="net-pay" style="text-align: center;">NET PAY</td>
     </tr>
     <tr>
         <td>Bank Account Name</td>
-        <td>{{ $bank['name'] }}</td>
+        <td>{{ $displayAccountName }}</td>
         <td></td>
         <td colspan="2" style="text-align: center;" class="net-pay">
-            {{ number_format($payslip->netpay ?? 0, 2) }}
+            {{ number_format((float)($payslip->netpay ?? 0), 2) }}
         </td>
     </tr>
     <tr>
         <td>Bank Account #</td>
-        <td>{{ $bank['alcnum'] }}</td>
+        <td>{{ $displayAccountNo }}</td>
         <td colspan="3"></td>
     </tr>
     <tr>
         <td>Bank Branch</td>
-        <td>{{ $bank['branch'] }}</td>
+        <td>{{ $displayBranch }}</td>
         <td colspan="3"></td>
     </tr>
 </table>

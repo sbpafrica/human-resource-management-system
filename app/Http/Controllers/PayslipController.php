@@ -272,6 +272,9 @@ class PayslipController extends Controller
         if (str_contains($dbName, 'ofihygiene') || str_contains($slug, 'ofi-hygiene') || str_contains($slug, 'ofihygiene') || str_contains($shortName, 'hygiene') || str_contains($dbName, 'olamhygiene')) {
             return 'payslip.ofihygiene-pdf';
         }
+        if (str_contains($dbName, 'driver') || str_contains($slug, 'driver') || str_contains($shortName, 'driver')) {
+            return 'payslip.drivers-pdf';
+        }
 
         return 'payslip.pdf';
     }
@@ -625,7 +628,7 @@ class PayslipController extends Controller
         $payslip->SSNIT = $ssnit;
     
         return $payslip;
-    }}
+    }
 
     public function index(Request $request, string $clientSlug)
     {

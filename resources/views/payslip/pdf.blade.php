@@ -13,6 +13,20 @@
     </style>
 </head>
 <body>
+@php
+    $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
+        ? data_get($bank, 'bankname') 
+        : ($payslip->bank ?? $payslip->bankname ?? '-');
+    $displayAccountName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') 
+        ? data_get($bank, 'name') 
+        : ($payslip->name ?? $payslip->names ?? $payslip->employeename ?? '-');
+    $displayAccountNo = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
+        ? data_get($bank, 'alcnum') 
+        : ($payslip->accountnumber ?? $payslip->account_number ?? $payslip->alcnum ?? '-');
+    $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') 
+        ? data_get($bank, 'branch') 
+        : ($payslip->branch ?? '-');
+@endphp
     <table>
         <tr>
             <td colspan="2"><img src="{{ public_path('images/sbpafricalogo.png') }}" class="logo" alt="Company Logo"></td>
@@ -54,71 +68,71 @@
         <tr>
             <td colspan="2">Basic Salary</td>
             <td style="text-align: right;">{{ data_get($payslip, 'workdays', 0) }}</td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'basic', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'basic', 0), 2) }}</td>
             <td></td>
         </tr>
         <tr>
             <td colspan="2">Performance Bonus</td>
             <td style="text-align: right;">{{ data_get($payslip, 'coefficient', 0) }}</td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'performstand', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'performstand', 0), 2) }}</td>
             <td></td>
         </tr>
         <tr>
             <td colspan="2">Allowance</td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'allowance', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'allowance', 0), 2) }}</td>
             <td></td>
         </tr>
         <tr>
             <td colspan="2">Overtime Weekday</td>
             <td style="text-align: right;">{{ data_get($payslip, 'otworkdays', data_get($payslip, 'normalOThrs', data_get($payslip, 'weekdaysOT', 0))) }}</td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'otworkingday', data_get($payslip, 'normalovertime', 0)), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'otworkingday', data_get($payslip, 'normalovertime', 0)), 2) }}</td>
             <td></td>
         </tr>
         <tr>
             <td colspan="2">Overtime Weekend/Holiday</td>
             <td style="text-align: right;">{{ data_get($payslip, 'otweekend', data_get($payslip, 'weekendOThrs', data_get($payslip, 'weekendOT', 0))) }}</td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'otholiday', data_get($payslip, 'saturdayovertime', 0)), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'otholiday', data_get($payslip, 'saturdayovertime', 0)), 2) }}</td>
             <td></td>
         </tr>
         <tr>
             <td colspan="2">Other Income</td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'other', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'other', 0), 2) }}</td>
             <td></td>
         </tr>
         <tr>
             <td colspan="2">Commission</td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'commission', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'commission', 0), 2) }}</td>
             <td></td>
         </tr>
-        @if(data_get($payslip, 'quarterlybonus', 0) > 0)
+        @if((float)data_get($payslip, 'quarterlybonus', 0) > 0)
         <tr>
             <td colspan="2">Quarterly Bonus</td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'quarterlybonus', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'quarterlybonus', 0), 2) }}</td>
             <td></td>
         </tr>
         @endif
-        @if(data_get($payslip, 'endcontractrights', 0) > 0)
+        @if((float)data_get($payslip, 'endcontractrights', 0) > 0)
         <tr>
             <td colspan="2">End of Contract Rights</td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'endcontractrights', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'endcontractrights', 0), 2) }}</td>
             <td></td>
         </tr>
         @endif
         <tr>
             <td colspan="2" style="font-weight: bold;">Gross Salary</td>
             <td></td>
-            <td style="text-align: center; font-weight: bold;">{{ number_format(data_get($payslip, 'grosspay', data_get($payslip, 'totalamount', data_get($payslip, 'gross', 0))), 2) }}</td>
+            <td style="text-align: center; font-weight: bold;">{{ number_format((float)data_get($payslip, 'grosspay', data_get($payslip, 'totalamount', data_get($payslip, 'gross', 0))), 2) }}</td>
             <td></td>
         </tr>
         <tr>
             <td colspan="2">Annual Bonus</td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'annaulbonus', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'annaulbonus', 0), 2) }}</td>
             <td></td>
         </tr>
         <tr>
@@ -126,87 +140,84 @@
             <td></td>
             <td></td>
             <td style="text-align: center;">
-    {{ number_format(data_get($payslip, 'ssnitee', data_get($payslip, 'basic', 0) * 0.055), 2) }}
+    {{ number_format((float)data_get($payslip, 'ssnitee', (float)data_get($payslip, 'basic', 0) * 0.055), 2) }}
 </td>
-
         </tr>
         <tr>
             <td colspan="2">Normal Tax-Regular</td>
             <td></td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'paye', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'paye', 0), 2) }}</td>
         </tr>
         <tr>
             <td colspan="2">Leave</td>
             <td style="text-align: center;">{{ data_get($payslip, 'leavedays', 0) }}</td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'leavededuction', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'leavededuction', 0), 2) }}</td>
         </tr>
         <tr>
             <td colspan="2">Other Deduction</td>
             <td></td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'otherdeduction', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'otherdeduction', 0), 2) }}</td>
         </tr>
         <tr>
             <td colspan="2">Loan</td>
             <td></td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'loan', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'loan', 0), 2) }}</td>
         </tr>
         <tr>
             <td colspan="2">Annual Tax</td>
             <td></td>
             <td></td>
-            <td style="text-align: center;">{{ number_format(data_get($payslip, 'annaultax', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'annaultax', 0), 2) }}</td>
         </tr>
         <tr>
             <td colspan="3" class="total">Total</td>
             <td class="total" style="text-align: center;">
     {{
         number_format(
-            data_get($payslip, 'grosspay', 0) +
-            data_get($payslip, 'annualbonus', 0),
+            (float)data_get($payslip, 'grosspay', 0) +
+            (float)data_get($payslip, 'annualbonus', 0),
         2)
     }}
 </td>
-
             <td class="total" style="text-align: center;">
     {{
         number_format(
-            data_get($payslip, 'ssnitee', data_get($payslip, 'basic', 0) * 0.055) +
-            data_get($payslip, 'leavededuction', 0) +
-            data_get($payslip, 'otherdeduction', 0) +
-            data_get($payslip, 'loan', 0) +
-            data_get($payslip, 'paye', 0) +
-            data_get($payslip, 'annaultax', 0),
+            (float)data_get($payslip, 'ssnitee', (float)data_get($payslip, 'basic', 0) * 0.055) +
+            (float)data_get($payslip, 'leavededuction', 0) +
+            (float)data_get($payslip, 'otherdeduction', 0) +
+            (float)data_get($payslip, 'loan', 0) +
+            (float)data_get($payslip, 'paye', 0) +
+            (float)data_get($payslip, 'annaultax', 0),
         2)
     }}
 </td>
-
         </tr>
         <tr>
             <td>Bank Name</td>
-            <td>{{ $bank['bankname'] }}</td>
+            <td>{{ $displayBankName }}</td>
             <td></td>
             <td colspan="2" class="net-pay">NET PAY</td>
         </tr>
         <tr>
             <td>Bank Account Name</td>
-            <td>{{ $bank['name'] }}</td>
+            <td>{{ $displayAccountName }}</td>
             <td></td>
-            <td colspan="2" class="net-pay" >{{ number_format(data_get($payslip, 'netpay', data_get($payslip, 'takehome', data_get($payslip, 'takehomepay', data_get($payslip, 'net_pay', 0)))), 2) }}</td>
+            <td colspan="2" class="net-pay" >{{ number_format((float)data_get($payslip, 'netpay', data_get($payslip, 'takehome', data_get($payslip, 'takehomepay', data_get($payslip, 'net_pay', 0)))), 2) }}</td>
         </tr>
         <tr>
             <td>Bank Account #</td>
-            <td>{{ $bank['alcnum'] }}</td>
+            <td>{{ $displayAccountNo }}</td>
             <td></td>
             <td></td>
             <td></td>
         </tr>
         <tr>
             <td>Bank Branch</td>
-            <td>{{ $bank['branch'] }}</td>
+            <td>{{ $displayBranch }}</td>
             <td></td>
             <td></td>
             <td></td>

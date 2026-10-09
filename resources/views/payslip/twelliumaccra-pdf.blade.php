@@ -34,7 +34,20 @@
     </style>
 </head>
 <body>
-
+@php
+    $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
+        ? data_get($bank, 'bankname') 
+        : ($payslip->bank ?? $payslip->bankname ?? '-');
+    $displayAccountName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') 
+        ? data_get($bank, 'name') 
+        : ($payslip->name ?? $payslip->names ?? $payslip->employeename ?? '-');
+    $displayAccountNo = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
+        ? data_get($bank, 'alcnum') 
+        : ($payslip->accountnumber ?? $payslip->account_number ?? $payslip->alcnum ?? '-');
+    $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') 
+        ? data_get($bank, 'branch') 
+        : ($payslip->branch ?? '-');
+@endphp
 <table>
     <!-- Header: Logo, Salary Slip, Confidential -->
     <tr>
@@ -65,7 +78,7 @@
     </tr>
     <tr>
         <td class="header">Basic Salary</td>
-        <td>{{ number_format($payslip->basic_salary ?? 0, 2) }}</td>
+        <td>{{ number_format((float)($payslip->basic_salary ?? 0), 2) }}</td>
         <td colspan="3"></td>
     </tr>
 
@@ -77,65 +90,65 @@
         <th class="header" style="text-align: center;">Deductions</th>
     </tr>
 
-    <!-- Earnings & Deductions Rows - EXACT ORDER AS YOUR EXAMPLE -->
+    <!-- Earnings & Deductions Rows -->
     <tr>
         <td colspan="2">Basic Earned</td>
         <td style="text-align: right;">{{ $payslip->days_worked ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format($payslip->basic_earned ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->basic_earned ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Absent Deduction</td>
         <td style="text-align: right;">{{ $payslip->absent_days ?? 0 }}</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->absent_deduction ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->absent_deduction ?? 0), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2" class="total">Gross Salary</td>
         <td></td>
-        <td style="text-align: center;" class="total">{{ number_format($payslip->basic_earned ?? 0, 2) }}</td>
+        <td style="text-align: center;" class="total">{{ number_format((float)($payslip->basic_earned ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">SSNIT</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->ssnit_ee ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->ssnit_ee ?? 0), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2">Loan</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->deductions ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->deductions ?? 0), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2">Normal Tax-Regular</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->paye ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->paye ?? 0), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2">Weekday Overtime</td>
         <td style="text-align: right;">{{ $payslip->weekday_hours ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format($payslip->weekday_overtime_amt ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->weekday_overtime_amt ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Saturday Overtime</td>
         <td style="text-align: right;">{{ $payslip->saturday_hours ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format($payslip->saturday_overtime_amt ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->saturday_overtime_amt ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Sunday/Holiday Overtime</td>
         <td style="text-align: right;">{{ $payslip->num_sundays_holidays ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format($payslip->sunday_holiday_overtime_amt ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->sunday_holiday_overtime_amt ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Overtime Refund</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->overtimerefund ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->overtimerefund ?? 0), 2) }}</td>
         <td></td>
     </tr>
 
@@ -144,10 +157,10 @@
         <td colspan="2" class="total">Total</td>
         <td></td>
         <td style="text-align: center;" class="total">
-            {{ number_format(($payslip->basic_earned ?? 0) + ($payslip->total_overtime_amt ?? 0), 2) }}
+            {{ number_format((float)($payslip->basic_earned ?? 0) + (float)($payslip->total_overtime_amt ?? 0), 2) }}
         </td>
         <td style="text-align: center;" class="total">
-            {{ number_format($payslip->total_deductions ?? 0, 2) }}
+            {{ number_format((float)($payslip->total_deductions ?? 0), 2) }}
         </td>
     </tr>
 
@@ -155,7 +168,7 @@
     <tr>
         <td colspan="2">Refund</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->refund ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->refund ?? 0), 2) }}</td>
         <td></td>
     </tr>
 
@@ -167,29 +180,29 @@
     <tr>
         <td colspan="3"></td>
         <td colspan="2" style="text-align: center;" class="net-pay">
-            {{ number_format($payslip->take_home_pay ?? 0, 2) }}
+            {{ number_format((float)($payslip->take_home_pay ?? 0), 2) }}
         </td>
     </tr>
 
-    <!-- Bank Details (optional - kept from Jay Kay style) -->
+    <!-- Bank Details -->
     <tr>
         <td class="header">Bank Name</td>
-        <td>{{ $bank['bankname'] }}</td>
+        <td>{{ $displayBankName }}</td>
         <td colspan="3"></td>
     </tr>
     <tr>
         <td class="header">Bank Account Name</td>
-        <td>{{ $bank['name'] }}</td>
+        <td>{{ $displayAccountName }}</td>
         <td colspan="3"></td>
     </tr>
     <tr>
         <td class="header">Bank Account #</td>
-        <td>{{ $bank['alcnum'] }}</td>
+        <td>{{ $displayAccountNo }}</td>
         <td colspan="3"></td>
     </tr>
     <tr>
         <td class="header">Bank Branch</td>
-        <td>{{ $bank['branch'] }}</td>
+        <td>{{ $displayBranch }}</td>
         <td colspan="3"></td>
     </tr>
 </table>

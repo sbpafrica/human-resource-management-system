@@ -45,7 +45,20 @@
     </style>
 </head>
 <body>
-
+@php
+    $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
+        ? data_get($bank, 'bankname') 
+        : ($payslip->bank ?? $payslip->bankname ?? '-');
+    $displayAccountName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') 
+        ? data_get($bank, 'name') 
+        : ($payslip->name ?? $payslip->names ?? $payslip->employeename ?? '-');
+    $displayAccountNo = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
+        ? data_get($bank, 'alcnum') 
+        : ($payslip->accountnumber ?? $payslip->account_number ?? $payslip->alcnum ?? '-');
+    $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') 
+        ? data_get($bank, 'branch') 
+        : ($payslip->branch ?? '-');
+@endphp
 <table>
     <tr>
         <td colspan="2"><img src="{{ public_path('images/sbpafricalogo.png') }}" class="logo" alt="SBP Africa Logo"></td>
@@ -80,7 +93,7 @@
     </tr>
     <tr>
         <td class="header">Basic Salary</td>
-        <td>{{ number_format($payslip->basic ?? 0, 2) }}</td>
+        <td>{{ number_format((float)($payslip->basic ?? 0), 2) }}</td>
         <td colspan="3"></td>
     </tr>
     <tr>
@@ -94,37 +107,37 @@
     <tr>
         <td colspan="2">Basic Earned</td>
         <td style="text-align: right;">{{ $payslip->total_hours_worked ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format($payslip->basic_earned ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->basic_earned ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Weekday Overtime</td>
         <td style="text-align: right;">{{ $payslip->weekday_overtime_hours ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format($payslip->weekday_overtime_amount ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->weekday_overtime_amount ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Offday/Holiday Overtime</td>
         <td style="text-align: right;">{{ $payslip->offday_holiday_overtime_hours ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format($payslip->offday_holiday_overtime_total ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->offday_holiday_overtime_total ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Special Day Overtime</td>
         <td style="text-align: right;">{{ $payslip->special_day_overtime_hours ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format($payslip->special_day_overtime_amount ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->special_day_overtime_amount ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Allowance</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->allowance ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->allowance ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Risk Allowance</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->risk_allowance ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->risk_allowance ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
@@ -132,12 +145,12 @@
         <td></td>
         <td style="text-align: center;" class="total">
             {{ number_format(
-                ($payslip->basic_earned ?? 0) +
-                ($payslip->weekday_overtime_amount ?? 0) +
-                ($payslip->offday_holiday_overtime_total ?? 0) +
-                ($payslip->special_day_overtime_amount ?? 0) +
-                ($payslip->allowance ?? 0) +
-                ($payslip->risk_allowance ?? 0), 2) }}
+                (float)($payslip->basic_earned ?? 0) +
+                (float)($payslip->weekday_overtime_amount ?? 0) +
+                (float)($payslip->offday_holiday_overtime_total ?? 0) +
+                (float)($payslip->special_day_overtime_amount ?? 0) +
+                (float)($payslip->allowance ?? 0) +
+                (float)($payslip->risk_allowance ?? 0), 2) }}
         </td>
         <td></td>
     </tr>
@@ -147,25 +160,25 @@
         <td colspan="2">SSNIT</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->ssnit_ee ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->ssnit_ee ?? 0), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2">Normal Tax-Regular</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->paye ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->paye ?? 0), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2">Overtime Tax</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->overtime_tax ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->overtime_tax ?? 0), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2">Other Deduction</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format($payslip->deduction ?? 0, 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->deduction ?? 0), 2) }}</td>
     </tr>
 
     <tr class="blue-bg">
@@ -173,39 +186,39 @@
         <td></td>
         <td style="text-align: center;" class="total">
             {{ number_format(
-                ($payslip->basic_earned ?? 0) +
-                ($payslip->weekday_overtime_amount ?? 0) +
-                ($payslip->offday_holiday_overtime_total ?? 0) +
-                ($payslip->special_day_overtime_amount ?? 0) +
-                ($payslip->allowance ?? 0) +
-                ($payslip->risk_allowance ?? 0), 2) }}
+                (float)($payslip->basic_earned ?? 0) +
+                (float)($payslip->weekday_overtime_amount ?? 0) +
+                (float)($payslip->offday_holiday_overtime_total ?? 0) +
+                (float)($payslip->special_day_overtime_amount ?? 0) +
+                (float)($payslip->allowance ?? 0) +
+                (float)($payslip->risk_allowance ?? 0), 2) }}
         </td>
-        <td style="text-align: center;" class="total">{{ number_format($payslip->total_deductions ?? 0, 2) }}</td>
+        <td style="text-align: center;" class="total">{{ number_format((float)($payslip->total_deductions ?? 0), 2) }}</td>
     </tr>
 
     <!-- Bank & Net Pay -->
     <tr>
         <td class="header">Bank Name</td>
-        <td>{{ $bank['bankname'] }}</td>
+        <td>{{ $displayBankName }}</td>
         <td></td>
         <td colspan="2" class="net-pay" style="text-align: center; background-color: #343434;">NET PAY</td>
     </tr>
     <tr>
         <td class="header">Bank Account Name</td>
-        <td>{{ $bank['name'] }}</td>
+        <td>{{ $displayAccountName }}</td>
         <td></td>
         <td colspan="2" style="text-align: center;" class="net-pay">
-            {{ number_format($payslip->netpay ?? 0, 2) }}
+            {{ number_format((float)($payslip->netpay ?? 0), 2) }}
         </td>
     </tr>
     <tr>
         <td class="header">Bank Account #</td>
-        <td>{{ $bank['alcnum'] }}</td>
+        <td>{{ $displayAccountNo }}</td>
         <td colspan="3"></td>
     </tr>
     <tr>
         <td class="header">Bank Branch</td>
-        <td>{{ $bank['branch'] }}</td>
+        <td>{{ $displayBranch }}</td>
         <td colspan="3"></td>
     </tr>
 </table>
