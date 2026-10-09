@@ -1120,26 +1120,114 @@ class PayslipController extends Controller
 
     public function downloadMultiple(string $clientSlug, Request $request)
     {
-        set_time_limit(300); // Allow up to 5 minutes execution
-        ini_set('memory_limit', '512M');
+        set_time_limit(600); // Allow up to 10 minutes execution for large batches
+        ini_set('memory_limit', '1024M');
 
         try {
-            $mode    = $request->input('mode', 'batch');
+            $mode    = $request->input('mode', 'direct');
             $batchId = (string) $request->input('batch_id', '');
             $month   = $request->input('month');
 
-            // batch_id becomes part of a path, so validate it strictly
-            if (!preg_match('/^[A-Za-z0-9\-]{8,64}$/', $batchId)) {
-                return response()->json(['error' => 'Invalid batch id'], 400);
-            }
             if (!$month) {
                 return response()->json(['error' => 'Month is required'], 400);
             }
 
             $client    = $this->resolveClient($clientSlug);
-            $root      = storage_path('app/payslip_batches');
-            $batchDir  = $root . DIRECTORY_SEPARATOR . $request->user()->id . '_' . $batchId;
             $safeShort = preg_replace('/[^A-Za-z0-9_-]/', '_', $client->short_name);
+
+            // ---------- DIRECT MODE: Generate all PDFs and stream ZIP in 1 request ----------
+            if ($mode === 'direct' || empty($batchId)) {
+                $staffIds = array_values(array_filter((array) $request->input('staff_ids', [])));
+                if (empty($staffIds)) {
+                    return response()->json(['error' => 'No employees selected'], 400);
+                }
+
+                $date           = Carbon::createFromFormat('Y-m', $month);
+                $formattedMonth = $date->format('F Y');
+                $tableName      = $this->getTableName($client, $date);
+
+                if (!Schema::hasTable($tableName)) {
+                    return response()->json(['error' => "No payroll data found for {$formattedMonth}"], 404);
+                }
+
+                [$staffIdField] = $this->detectColumns($tableName, $client);
+                $view           = $this->resolvePayslipView($client);
+
+                $payslips = DB::table($tableName)->whereIn($staffIdField, $staffIds)->get()->keyBy($staffIdField);
+                $ssnits   = DB::table('ssnit')->whereIn('staffid', $staffIds)->pluck('ssnit1a', 'staffid');
+                $banks    = DB::table('bankdetails')->whereIn('employid', $staffIds)->get()->keyBy('employid');
+
+                $tempDir = storage_path('app/tmp');
+                if (!is_dir($tempDir)) {
+                    @mkdir($tempDir, 0775, true);
+                }
+
+                $zipPath = $tempDir . DIRECTORY_SEPARATOR . 'payslips_direct_' . uniqid() . '.zip';
+                $zip     = new ZipArchive();
+
+                if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                    return response()->json(['error' => 'Cannot create temporary ZIP file.'], 500);
+                }
+
+                $generated = 0;
+
+                foreach ($staffIds as $id) {
+                    $payslip = $payslips->get($id);
+                    if (!$payslip) continue;
+
+                    $ssnit   = $ssnits->get($id) ?? '-';
+                    $payslip = $this->normalizePayslip($payslip, $client, $ssnit);
+                    $bank    = $banks->get($id);
+
+                    try {
+                        $pdf = Pdf::loadView($view, [
+                            'payslip'        => $payslip,
+                            'formattedMonth' => $formattedMonth,
+                            'ssnit'          => $ssnit,
+                            'bank'           => [
+                                'bankname' => (!empty(data_get($bank, 'bank')) && data_get($bank, 'bank') !== '-') ? data_get($bank, 'bank') : ($payslip->bank ?? '-'),
+                                'name'     => (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') ? data_get($bank, 'name') : ($payslip->name ?? '-'),
+                                'alcnum'   => (!empty(data_get($bank, 'account')) && data_get($bank, 'account') !== '-') ? data_get($bank, 'account') : ($payslip->accountnumber ?? '-'),
+                                'branch'   => (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') ? data_get($bank, 'branch') : ($payslip->branch ?? '-'),
+                            ],
+                        ]);
+
+                        $safeId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) $id);
+                        $zip->addFromString(
+                            "{$safeShort}_Payslip_{$safeId}_{$month}.pdf",
+                            $pdf->output()
+                        );
+                        $generated++;
+
+                        unset($pdf);
+                        gc_collect_cycles();
+                    } catch (\Throwable $e) {
+                        Log::channel('single')->error(
+                            "[PAYSLIP-BULK-DOWNLOAD] Direct PDF failed for {$id}: " . $e->getMessage() .
+                            ' | ' . $e->getFile() . ':' . $e->getLine()
+                        );
+                    }
+                }
+
+                $zip->close();
+
+                if ($generated === 0 || !file_exists($zipPath) || filesize($zipPath) === 0) {
+                    if (file_exists($zipPath)) @unlink($zipPath);
+                    return response()->json(['error' => 'No payslips could be generated for the selected employees.'], 500);
+                }
+
+                return response()->download($zipPath, "{$safeShort}_Payslips_{$month}.zip", [
+                    'Content-Type' => 'application/zip',
+                ])->deleteFileAfterSend(true);
+            }
+
+            // batch_id validation for chunked batching mode
+            if (!preg_match('/^[A-Za-z0-9\-]{8,64}$/', $batchId)) {
+                return response()->json(['error' => 'Invalid batch id'], 400);
+            }
+
+            $root     = storage_path('app/payslip_batches');
+            $batchDir = $root . DIRECTORY_SEPARATOR . $request->user()->id . '_' . $batchId;
 
             // ---------- FINALIZE: zip everything generated so far ----------
             if ($mode === 'finalize') {
@@ -1154,7 +1242,7 @@ class PayslipController extends Controller
                     @mkdir($tempDir, 0775, true);
                 }
                 $zipPath = $tempDir . DIRECTORY_SEPARATOR . 'payslips_' . uniqid() . '.zip';
-                $zip = new ZipArchive();
+                $zip     = new ZipArchive();
 
                 if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
                     return response()->json(['error' => 'Cannot create temporary ZIP file.'], 500);
@@ -1163,7 +1251,7 @@ class PayslipController extends Controller
                 foreach ($files as $file) {
                     $zip->addFile($file, basename($file));
                 }
-                $zip->close(); // files are read here, so delete them only after this
+                $zip->close();
 
                 foreach ($files as $file) {
                     @unlink($file);
@@ -1190,8 +1278,7 @@ class PayslipController extends Controller
             }
 
             [$staffIdField] = $this->detectColumns($tableName, $client);
-
-            $view = $this->resolvePayslipView($client);
+            $view           = $this->resolvePayslipView($client);
 
             $payslips = DB::table($tableName)->whereIn($staffIdField, $staffIds)->get()->keyBy($staffIdField);
             $ssnits   = DB::table('ssnit')->whereIn('staffid', $staffIds)->pluck('ssnit1a', 'staffid');
