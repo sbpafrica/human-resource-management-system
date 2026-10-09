@@ -338,30 +338,32 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         setIsDownloadingMultiple(true);
 
         try {
-            const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3, delayMs = 1200): Promise<Response> => {
+            const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 5, initialDelayMs = 2000): Promise<Response> => {
                 let lastError: any = null;
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         const res = await fetch(url, options);
                         if (res.ok) return res;
-                        if ([502, 503, 504, 429].includes(res.status) && attempt < maxRetries) {
-                            console.warn(`Attempt ${attempt} failed with status ${res.status}. Retrying in ${delayMs}ms...`);
-                            await new Promise(r => setTimeout(r, delayMs));
+                        if ([500, 502, 503, 504, 429].includes(res.status) && attempt < maxRetries) {
+                            const backoff = Math.min(10000, initialDelayMs * Math.pow(1.5, attempt - 1));
+                            console.warn(`Attempt ${attempt} failed with status ${res.status}. Retrying in ${Math.round(backoff)}ms...`);
+                            await new Promise(r => setTimeout(r, backoff));
                             continue;
                         }
                         return res;
                     } catch (err: any) {
                         lastError = err;
                         if (attempt < maxRetries) {
-                            console.warn(`Attempt ${attempt} failed (${err?.message}). Retrying in ${delayMs}ms...`);
-                            await new Promise(r => setTimeout(r, delayMs));
+                            const backoff = Math.min(10000, initialDelayMs * Math.pow(1.5, attempt - 1));
+                            console.warn(`Attempt ${attempt} failed (${err?.message}). Retrying in ${Math.round(backoff)}ms...`);
+                            await new Promise(r => setTimeout(r, backoff));
                         }
                     }
                 }
                 throw lastError || new Error("Network request failed after multiple retries");
             };
 
-            const batchSize = 5;
+            const batchSize = 20; // 20 employees per batch reduces HTTP overhead by 75% and avoids 503 rate limits
             const batchId =
                 typeof crypto !== "undefined" && crypto.randomUUID
                     ? crypto.randomUUID()
@@ -369,6 +371,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
 
             const total = selectedEmployees.length;
             let generated = 0;
+            const failedBatchRanges: string[] = [];
 
             for (let start = 0; start < total; start += batchSize) {
                 const batch = selectedEmployees.slice(start, start + batchSize);
@@ -380,62 +383,54 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                 setToastType("success");
                 setShowToast(true);
 
-                const batchResponse = await fetchWithRetry(
-                    route("payslips.download-multiple", {
-                        client: clientSlug,
-                    }),
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Accept": "application/json",
-                            "X-CSRF-TOKEN":
-                                document
-                                    .querySelector('meta[name="csrf-token"]')
-                                    ?.getAttribute("content") || "",
-                        },
-                        body: JSON.stringify({
-                            month: data.month,
-                            staff_ids: batch,
-                            mode: "batch",
-                            batch_id: batchId,
+                try {
+                    const batchResponse = await fetchWithRetry(
+                        route("payslips.download-multiple", {
+                            client: clientSlug,
                         }),
-                    }
-                );
-
-                if (!batchResponse.ok) {
-                    let errorMessage =
-                        `Batch ${start + 1}-${end} failed (${batchResponse.status})`;
-
-                    try {
-                        const errorData = await batchResponse.json();
-                        errorMessage =
-                            errorData?.error ||
-                            errorData?.message ||
-                            errorMessage;
-                    } catch {
-                        // Keep the status message.
-                    }
-
-                    throw new Error(errorMessage);
-                }
-
-                const result = await batchResponse.json();
-                generated += Number(result.generated || 0);
-
-                if (Array.isArray(result.failed) && result.failed.length > 0) {
-                    console.warn(
-                        "Payslips skipped in batch:",
-                        result.failed
+                        {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Accept": "application/json",
+                                "X-CSRF-TOKEN":
+                                    document
+                                        .querySelector('meta[name="csrf-token"]')
+                                        ?.getAttribute("content") || "",
+                            },
+                            body: JSON.stringify({
+                                month: data.month,
+                                staff_ids: batch,
+                                mode: "batch",
+                                batch_id: batchId,
+                            }),
+                        },
+                        5,
+                        2000
                     );
+
+                    if (!batchResponse.ok) {
+                        console.warn(`Batch ${start + 1}-${end} failed with status ${batchResponse.status}`);
+                        failedBatchRanges.push(`${start + 1}-${end}`);
+                    } else {
+                        const result = await batchResponse.json();
+                        generated += Number(result.generated || 0);
+
+                        if (Array.isArray(result.failed) && result.failed.length > 0) {
+                            console.warn("Payslips skipped in batch:", result.failed);
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`Batch ${start + 1}-${end} encountered error:`, err);
+                    failedBatchRanges.push(`${start + 1}-${end}`);
                 }
 
-                // Short pacing pause to allow server FPM workers to free memory
-                await new Promise((r) => setTimeout(r, 250));
+                // Short pacing pause to allow server FPM workers to free memory & reset rate limits
+                await new Promise((r) => setTimeout(r, 400));
             }
 
             if (generated === 0) {
-                throw new Error("No payslips were generated.");
+                throw new Error("No payslips could be generated for the selected employees. Please try again.");
             }
 
             setToastMessage("Preparing final ZIP file...");
@@ -462,7 +457,9 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                         mode: "finalize",
                         batch_id: batchId,
                     }),
-                }
+                },
+                5,
+                3000
             );
 
             if (!finalResponse.ok) {
@@ -497,10 +494,17 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             a.remove();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-            setToastMessage(
-                `Successfully downloaded ${generated} payslip(s).`
-            );
-            setToastType("success");
+            if (failedBatchRanges.length > 0) {
+                setToastMessage(
+                    `Downloaded ${generated} payslip(s) in ZIP. Note: Batch(es) ${failedBatchRanges.join(", ")} were skipped.`
+                );
+                setToastType("error");
+            } else {
+                setToastMessage(
+                    `Successfully downloaded ${generated} payslip(s).`
+                );
+                setToastType("success");
+            }
             setShowToast(true);
 
             setSelectedEmployees([]);
