@@ -145,7 +145,7 @@ class PayslipController extends Controller
             'ofibwh'      => ['olambwh', 'ofibwh'],
             'ofitemp'     => ['olamtem', 'ofitemp'],
             'ofioffload'  => ['offload', 'ofioffload'],
-            'ofihygiene'  => ['hygiene', 'ofihygiene'],
+            'ofihygiene'  => ['olamhygiene', 'hygiene', 'ofihygiene'],
             'fon'         => ['fonpackage', 'fon'],
             'century'     => ['centurypay', 'century'],
             'tecno'       => ['transsiontec', 'tecno', 'unitycorp'],
@@ -404,8 +404,8 @@ class PayslipController extends Controller
             ?? ($getP('city') ?? '-');
     
         // ---------- BASIC & WORK DAYS ----------
-        $basicEarned = $getP('basicsalaryearned') ?? $getP('basicsalaryearnedghc') ?? $getP('basic_earned');
-        $basicBase   = $getP('basicsalary') ?? $getP('basicsalaryghc') ?? $getP('basic') ?? $getP('actualbasic');
+        $basicEarned = $getP('basicsalaryearned') ?? $getP('basicsalaryearnedghc') ?? $getP('basic_earned') ?? $getP('total2');
+        $basicBase   = $getP('basicsalary') ?? $getP('basicsalaryghc') ?? $getP('basic') ?? $getP('actualbasic') ?? $getP('rate');
         $payslip->BASIC_SALARY_GHC        = (float) ($basicBase ?: ($basicEarned ?: 0));
         $payslip->BASIC_SALARY_EARNED_GHC = (float) ($basicEarned ?: ($basicBase ?: 0));
         $payslip->basic_earned            = $payslip->BASIC_SALARY_EARNED_GHC;
