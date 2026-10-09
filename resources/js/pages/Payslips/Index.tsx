@@ -1105,7 +1105,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                                     <td></td>
                                 </tr>
                                 <tr>
-                                    <td colSpan={2} className="p-2">SSNIT EE (5.5%)</td>
+                                    <td colSpan={2} className="p-2">SSNIT EE (0.5%)</td>
                                     <td></td>
                                     <td></td>
                                     <td className="p-2 text-center">{Number(payslip.ssnitee ?? payslip.SSNIT_EE_0_5_PERCENT ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -1273,7 +1273,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                                     <td></td>
                                 </tr>
                                 <tr>
-                                    <td colSpan={2} className="p-2">SSNIT EE (5.5%)</td>
+                                    <td colSpan={2} className="p-2">SSNIT EE (0.5%)</td>
                                     <td></td>
                                     <td></td>
                                     <td className="p-2 text-center">{Number(payslip.ssnitee ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
