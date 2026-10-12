@@ -434,13 +434,13 @@ export default function Contracts({ contracts, filters, totalRecords, searchCoun
                         {errors.issuedate && <p className="text-red-500 text-sm">{errors.issuedate}</p>}
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="hremail">HR Email</Label>
+                        <Label htmlFor="hremail">HR Email (Optional)</Label>
                         <Input
                           id="hremail"
                           type="email"
                           value={data.hremail}
                           onChange={(e) => setData("hremail", e.target.value)}
-                          required
+                          placeholder="Defaults to your email or hr@sbpafrica.com"
                           className="w-full"
                         />
                         {errors.hremail && <p className="text-red-500 text-sm">{errors.hremail}</p>}

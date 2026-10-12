@@ -53,7 +53,7 @@ class ContractController extends Controller
     public function store(Request $request)
     {
         $rules = [
-            'id' => ['required', 'string', 'max:20', 'unique:contractmelcomemp,id'],
+            'id' => ['required', 'string', 'max:50', 'unique:contractmelcomemp,id'],
             'employeename' => ['required', 'string', 'max:100'],
             'client' => ['required', 'string', 'max:100'],
             'location' => ['required', 'string', 'max:100'],
@@ -63,7 +63,7 @@ class ContractController extends Controller
             'basic' => ['nullable', 'string', 'max:255'],
             'employername' => ['required', 'string', 'max:100'],
             'issuedate' => ['required', 'date'],
-            'hremail' => ['required', 'email', 'max:255'],
+            'hremail' => ['nullable', 'email', 'max:255'],
             'email' => ['nullable', 'email', 'max:100'],
             'ghanacard' => ['nullable', 'string', 'max:100'],
         ];
@@ -76,6 +76,9 @@ class ContractController extends Controller
 
         $data = $request->all();
         $data['activate'] = '0'; // Set default
+        if (empty($data['hremail'])) {
+            $data['hremail'] = auth()->user()?->email ?: 'hr@sbpafrica.com';
+        }
         Contract::create($data);
         return redirect()->route('contracts.index')->with('success', 'Contract created successfully.');
     }
@@ -85,7 +88,7 @@ class ContractController extends Controller
         $contract = Contract::findOrFail($id);
 
         $rules = [
-            'id' => ['required', 'string', 'max:20', \Illuminate\Validation\Rule::unique('contractmelcomemp')->ignore($contract->id)],
+            'id' => ['required', 'string', 'max:50', \Illuminate\Validation\Rule::unique('contractmelcomemp')->ignore($contract->id)],
             'employeename' => ['required', 'string', 'max:100'],
             'client' => ['required', 'string', 'max:100'],
             'location' => ['required', 'string', 'max:100'],
@@ -95,7 +98,7 @@ class ContractController extends Controller
             'basic' => ['nullable', 'string', 'max:255'],
             'employername' => ['required', 'string', 'max:100'],
             'issuedate' => ['required', 'date'],
-            'hremail' => ['required', 'email', 'max:255'],
+            'hremail' => ['nullable', 'email', 'max:255'],
             'email' => ['nullable', 'email', 'max:100'],
             'ghanacard' => ['nullable', 'string', 'max:100'],
         ];
@@ -108,6 +111,9 @@ class ContractController extends Controller
 
         $data = $request->all();
         $data['activate'] = $contract->activate; // Preserve existing activate value
+        if (empty($data['hremail'])) {
+            $data['hremail'] = !empty($contract->hremail) ? $contract->hremail : (auth()->user()?->email ?: 'hr@sbpafrica.com');
+        }
         $contract->update($data);
         return redirect()->route('contracts.index')->with('success', 'Contract updated successfully.');
     }
@@ -119,10 +125,83 @@ class ContractController extends Controller
         return redirect()->route('contracts.index')->with('success', 'Contract deleted successfully.');
     }
 
+    /**
+     * Parse date value from Excel serial or various string formats to Y-m-d.
+     */
+    private function parseDateValue($rawValue): ?string
+    {
+        if (empty($rawValue)) {
+            return null;
+        }
+
+        if ($rawValue instanceof \DateTimeInterface) {
+            return $rawValue->format('Y-m-d');
+        }
+
+        $strVal = trim((string)$rawValue);
+        if ($strVal === '') {
+            return null;
+        }
+
+        // Check if value is an Excel date serial number (e.g. 45892)
+        if (is_numeric($strVal) && floatval($strVal) > 1000) {
+            try {
+                $date = ExcelDate::excelToDateTimeObject(floatval($strVal));
+                return $date->format('Y-m-d');
+            } catch (\Throwable $e) {
+                // fall through to string parsing
+            }
+        }
+
+        // List of candidate formats
+        $formats = [
+            'Y-m-d',
+            'd/m/Y',
+            'm/d/Y',
+            'Y/m/d',
+            'd-m-Y',
+            'm-d-Y',
+            'd.m.Y',
+            'Y.m.d',
+            'j/n/Y',
+            'n/j/Y',
+            'j-n-Y',
+            'n-j-Y',
+            'd M Y',
+            'd-M-Y',
+            'd M, Y',
+            'M d, Y',
+            'F d, Y',
+            'd F Y',
+        ];
+
+        foreach ($formats as $fmt) {
+            try {
+                $parsed = Carbon::createFromFormat($fmt, $strVal);
+                if ($parsed !== false) {
+                    return $parsed->format('Y-m-d');
+                }
+            } catch (\Throwable $e) {
+                // try next format
+            }
+        }
+
+        try {
+            $parsed = Carbon::parse($strVal);
+            if ($parsed !== false) {
+                return $parsed->format('Y-m-d');
+            }
+        } catch (\Throwable $e) {
+            // failed to parse
+        }
+
+        return null;
+    }
+
     public function bulkUpload(Request $request)
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'], // 10MB max
+            'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:10240'], // 10MB max
         ]);
 
         try {
@@ -130,67 +209,182 @@ class ContractController extends Controller
             $spreadsheet = IOFactory::load($file->getRealPath());
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray(null, true, true, true);
-            array_shift($rows); // Remove header row
 
-            $existingIds = Contract::pluck('id')->toArray();
-            $errors = [];
-            $validRecords = [];
+            if (empty($rows)) {
+                return redirect()->route('contracts.index')->with('error', 'The uploaded file contains no data.');
+            }
 
-            foreach ($rows as $index => $row) {
-                if (empty($row['A'])) continue; // Skip empty rows
+            // Find header row and build column mapping
+            $headerRowKey = null;
+            $columnMap = []; // field_name => column_letter ('A', 'B', ...)
 
-                $data = [
-                    'id' => trim($row['A'] ?? ''),
-                    'employeename' => trim($row['B'] ?? ''),
-                    'client' => trim($row['C'] ?? ''),
-                    'location' => trim($row['D'] ?? ''),
-                    'position1' => trim($row['E'] ?? ''),
-                    'startdate' => trim($row['F'] ?? ''),
-                    'enddate' => trim($row['G'] ?? ''),
-                    'basic' => !empty(trim($row['H'] ?? '')) ? trim($row['H']) : null,
-                    'employername' => trim($row['I'] ?? ''),
-                    'issuedate' => trim($row['J'] ?? ''),
-                    'hremail' => trim($row['K'] ?? ''),
-                    'email' => !empty(trim($row['L'] ?? '')) ? trim($row['L']) : null,
-                    'ghanacard' => !empty(trim($row['M'] ?? '')) ? trim($row['M']) : null,
-                    'activate' => '0', // Default value
-                ];
+            // Aliases for matching columns
+            $fieldAliases = [
+                'id' => ['staff id', 'employee id', 'staff no', 'staff number', 'emp id', 'empid', 'staffid', 'id'],
+                'employeename' => ['employee name', 'employeename', 'staff name', 'fullname', 'full name', 'name of employee', 'name'],
+                'client' => ['client', 'client name', 'company', 'organization'],
+                'location' => ['location', 'branch', 'site', 'work station', 'station', 'place of work'],
+                'position1' => ['position', 'position1', 'job title', 'designation', 'role', 'job'],
+                'startdate' => ['start date', 'startdate', 'commencement date', 'contract start', 'effective date', 'from date', 'commencement'],
+                'enddate' => ['end date', 'enddate', 'expiry date', 'contract end', 'to date', 'termination date', 'expiry'],
+                'basic' => ['basic salary', 'basic', 'salary', 'basic pay', 'wage', 'rate', 'gross'],
+                'employername' => ['employer name', 'employername', 'employer', 'entity', 'company name'],
+                'issuedate' => ['issue date', 'issuedate', 'date of issue', 'contract date', 'signed date', 'agreement date', 'date'],
+                'hremail' => ['hr email', 'hremail', 'hr\'s email', 'hr mail', 'human resource email', 'hr contact'],
+                'email' => ['employee email', 'staff email', 'personal email', 'worker email', 'email address', 'email'],
+                'ghanacard' => ['ghana card', 'ghanacard', 'ghana card no', 'ghana card number', 'national id', 'nia number', 'id number', 'nia'],
+            ];
 
-                // Log raw data for debugging
-                Log::debug("Raw row data for row " . ($index + 1), $data);
+            // Scan first 10 rows to detect header row
+            $scanLimit = 10;
+            $scanned = 0;
+            foreach ($rows as $rKey => $row) {
+                if ($scanned++ >= $scanLimit) break;
 
-                // Handle date fields
-                $dateFields = ['startdate' => 'F', 'enddate' => 'G', 'issuedate' => 'J'];
-                foreach ($dateFields as $field => $column) {
-                    if (!empty($data[$field])) {
-                        $rawValue = $data[$field];
-                        try {
-                            // Check if value is an Excel date serial number
-                            if (is_numeric($rawValue) && floatval($rawValue) > 1) {
-                                $date = ExcelDate::excelToDateTimeObject(floatval($rawValue));
-                                $data[$field] = $date->format('Y-m-d');
-                            } else {
-                                // Try parsing as string date
-                                $date = Carbon::createFromFormat('Y-m-d', $rawValue) ??
-                                        Carbon::createFromFormat('m/d/Y', $rawValue) ??
-                                        Carbon::createFromFormat('m-d-Y', $rawValue) ??
-                                        Carbon::createFromFormat('d/m/Y', $rawValue);
-                                if ($date) {
-                                    $data[$field] = $date->format('Y-m-d');
-                                } else {
-                                    throw new \Exception("Invalid date format: {$rawValue}");
-                                }
+                $matchedFields = [];
+                $tempColMap = [];
+
+                foreach ($row as $colLetter => $cellVal) {
+                    if (is_null($cellVal)) continue;
+                    $cleanVal = strtolower(trim(preg_replace('/[^a-zA-Z0-9]/', ' ', (string)$cellVal)));
+                    if ($cleanVal === '') continue;
+
+                    foreach ($fieldAliases as $field => $aliases) {
+                        if (isset($tempColMap[$field])) continue; // already mapped
+
+                        foreach ($aliases as $alias) {
+                            $cleanAlias = strtolower(trim(preg_replace('/[^a-zA-Z0-9]/', ' ', $alias)));
+                            if ($cleanVal === $cleanAlias || str_contains($cleanVal, $cleanAlias)) {
+                                $tempColMap[$field] = $colLetter;
+                                $matchedFields[] = $field;
+                                break 2;
                             }
-                            Log::debug("Parsed {$field} for row " . ($index + 1) . ": {$data[$field]}");
-                        } catch (\Exception $e) {
-                            $errors[] = "Row " . ($index + 1) . ": Invalid date format for {$field}. Please use YYYY-MM-DD (e.g., 2025-08-23). Raw value: {$rawValue}";
-                            continue 2; // Skip to next row
                         }
                     }
                 }
 
+                // If at least 3 recognizable fields are found (e.g. id, name, position or start date)
+                if (count($matchedFields) >= 3) {
+                    $headerRowKey = $rKey;
+                    $columnMap = $tempColMap;
+                    break;
+                }
+            }
+
+            // Fallback default column mapping if no header row was detected
+            $defaultMapping = [
+                'id' => 'A',
+                'employeename' => 'B',
+                'client' => 'C',
+                'location' => 'D',
+                'position1' => 'E',
+                'startdate' => 'F',
+                'enddate' => 'G',
+                'basic' => 'H',
+                'employername' => 'I',
+                'issuedate' => 'J',
+                'hremail' => 'K',
+                'email' => 'L',
+                'ghanacard' => 'M',
+            ];
+
+            foreach ($defaultMapping as $field => $defaultCol) {
+                if (!isset($columnMap[$field])) {
+                    $columnMap[$field] = $defaultCol;
+                }
+            }
+
+            // Default HR email from logged-in user or standard fallback
+            $defaultHrEmail = auth()->user()?->email ?: 'hr@sbpafrica.com';
+
+            $errors = [];
+            $validRecords = [];
+            $displayRowNumber = 0;
+
+            foreach ($rows as $rKey => $row) {
+                // If we detected a header row, skip rows up to and including the header row
+                if ($headerRowKey !== null && $rKey <= $headerRowKey) {
+                    continue;
+                } elseif ($headerRowKey === null && $rKey === 1) {
+                    // Check if row 1 looks like a header (e.g. contains 'staff' or 'id')
+                    $firstCell = strtolower(trim((string)($row['A'] ?? '')));
+                    if (str_contains($firstCell, 'id') || str_contains($firstCell, 'staff') || str_contains($firstCell, 'name')) {
+                        continue;
+                    }
+                }
+
+                $displayRowNumber++;
+
+                // Helper to extract value using mapped column
+                $getVal = function ($field) use ($row, $columnMap) {
+                    $col = $columnMap[$field] ?? null;
+                    if ($col && isset($row[$col])) {
+                        return trim((string)$row[$col]);
+                    }
+                    return '';
+                };
+
+                $id = $getVal('id');
+                $name = $getVal('employeename');
+
+                // Skip entirely empty row
+                if (empty($id) && empty($name)) {
+                    continue;
+                }
+
+                if (empty($id)) {
+                    $errors[] = "Row {$displayRowNumber}: Staff ID / ID is required.";
+                    continue;
+                }
+
+                // HR email resolution: Use provided value if valid email; otherwise use default fallback
+                $hrEmailVal = $getVal('hremail');
+                if (empty($hrEmailVal) || !filter_var($hrEmailVal, FILTER_VALIDATE_EMAIL)) {
+                    $hrEmailVal = $defaultHrEmail;
+                }
+
+                // Employee email
+                $empEmailVal = $getVal('email');
+                if (!empty($empEmailVal) && !filter_var($empEmailVal, FILTER_VALIDATE_EMAIL)) {
+                    $empEmailVal = null;
+                }
+
+                // Dates parsing
+                $startDate = $this->parseDateValue($getVal('startdate'));
+                $endDate = $this->parseDateValue($getVal('enddate'));
+                $issueDate = $this->parseDateValue($getVal('issuedate')) ?: ($startDate ?: date('Y-m-d'));
+
+                if (empty($startDate)) {
+                    $raw = $getVal('startdate');
+                    $errors[] = "Row {$displayRowNumber}: Invalid or missing Start Date" . ($raw ? " ('{$raw}')" : "") . ". Please use YYYY-MM-DD.";
+                    continue;
+                }
+
+                if (empty($endDate)) {
+                    $raw = $getVal('enddate');
+                    $errors[] = "Row {$displayRowNumber}: Invalid or missing End Date" . ($raw ? " ('{$raw}')" : "") . ". Please use YYYY-MM-DD.";
+                    continue;
+                }
+
+                $data = [
+                    'id' => $id,
+                    'employeename' => $name ?: 'Employee',
+                    'client' => $getVal('client') ?: 'Melcom',
+                    'location' => $getVal('location') ?: 'Accra',
+                    'position1' => $getVal('position1') ?: 'Staff',
+                    'startdate' => $startDate,
+                    'enddate' => $endDate,
+                    'basic' => !empty($getVal('basic')) ? $getVal('basic') : null,
+                    'employername' => $getVal('employername') ?: 'Strategic Business Partnership',
+                    'issuedate' => $issueDate,
+                    'hremail' => $hrEmailVal,
+                    'email' => $empEmailVal,
+                    'ghanacard' => !empty($getVal('ghanacard')) ? $getVal('ghanacard') : null,
+                    'activate' => '0',
+                ];
+
                 $rules = [
-                    'id' => ['required', 'string', 'max:20', \Illuminate\Validation\Rule::notIn($existingIds)],
+                    'id' => ['required', 'string', 'max:50'],
                     'employeename' => ['required', 'string', 'max:100'],
                     'client' => ['required', 'string', 'max:100'],
                     'location' => ['required', 'string', 'max:100'],
@@ -208,36 +402,44 @@ class ContractController extends Controller
                 $validator = Validator::make($data, $rules);
 
                 if ($validator->fails()) {
-                    $errors = array_merge($errors, array_map(function ($error) use ($index) {
-                        return "Row " . ($index + 1) . ": " . $error;
-                    }, $validator->errors()->all()));
+                    foreach ($validator->errors()->all() as $err) {
+                        $errors[] = "Row {$displayRowNumber}: {$err}";
+                    }
                     continue;
                 }
 
                 $validRecords[] = $data;
-                $existingIds[] = $data['id'];
             }
 
             if (!empty($errors)) {
-                Log::error("Bulk upload errors: " . implode(' | ', $errors));
-                return redirect()->route('contracts.index')->with('error', implode(' | ', $errors));
+                Log::error("Bulk upload errors: " . implode(' | ', array_slice($errors, 0, 20)));
+                return redirect()->route('contracts.index')->with('error', implode(' | ', array_slice($errors, 0, 10)));
             }
 
+            if (empty($validRecords)) {
+                return redirect()->route('contracts.index')->with('error', 'No valid contract records found in the uploaded file.');
+            }
+
+            // Save/upsert records
+            $savedCount = 0;
             foreach ($validRecords as $record) {
-                Contract::create($record);
+                $existing = Contract::find($record['id']);
+                if ($existing) {
+                    $record['activate'] = $existing->activate; // Preserve activation/signature status
+                    if (!empty($existing->signature)) {
+                        $record['signature'] = $existing->signature;
+                    }
+                }
+                Contract::updateOrCreate(['id' => $record['id']], $record);
+                $savedCount++;
             }
 
-            return redirect()->route('contracts.index')->with('success', 'Successfully uploaded ' . count($validRecords) . ' contract(s).');
-        } catch (\Illuminate\Database\QueryException $e) {
-            if (strpos($e->getMessage(), 'SQLSTATE[22007]') !== false) {
-                Log::error('Bulk upload failed due to invalid date format: ' . $e->getMessage());
-                return redirect()->route('contracts.index')->with('error', 'Invalid date format in uploaded file. Please use YYYY-MM-DD (e.g., 2025-08-23) for startdate, enddate, and issuedate.');
-            }
-            Log::error('Bulk upload failed: ' . $e->getMessage());
-            return redirect()->route('contracts.index')->with('error', 'Failed to process the uploaded file.');
+            return redirect()->route('contracts.index')->with('success', "Successfully processed and uploaded {$savedCount} contract(s).");
         } catch (\Exception $e) {
-            Log::error('Bulk upload failed: ' . $e->getMessage());
-            return redirect()->route('contracts.index')->with('error', 'Failed to process the uploaded file.');
+            Log::error('Bulk upload failed: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return redirect()->route('contracts.index')->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
         }
     }
 
@@ -259,7 +461,7 @@ class ContractController extends Controller
             'enddate' => date('F d, Y', strtotime($contract->enddate)),
             'basic' => strtoupper($contract->basic ?? 'N/A'),
             'employername' => strtoupper($contract->employername),
-            'issuedate' => date('F d, Y', strtotime($contract->id)),
+            'issuedate' => !empty($contract->issuedate) ? date('F d, Y', strtotime($contract->issuedate)) : date('F d, Y'),
             'hremail' => strtoupper($contract->hremail),
             'email' => strtoupper($contract->email ?? 'N/A'),
             'ghanacard' => strtoupper($contract->ghanacard ?? 'N/A'),
