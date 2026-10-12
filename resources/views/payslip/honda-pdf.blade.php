@@ -29,12 +29,19 @@
     $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') 
         ? data_get($bank, 'branch') 
         : ($payslip->branch ?? '-');
+
+    $logoPath = public_path('images/sbpafricalogo.png');
+    $logoData = file_exists($logoPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath)) : null;
 @endphp
 <table>
     <thead>
         <tr>
             <td colspan="2">
-                <img src="{{ public_path('images/sbpafricalogo.png') }}" class="logo" alt="Company Logo">
+                @if($logoData)
+                    <img src="{{ $logoData }}" class="logo" alt="Company Logo">
+                @else
+                    <h3 style="color: #0359c9; margin: 0;">SBP AFRICA</h3>
+                @endif
             </td>
             <td class="header-title" style="color: orange;">SALARY SLIP</td>
             <td colspan="2" class="confidential">CONFIDENTIAL</td>

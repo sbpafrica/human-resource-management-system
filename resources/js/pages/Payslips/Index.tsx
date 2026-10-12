@@ -227,7 +227,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             const batch = selectedEmployees.slice(i, i + batchSize);
 
             try {
-                const response = await fetch(route("payslips.email", clientSlug), {
+                const response = await fetch(route("payslips.email", clientSlug, false), {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -287,7 +287,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             const batch = selectedEmployees.slice(i, i + batchSize);
 
             try {
-                const response = await fetch(route("payslips.sms", clientSlug), {
+                const response = await fetch(route("payslips.sms", clientSlug, false), {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -348,7 +348,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             // Strategy 1: Attempt direct single-request ZIP download (1 HTTP request, fast, zero rate-limit 503 errors)
             try {
                 const directResponse = await fetch(
-                    route("payslips.download-multiple", { client: clientSlug }),
+                    route("payslips.download-multiple", { client: clientSlug }, false),
                     {
                         method: "POST",
                         headers: {
@@ -435,7 +435,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
 
                 try {
                     const batchResponse = await fetchWithRetry(
-                        route("payslips.download-multiple", { client: clientSlug }),
+                        route("payslips.download-multiple", { client: clientSlug }, false),
                         {
                             method: "POST",
                             headers: {
@@ -478,7 +478,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             setShowToast(true);
 
             const finalResponse = await fetchWithRetry(
-                route("payslips.download-multiple", { client: clientSlug }),
+                route("payslips.download-multiple", { client: clientSlug }, false),
                 {
                     method: "POST",
                     headers: {
@@ -548,67 +548,58 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
     };
 
     const handleDownloadPDF = async () => {
-    if (!payslip) return;
+        if (!payslip) return;
 
-    setIsDownloading(true);
+        setIsDownloading(true);
 
-    try {
-        const employeeId =
-            payslip.staff_id ||
-            payslip.employ ||
-            payslip.id;
+        try {
+            const employeeId =
+                payslip.staff_id ||
+                payslip.staffid ||
+                payslip.staffida ||
+                payslip.employ ||
+                payslip.id;
 
-        if (!employeeId) {
-            throw new Error("Employee ID is missing.");
-        }
+            if (!employeeId) {
+                throw new Error("Employee ID is missing.");
+            }
 
-        const res = await fetch(
-            route("payslips.download", {
+            const targetMonth = data.month || month;
+            const downloadUrl = route("payslips.download", {
                 client: clientSlug,
-                month,
+                month: targetMonth,
                 staffId: employeeId,
-            })
-        );
+                download: 1,
+            }, false);
 
-        if (!res.ok) {
-            throw new Error(`PDF download failed: ${res.status}`);
+            // Use direct browser anchor trigger for instant, reliable file download
+            const a = document.createElement("a");
+            a.href = downloadUrl;
+            a.setAttribute("download", `${client.short_name}_Payslip_${employeeId}_${targetMonth}.pdf`);
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+
+            setToastMessage(`Downloading payslip for ${employeeId}...`);
+            setToastType("success");
+            setShowToast(true);
+
+        } catch (error) {
+            console.error("PDF Download Error:", error);
+
+            setToastMessage(
+                error instanceof Error
+                    ? error.message
+                    : "Download failed"
+            );
+
+            setToastType("error");
+            setShowToast(true);
+
+        } finally {
+            setIsDownloading(false);
         }
-
-        const blob = await res.blob();
-
-        if (!blob || blob.size === 0) {
-            throw new Error("The PDF returned by the server is empty.");
-        }
-
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement("a");
-        a.href = url;
-        a.download =
-            `${client.short_name}_Payslip_${employeeId}_${month}.pdf`;
-
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-
-        URL.revokeObjectURL(url);
-
-    } catch (error) {
-        console.error("PDF Download Error:", error);
-
-        setToastMessage(
-            error instanceof Error
-                ? error.message
-                : "Download failed"
-        );
-
-        setToastType("error");
-        setShowToast(true);
-
-    } finally {
-        setIsDownloading(false);
-    }
-};
+    };
 
     return (
         <ErrorBoundary>

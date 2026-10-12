@@ -140,26 +140,47 @@ class PayslipController extends Controller
 
     private function getTableName($client, Carbon $date): string
     {
-        $baseAliases = match ($client->client_dbname) {
-            'ofiexternal' => ['hygieneexternal', 'ofiexternal'],
-            'ofibwh'      => ['olambwh', 'ofibwh'],
-            'ofitemp'     => ['olamtem', 'ofitemp'],
-            'ofioffload'  => ['offload', 'ofioffload'],
-            'ofihygiene'  => ['olamhygiene', 'hygiene', 'ofihygiene'],
-            'fon'         => ['fonpackage', 'fon'],
-            'century'     => ['centurypay', 'century'],
-            'tecno'       => ['transsiontec', 'tecno', 'unitycorp'],
-            'transsion'   => ['transsion', 'goodease'],
-            'driver'      => ['driverssnit', 'driver'],
-            default       => [$client->client_dbname],
+        $dbName = strtolower(trim((string)($client->client_dbname ?? '')));
+        $slug = strtolower(trim((string)($client->slug ?? '')));
+        $shortName = strtolower(trim((string)($client->short_name ?? '')));
+
+        $baseAliases = match ($dbName) {
+            'ofiexternal', 'hygieneexternal' => ['hygieneexternal', 'ofiexternal'],
+            'ofibwh', 'olambwh'              => ['olambwh', 'ofibwh'],
+            'ofitemp', 'olamtem'             => ['olamtem', 'ofitemp'],
+            'ofioffload', 'offload'          => ['offload', 'ofioffload'],
+            'ofihygiene', 'olamhygiene', 'hygiene' => ['olamhygiene', 'hygiene', 'ofihygiene'],
+            'fon', 'fonpackage'              => ['fonpackage', 'fon'],
+            'century', 'centurypay'          => ['centurypay', 'century'],
+            'tecno', 'transsiontec'          => ['transsiontec', 'tecno', 'unitycorp'],
+            'transsion', 'goodease'          => ['transsion', 'goodease'],
+            'driver', 'driverssnit', 'drivers' => ['driverssnit', 'driver', 'drivers', 'melcomdriver'],
+            'jkay', 'jaykay'                 => ['jkay', 'jaykay'],
+            'transburkina', 'transsionbfa'   => ['transburkina', 'transsionbfa', 'transsion-bfa'],
+            'pz', 'pzcussons'                => ['pz', 'pzcussons'],
+            'shefer', 'sheferplastics'       => ['shefer', 'sheferplastics'],
+            'twelliumaccra'                  => ['twelliumaccra', 'twellium_accra'],
+            'civ', 'civbunge'                => ['civ', 'civbunge'],
+            default                          => array_values(array_unique(array_filter([
+                $dbName,
+                str_replace(['-', '_', ' '], '', $dbName),
+                $slug,
+                str_replace(['-', '_', ' '], '', $slug),
+                $shortName,
+                str_replace(['-', '_', ' '], '', $shortName),
+            ]))),
         };
 
-        $fy = strtolower($date->format('Fy')); // e.g. january25
-        $my = strtolower($date->format('My')); // e.g. jan25
-        $fY = strtolower($date->format('FY')); // e.g. january2025
-        $mY = strtolower($date->format('MY')); // e.g. jan2025
-        $f  = strtolower($date->format('F'));  // e.g. january
-        $m  = strtolower($date->format('M'));  // e.g. jan
+        if (str_contains($dbName, 'jaykay') || str_contains($slug, 'jaykay') || str_contains($shortName, 'jay kay') || str_contains($dbName, 'jkay')) {
+            $baseAliases = array_values(array_unique(array_merge(['jkay', 'jaykay'], $baseAliases)));
+        }
+
+        $fy = strtolower($date->format('Fy')); // e.g. september26
+        $my = strtolower($date->format('My')); // e.g. sep26
+        $fY = strtolower($date->format('FY')); // e.g. september2026
+        $mY = strtolower($date->format('MY')); // e.g. sep2026
+        $f  = strtolower($date->format('F'));  // e.g. september
+        $m  = strtolower($date->format('M'));  // e.g. sep
 
         foreach ($baseAliases as $base) {
             $candidates = [
@@ -183,6 +204,27 @@ class PayslipController extends Controller
                     return $candidate;
                 }
             }
+        }
+
+        // Dynamic database scan fallback: check all tables matching client base and month tokens
+        try {
+            $allTables = DB::select("SHOW TABLES");
+            if (!empty($allTables)) {
+                $firstProp = array_key_first((array)$allTables[0]);
+                $tableList = array_map(fn($r) => strtolower((string)$r->$firstProp), $allTables);
+
+                foreach ($baseAliases as $base) {
+                    $cleanBase = strtolower(str_replace(['-', '_'], '', $base));
+                    foreach ($tableList as $t) {
+                        $cleanT = str_replace(['-', '_'], '', $t);
+                        if (str_contains($cleanT, $cleanBase) && (str_contains($cleanT, $fy) || str_contains($cleanT, $my) || str_contains($cleanT, $f))) {
+                            return $t;
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning("[PAYSLIP-TABLE-DISCOVERY] Failed SHOW TABLES dynamic scan: " . $e->getMessage());
         }
 
         // Default fallback table name
@@ -626,7 +668,25 @@ class PayslipController extends Controller
         }
         $payslip->ssnit_number = $ssnit;
         $payslip->SSNIT = $ssnit;
-    
+
+        // Cross-template compatibility aliases for Jay Kay and custom templates
+        $payslip->basic_salary              = $payslip->basic;
+        $payslip->earned_basic_salary       = $payslip->basic_earned;
+        $payslip->days_worked               = $payslip->workdays;
+        $payslip->gross_salary              = $payslip->grosspay;
+        $payslip->take_home_pay             = $payslip->netpay;
+        $payslip->ssnit_ee                  = $payslip->ssnitee;
+        $payslip->total_deductions          = $payslip->totaldeductions;
+        $payslip->overtime_tax              = $payslip->overtimetax;
+        $payslip->surcharge_or_student_loan = $payslip->otherdeduction;
+        $payslip->absentee_days             = $getP('absentee_days') ?? $getP('absent_days') ?? $getP('absentdays') ?? 0;
+        $payslip->absent_deductions         = (float)($getP('absent_deductions') ?? $getP('absentdeductions') ?? $getP('absentee_deductions') ?? 0);
+        $payslip->night_allowance           = (float)($getP('night_allowance') ?? $payslip->nightallowance ?? 0);
+        $payslip->saturdays_worked          = $getP('saturdays_worked') ?? $getP('saturdaysworked') ?? 0;
+        $payslip->saturday_amount           = (float)($getP('saturday_amount') ?? $payslip->saturdayovertime ?? 0);
+        $payslip->overtime_hours            = $getP('overtime_hours') ?? $getP('overtimehrs') ?? 0;
+        $payslip->overtime_amount           = (float)($getP('overtime_amount') ?? $payslip->overtime ?? 0);
+
         return $payslip;
     }
 
@@ -746,55 +806,66 @@ class PayslipController extends Controller
 
     private function generatePayslipPdf(Request $request, string $clientSlug, string $month, string $staffId, bool $isDownload = false)
     {
-        $client = $this->resolveClient($clientSlug);
-        $date = Carbon::createFromFormat('Y-m', $month);
-        $formattedMonth = $date->format('F Y');
-        $tableName = $this->getTableName($client, $date);
+        try {
+            $client = $this->resolveClient($clientSlug);
+            $date = Carbon::parse($month);
+            $formattedMonth = $date->format('F Y');
+            $tableName = $this->getTableName($client, $date);
 
-        if (!Schema::hasTable($tableName)) {
-            return response()->json(['error' => "No payroll data available for {$formattedMonth}"], 404);
+            if (!Schema::hasTable($tableName)) {
+                Log::channel('single')->warning("[PAYSLIP-SINGLE] Table not found: {$tableName} for client {$clientSlug} and month {$month}");
+                return response()->json(['error' => "No payroll data available for {$formattedMonth} (table '{$tableName}' not found)"], 404);
+            }
+
+            [$staffIdField, $nameField] = $this->detectColumns($tableName, $client);
+
+            $payslip = DB::table($tableName)
+                ->where($staffIdField, $staffId)
+                ->first();
+
+            if (!$payslip) {
+                // Fallback: search with trimmed / lowercase staff ID
+                $payslip = DB::table($tableName)
+                    ->whereRaw("TRIM(LOWER(`{$staffIdField}`)) = ?", [trim(strtolower($staffId))])
+                    ->first();
+            }
+
+            if (!$payslip) {
+                return response()->json(['error' => "Payslip not found for employee '{$staffId}' in {$formattedMonth}"], 404);
+            }
+
+            $ssnit = DB::table('ssnit')->where('staffid', $staffId)->value('ssnit1a') ?? '-';
+            $payslip = $this->normalizePayslip($payslip, $client, $ssnit);
+
+            $bankRecord = DB::table('bankdetails')->where('employid', $staffId)->first();
+            $bankData = [
+                'bankname' => (!empty(data_get($bankRecord, 'bank')) && data_get($bankRecord, 'bank') !== '-') ? data_get($bankRecord, 'bank') : ($payslip->bank ?? '-'),
+                'name'     => (!empty(data_get($bankRecord, 'name')) && data_get($bankRecord, 'name') !== '-') ? data_get($bankRecord, 'name') : ($payslip->name ?? '-'),
+                'alcnum'   => (!empty(data_get($bankRecord, 'account')) && data_get($bankRecord, 'account') !== '-') ? data_get($bankRecord, 'account') : ($payslip->accountnumber ?? '-'),
+                'branch'   => (!empty(data_get($bankRecord, 'branch')) && data_get($bankRecord, 'branch') !== '-') ? data_get($bankRecord, 'branch') : ($payslip->branch ?? '-'),
+            ];
+
+            $view = $this->resolvePayslipView($client);
+
+            $pdf = Pdf::loadView($view, [
+                'payslip'        => $payslip,
+                'formattedMonth' => $formattedMonth,
+                'ssnit'          => $ssnit,
+                'bank'           => $bankData,
+            ]);
+
+            $safeStaffId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) $staffId);
+            $filename = "{$client->short_name}_Payslip_{$safeStaffId}_{$month}.pdf";
+
+            if ($isDownload || $request->query('download') === '1') {
+                return $pdf->download($filename);
+            }
+
+            return $pdf->stream($filename);
+        } catch (\Throwable $e) {
+            Log::channel('single')->error("[PAYSLIP-SINGLE] Failed generating PDF for {$clientSlug}/{$staffId}: " . $e->getMessage() . " at " . $e->getFile() . ":" . $e->getLine());
+            return response()->json(['error' => 'Failed to generate payslip: ' . $e->getMessage()], 500);
         }
-
-        [$staffIdField, $nameField] = $this->detectColumns($tableName, $client);
-
-        $payslip = DB::table($tableName)
-            ->where($staffIdField, $staffId)
-            ->first();
-
-        if (!$payslip) {
-            return response()->json(['error' => 'Payslip not found'], 404);
-        }
-
-        $ssnit = DB::table('ssnit')->where('staffid', $staffId)->value('ssnit1a') ?? '-';
-
-        $payslip = $this->normalizePayslip($payslip, $client, $ssnit);
-
-        $bankRecord = DB::table('bankdetails')->where('employid', $staffId)->first();
-
-        $bankData = [
-            'bankname' => (!empty(data_get($bankRecord, 'bank')) && data_get($bankRecord, 'bank') !== '-') ? data_get($bankRecord, 'bank') : ($payslip->bank ?? '-'),
-            'name'     => (!empty(data_get($bankRecord, 'name')) && data_get($bankRecord, 'name') !== '-') ? data_get($bankRecord, 'name') : ($payslip->name ?? '-'),
-            'alcnum'   => (!empty(data_get($bankRecord, 'account')) && data_get($bankRecord, 'account') !== '-') ? data_get($bankRecord, 'account') : ($payslip->accountnumber ?? '-'),
-            'branch'   => (!empty(data_get($bankRecord, 'branch')) && data_get($bankRecord, 'branch') !== '-') ? data_get($bankRecord, 'branch') : ($payslip->branch ?? '-'),
-        ];
-
-        $view = $this->resolvePayslipView($client);
-
-        $pdf = Pdf::loadView($view, [
-            'payslip'        => $payslip,
-            'formattedMonth' => $formattedMonth,
-            'ssnit'          => $ssnit,
-            'bank'           => $bankData,
-        ]);
-
-        $safeStaffId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) $staffId);
-        $filename = "{$client->short_name}_Payslip_{$safeStaffId}_{$month}.pdf";
-
-        if ($isDownload || $request->query('download') === '1') {
-            return $pdf->download($filename);
-        }
-
-        return $pdf->stream($filename);
     }
 
     public function sendEmail(string $clientSlug, Request $request)
@@ -1142,7 +1213,7 @@ class PayslipController extends Controller
                     return response()->json(['error' => 'No employees selected'], 400);
                 }
 
-                $date           = Carbon::createFromFormat('Y-m', $month);
+                $date           = Carbon::parse($month);
                 $formattedMonth = $date->format('F Y');
                 $tableName      = $this->getTableName($client, $date);
 
@@ -1269,7 +1340,7 @@ class PayslipController extends Controller
                 return response()->json(['error' => 'No employees selected'], 400);
             }
 
-            $date           = Carbon::createFromFormat('Y-m', $month);
+            $date           = Carbon::parse($month);
             $formattedMonth = $date->format('F Y');
             $tableName      = $this->getTableName($client, $date);
 
