@@ -1264,59 +1264,61 @@ class PayslipController extends Controller
                 $generated = 0;
                 $tempPdfFiles = [];
 
-                foreach ($staffIds as $id) {
-                    $payslip = $payslips->get($id);
-                    if (!$payslip) continue;
+                try {
+                    foreach ($staffIds as $id) {
+                        $payslip = $payslips->get($id);
+                        if (!$payslip) continue;
 
-                    $ssnit   = $ssnits->get($id) ?? '-';
-                    $payslip = $this->normalizePayslip($payslip, $client, $ssnit);
-                    $bank    = $banks->get($id);
+                        $ssnit   = $ssnits->get($id) ?? '-';
+                        $payslip = $this->normalizePayslip($payslip, $client, $ssnit);
+                        $bank    = $banks->get($id);
 
-                    try {
-                        $pdf = Pdf::loadView($view, [
-                            'payslip'        => $payslip,
-                            'formattedMonth' => $formattedMonth,
-                            'ssnit'          => $ssnit,
-                            'bank'           => [
-                                'bankname' => (!empty(data_get($bank, 'bank')) && data_get($bank, 'bank') !== '-') ? data_get($bank, 'bank') : ($payslip->bank ?? '-'),
-                                'name'     => (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') ? data_get($bank, 'name') : ($payslip->name ?? '-'),
-                                'alcnum'   => (!empty(data_get($bank, 'account')) && data_get($bank, 'account') !== '-') ? data_get($bank, 'account') : ($payslip->accountnumber ?? '-'),
-                                'branch'   => (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') ? data_get($bank, 'branch') : ($payslip->branch ?? '-'),
-                            ],
-                            'logoData'       => $cachedLogoData,
-                        ])->setOptions([
-                            'isRemoteEnabled' => false,
-                            'isFontSubsettingEnabled' => false,
-                            'defaultFont' => 'Helvetica',
-                        ])->setPaper('a4', 'portrait');
+                        try {
+                            $pdf = Pdf::loadView($view, [
+                                'payslip'        => $payslip,
+                                'formattedMonth' => $formattedMonth,
+                                'ssnit'          => $ssnit,
+                                'bank'           => [
+                                    'bankname' => (!empty(data_get($bank, 'bank')) && data_get($bank, 'bank') !== '-') ? data_get($bank, 'bank') : ($payslip->bank ?? '-'),
+                                    'name'     => (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') ? data_get($bank, 'name') : ($payslip->name ?? '-'),
+                                    'alcnum'   => (!empty(data_get($bank, 'account')) && data_get($bank, 'account') !== '-') ? data_get($bank, 'account') : ($payslip->accountnumber ?? '-'),
+                                    'branch'   => (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') ? data_get($bank, 'branch') : ($payslip->branch ?? '-'),
+                                ],
+                                'logoData'       => $cachedLogoData,
+                            ])->setOptions([
+                                'isRemoteEnabled' => false,
+                                'isFontSubsettingEnabled' => false,
+                                'defaultFont' => 'Helvetica',
+                            ])->setPaper('a4', 'portrait');
 
-                        $safeId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) $id);
-                        $filename = "{$safeShort}_Payslip_{$safeId}_{$month}.pdf";
-                        $pdfFilePath = $tempDir . DIRECTORY_SEPARATOR . $filename;
+                            $safeId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) $id);
+                            $filename = "{$safeShort}_Payslip_{$safeId}_{$month}.pdf";
+                            $pdfFilePath = $tempDir . DIRECTORY_SEPARATOR . $filename;
 
-                        file_put_contents($pdfFilePath, $pdf->output());
-                        $zip->addFile($pdfFilePath, $filename);
-                        $tempPdfFiles[] = $pdfFilePath;
-                        $generated++;
+                            file_put_contents($pdfFilePath, $pdf->output());
+                            $zip->addFile($pdfFilePath, $filename);
+                            $tempPdfFiles[] = $pdfFilePath;
+                            $generated++;
 
-                        unset($pdf);
-                        if ($generated % 25 === 0) {
-                            gc_collect_cycles();
+                            unset($pdf);
+                            if ($generated % 25 === 0) {
+                                gc_collect_cycles();
+                            }
+                        } catch (\Throwable $e) {
+                            Log::channel('single')->error(
+                                "[PAYSLIP-BULK-DOWNLOAD] Direct PDF failed for {$id}: " . $e->getMessage() .
+                                ' | ' . $e->getFile() . ':' . $e->getLine()
+                            );
                         }
-                    } catch (\Throwable $e) {
-                        Log::channel('single')->error(
-                            "[PAYSLIP-BULK-DOWNLOAD] Direct PDF failed for {$id}: " . $e->getMessage() .
-                            ' | ' . $e->getFile() . ':' . $e->getLine()
-                        );
                     }
-                }
 
-                $zip->close();
-
-                foreach ($tempPdfFiles as $file) {
-                    if (file_exists($file)) @unlink($file);
+                    $zip->close();
+                } finally {
+                    foreach ($tempPdfFiles as $file) {
+                        if (file_exists($file)) @unlink($file);
+                    }
+                    if (is_dir($tempDir)) @rmdir($tempDir);
                 }
-                if (is_dir($tempDir)) @rmdir($tempDir);
 
                 if ($generated === 0 || !file_exists($zipPath) || filesize($zipPath) === 0) {
                     if (file_exists($zipPath)) @unlink($zipPath);

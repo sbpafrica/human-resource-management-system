@@ -397,13 +397,24 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                 form.appendChild(idInput);
             });
 
+            // Ensure hidden iframe exists so download form does not navigate or reload the page
+            let iframe = document.getElementById("hidden_download_iframe") as HTMLIFrameElement;
+            if (!iframe) {
+                iframe = document.createElement("iframe");
+                iframe.id = "hidden_download_iframe";
+                iframe.name = "hidden_download_iframe";
+                iframe.style.display = "none";
+                document.body.appendChild(iframe);
+            }
+            form.target = "hidden_download_iframe";
+
             document.body.appendChild(form);
             form.submit();
             form.remove();
 
             setTimeout(() => {
                 setIsDownloadingMultiple(false);
-            }, 4000);
+            }, 5000);
 
         } catch (error) {
             console.error("Bulk Payslip Download Error:", error);
