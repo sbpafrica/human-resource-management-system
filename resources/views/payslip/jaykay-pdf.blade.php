@@ -49,8 +49,7 @@
         ? data_get($bank, 'branch') 
         : ($payslip->branch ?? '-');
 
-    $logoPath = public_path('images/sbpafricalogo.png');
-    $logoData = file_exists($logoPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath)) : null;
+    $logoData = $logoData ?? (file_exists(public_path('images/sbpafricalogo.png')) ? 'data:image/png;base64,' . base64_encode(file_get_contents(public_path('images/sbpafricalogo.png'))) : null);
 @endphp
 
 <table>

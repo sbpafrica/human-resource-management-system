@@ -1191,8 +1191,13 @@ class PayslipController extends Controller
 
     public function downloadMultiple(string $clientSlug, Request $request)
     {
-        set_time_limit(600); // Allow up to 10 minutes execution for large batches
-        ini_set('memory_limit', '1024M');
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+        @ini_set('memory_limit', '1024M');
+        if (function_exists('apache_setenv')) {
+            @apache_setenv('no-gzip', '1');
+        }
+        @ini_set('zlib.output_compression', 'Off');
 
         try {
             $mode    = $request->input('mode', 'direct');
@@ -1208,10 +1213,15 @@ class PayslipController extends Controller
 
             // ---------- DIRECT MODE: Generate all PDFs and stream ZIP in 1 request ----------
             if ($mode === 'direct' || empty($batchId)) {
-                $staffIds = array_values(array_filter((array) $request->input('staff_ids', [])));
-                if (empty($staffIds)) {
-                    return response()->json(['error' => 'No employees selected'], 400);
+                // Parse staff IDs flexibly from standard array, JSON string, or 'all'
+                $rawStaffIds = $request->input('staff_ids');
+                if (empty($rawStaffIds) && $request->has('staff_ids_json')) {
+                    $rawStaffIds = json_decode((string)$request->input('staff_ids_json'), true);
                 }
+                if (is_string($rawStaffIds)) {
+                    $rawStaffIds = json_decode($rawStaffIds, true) ?: explode(',', $rawStaffIds);
+                }
+                $staffIds = array_values(array_filter((array) $rawStaffIds));
 
                 $date           = Carbon::parse($month);
                 $formattedMonth = $date->format('F Y');
@@ -1224,16 +1234,27 @@ class PayslipController extends Controller
                 [$staffIdField] = $this->detectColumns($tableName, $client);
                 $view           = $this->resolvePayslipView($client);
 
+                if (empty($staffIds) || $request->boolean('all')) {
+                    $staffIds = DB::table($tableName)->pluck($staffIdField)->toArray();
+                }
+
+                if (empty($staffIds)) {
+                    return response()->json(['error' => 'No employees selected'], 400);
+                }
+
                 $payslips = DB::table($tableName)->whereIn($staffIdField, $staffIds)->get()->keyBy($staffIdField);
                 $ssnits   = DB::table('ssnit')->whereIn('staffid', $staffIds)->pluck('ssnit1a', 'staffid');
                 $banks    = DB::table('bankdetails')->whereIn('employid', $staffIds)->get()->keyBy('employid');
 
-                $tempDir = storage_path('app/tmp');
+                $logoPath = public_path('images/sbpafricalogo.png');
+                $cachedLogoData = file_exists($logoPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath)) : null;
+
+                $tempDir = storage_path('app/tmp/bulk_' . uniqid());
                 if (!is_dir($tempDir)) {
                     @mkdir($tempDir, 0775, true);
                 }
 
-                $zipPath = $tempDir . DIRECTORY_SEPARATOR . 'payslips_direct_' . uniqid() . '.zip';
+                $zipPath = storage_path('app/tmp/payslips_direct_' . uniqid() . '.zip');
                 $zip     = new ZipArchive();
 
                 if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
@@ -1241,6 +1262,7 @@ class PayslipController extends Controller
                 }
 
                 $generated = 0;
+                $tempPdfFiles = [];
 
                 foreach ($staffIds as $id) {
                     $payslip = $payslips->get($id);
@@ -1261,17 +1283,26 @@ class PayslipController extends Controller
                                 'alcnum'   => (!empty(data_get($bank, 'account')) && data_get($bank, 'account') !== '-') ? data_get($bank, 'account') : ($payslip->accountnumber ?? '-'),
                                 'branch'   => (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') ? data_get($bank, 'branch') : ($payslip->branch ?? '-'),
                             ],
-                        ]);
+                            'logoData'       => $cachedLogoData,
+                        ])->setOptions([
+                            'isRemoteEnabled' => false,
+                            'isFontSubsettingEnabled' => false,
+                            'defaultFont' => 'Helvetica',
+                        ])->setPaper('a4', 'portrait');
 
                         $safeId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) $id);
-                        $zip->addFromString(
-                            "{$safeShort}_Payslip_{$safeId}_{$month}.pdf",
-                            $pdf->output()
-                        );
+                        $filename = "{$safeShort}_Payslip_{$safeId}_{$month}.pdf";
+                        $pdfFilePath = $tempDir . DIRECTORY_SEPARATOR . $filename;
+
+                        file_put_contents($pdfFilePath, $pdf->output());
+                        $zip->addFile($pdfFilePath, $filename);
+                        $tempPdfFiles[] = $pdfFilePath;
                         $generated++;
 
                         unset($pdf);
-                        gc_collect_cycles();
+                        if ($generated % 25 === 0) {
+                            gc_collect_cycles();
+                        }
                     } catch (\Throwable $e) {
                         Log::channel('single')->error(
                             "[PAYSLIP-BULK-DOWNLOAD] Direct PDF failed for {$id}: " . $e->getMessage() .
@@ -1282,13 +1313,21 @@ class PayslipController extends Controller
 
                 $zip->close();
 
+                foreach ($tempPdfFiles as $file) {
+                    if (file_exists($file)) @unlink($file);
+                }
+                if (is_dir($tempDir)) @rmdir($tempDir);
+
                 if ($generated === 0 || !file_exists($zipPath) || filesize($zipPath) === 0) {
                     if (file_exists($zipPath)) @unlink($zipPath);
                     return response()->json(['error' => 'No payslips could be generated for the selected employees.'], 500);
                 }
 
                 return response()->download($zipPath, "{$safeShort}_Payslips_{$month}.zip", [
-                    'Content-Type' => 'application/zip',
+                    'Content-Type'        => 'application/zip',
+                    'Content-Disposition' => "attachment; filename=\"{$safeShort}_Payslips_{$month}.zip\"",
+                    'Cache-Control'       => 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma'              => 'no-cache',
                 ])->deleteFileAfterSend(true);
             }
 

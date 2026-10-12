@@ -327,7 +327,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         setShowToast(true);
     };
 
-    const handleDownloadMultiplePDFs = async () => {
+    const handleDownloadMultiplePDFs = () => {
         if (selectedEmployees.length === 0) {
             setToastMessage("Please select at least one employee");
             setToastType("error");
@@ -336,213 +336,80 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         }
 
         setIsDownloadingMultiple(true);
-
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
         const total = selectedEmployees.length;
+        const targetMonth = data.month || month;
+
+        setToastMessage(`Generating ZIP for ${total} payslip(s)... Your download will begin shortly.`);
+        setToastType("success");
+        setShowToast(true);
 
         try {
-            setToastMessage(`Generating ZIP for ${total} employee(s)...`);
-            setToastType("success");
-            setShowToast(true);
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
 
-            // Strategy 1: Attempt direct single-request ZIP download (1 HTTP request, fast, zero rate-limit 503 errors)
-            try {
-                const directResponse = await fetch(
-                    route("payslips.download-multiple", { client: clientSlug }, false),
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Accept": "application/zip, application/json",
-                            "X-CSRF-TOKEN": csrfToken,
-                        },
-                        body: JSON.stringify({
-                            month: data.month,
-                            staff_ids: selectedEmployees,
-                            mode: "direct",
-                        }),
-                    }
-                );
+            // Native form submission with Content-Disposition: attachment streams the ZIP directly
+            // into the browser's download manager without JavaScript fetch timeouts, connection aborts,
+            // or memory limits.
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = route("payslips.download-multiple", { client: clientSlug }, false);
+            form.style.display = "none";
 
-                if (directResponse.ok) {
-                    const blob = await directResponse.blob();
-                    if (blob && blob.size > 0 && blob.type.includes("zip")) {
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `${client.short_name}_Payslips_${data.month}.zip`;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+            const csrfInput = document.createElement("input");
+            csrfInput.type = "hidden";
+            csrfInput.name = "_token";
+            csrfInput.value = csrfToken;
+            form.appendChild(csrfInput);
 
-                        setToastMessage(`Successfully downloaded ${total} payslip(s) in ZIP!`);
-                        setToastType("success");
-                        setShowToast(true);
+            const monthInput = document.createElement("input");
+            monthInput.type = "hidden";
+            monthInput.name = "month";
+            monthInput.value = targetMonth;
+            form.appendChild(monthInput);
 
-                        setSelectedEmployees([]);
-                        setData("staff_ids", []);
-                        return;
-                    }
-                }
-                console.warn("Direct ZIP download fell back to chunked batch mode due to server response:", directResponse.status);
-            } catch (directError) {
-                console.warn("Direct ZIP download error, falling back to chunked batch mode:", directError);
+            const modeInput = document.createElement("input");
+            modeInput.type = "hidden";
+            modeInput.name = "mode";
+            modeInput.value = "direct";
+            form.appendChild(modeInput);
+
+            // Pass selected staff IDs as JSON array string
+            const staffIdsInput = document.createElement("input");
+            staffIdsInput.type = "hidden";
+            staffIdsInput.name = "staff_ids_json";
+            staffIdsInput.value = JSON.stringify(selectedEmployees);
+            form.appendChild(staffIdsInput);
+
+            // If all employees are selected, signal all=1
+            if (selectedEmployees.length === employees.length) {
+                const allInput = document.createElement("input");
+                allInput.type = "hidden";
+                allInput.name = "all";
+                allInput.value = "1";
+                form.appendChild(allInput);
             }
 
-            // Strategy 2: Fallback to chunked batch mode if direct mode timed out or failed
-            const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 5, initialDelayMs = 2000): Promise<Response> => {
-                let lastError: any = null;
-                for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                    try {
-                        const res = await fetch(url, options);
-                        if (res.ok) return res;
-                        if ([500, 502, 503, 504, 429].includes(res.status) && attempt < maxRetries) {
-                            const backoff = Math.min(10000, initialDelayMs * Math.pow(1.5, attempt - 1));
-                            console.warn(`Attempt ${attempt} failed with status ${res.status}. Retrying in ${Math.round(backoff)}ms...`);
-                            await new Promise(r => setTimeout(r, backoff));
-                            continue;
-                        }
-                        return res;
-                    } catch (err: any) {
-                        lastError = err;
-                        if (attempt < maxRetries) {
-                            const backoff = Math.min(10000, initialDelayMs * Math.pow(1.5, attempt - 1));
-                            console.warn(`Attempt ${attempt} failed (${err?.message}). Retrying in ${Math.round(backoff)}ms...`);
-                            await new Promise(r => setTimeout(r, backoff));
-                        }
-                    }
-                }
-                throw lastError || new Error("Network request failed after multiple retries");
-            };
+            // Also pass individual staff_ids[] for standard PHP form parser
+            selectedEmployees.forEach((id) => {
+                const idInput = document.createElement("input");
+                idInput.type = "hidden";
+                idInput.name = "staff_ids[]";
+                idInput.value = id;
+                form.appendChild(idInput);
+            });
 
-            const batchSize = 25;
-            const batchId =
-                typeof crypto !== "undefined" && crypto.randomUUID
-                    ? crypto.randomUUID()
-                    : `${Date.now()}-${Math.random().toString(36).substring(2, 12)}`;
+            document.body.appendChild(form);
+            form.submit();
+            form.remove();
 
-            let generated = 0;
-            const failedBatchRanges: string[] = [];
-
-            for (let start = 0; start < total; start += batchSize) {
-                const batch = selectedEmployees.slice(start, start + batchSize);
-                const end = start + batch.length;
-
-                setToastMessage(`Generating payslips ${start + 1}-${end} of ${total}...`);
-                setToastType("success");
-                setShowToast(true);
-
-                try {
-                    const batchResponse = await fetchWithRetry(
-                        route("payslips.download-multiple", { client: clientSlug }, false),
-                        {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json",
-                                "Accept": "application/json",
-                                "X-CSRF-TOKEN": csrfToken,
-                            },
-                            body: JSON.stringify({
-                                month: data.month,
-                                staff_ids: batch,
-                                mode: "batch",
-                                batch_id: batchId,
-                            }),
-                        },
-                        5,
-                        2000
-                    );
-
-                    if (!batchResponse.ok) {
-                        console.warn(`Batch ${start + 1}-${end} failed with status ${batchResponse.status}`);
-                        failedBatchRanges.push(`${start + 1}-${end}`);
-                    } else {
-                        const result = await batchResponse.json();
-                        generated += Number(result.generated || 0);
-                    }
-                } catch (err) {
-                    console.warn(`Batch ${start + 1}-${end} encountered error:`, err);
-                    failedBatchRanges.push(`${start + 1}-${end}`);
-                }
-
-                await new Promise((r) => setTimeout(r, 300));
-            }
-
-            if (generated === 0) {
-                throw new Error("No payslips could be generated for the selected employees. Please try again.");
-            }
-
-            setToastMessage("Preparing final ZIP file...");
-            setToastType("success");
-            setShowToast(true);
-
-            const finalResponse = await fetchWithRetry(
-                route("payslips.download-multiple", { client: clientSlug }, false),
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Accept": "application/zip, application/json",
-                        "X-CSRF-TOKEN": csrfToken,
-                    },
-                    body: JSON.stringify({
-                        month: data.month,
-                        staff_ids: [],
-                        mode: "finalize",
-                        batch_id: batchId,
-                    }),
-                },
-                5,
-                3000
-            );
-
-            if (!finalResponse.ok) {
-                let errorMessage = `Final ZIP creation failed (${finalResponse.status})`;
-                try {
-                    const errorData = await finalResponse.json();
-                    errorMessage = errorData?.error || errorData?.message || errorMessage;
-                } catch {}
-                throw new Error(errorMessage);
-            }
-
-            const blob = await finalResponse.blob();
-            if (!blob || blob.size === 0) {
-                throw new Error("The final ZIP file is empty.");
-            }
-
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `${client.short_name}_Payslips_${data.month}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-            if (failedBatchRanges.length > 0) {
-                setToastMessage(`Downloaded ${generated} payslip(s) in ZIP. Note: Batch(es) ${failedBatchRanges.join(", ")} were skipped.`);
-                setToastType("error");
-            } else {
-                setToastMessage(`Successfully downloaded ${generated} payslip(s).`);
-                setToastType("success");
-            }
-            setShowToast(true);
-
-            setSelectedEmployees([]);
-            setData("staff_ids", []);
+            setTimeout(() => {
+                setIsDownloadingMultiple(false);
+            }, 4000);
 
         } catch (error) {
             console.error("Bulk Payslip Download Error:", error);
-
-            setToastMessage(
-                error instanceof Error
-                    ? error.message
-                    : "Bulk download failed"
-            );
+            setToastMessage(error instanceof Error ? error.message : "Download failed");
             setToastType("error");
             setShowToast(true);
-        } finally {
             setIsDownloadingMultiple(false);
         }
     };
