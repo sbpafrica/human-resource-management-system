@@ -59,14 +59,12 @@ class PerformanceTrackerController extends Controller
 
             return Inertia::render('PerformanceTracker', [
                 'performanceData' => $performanceData,
-                'auth' => $this->getAuthUser($request),
                 'flash' => $this->getFlash($request),
             ]);
         } catch (\Exception $e) {
             Log::error("Performance Tracker: Failed to load data: {$e->getMessage()}", ['trace' => $e->getTraceAsString()]);
             return Inertia::render('PerformanceTracker', [
                 'performanceData' => $this->getEmptyPerformanceData(),
-                'auth' => $this->getAuthUser($request),
                 'flash' => ['error' => 'Failed to load performance data: ' . $e->getMessage()],
             ]);
         }

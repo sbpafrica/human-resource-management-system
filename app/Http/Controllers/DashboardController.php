@@ -31,11 +31,22 @@ class DashboardController extends Controller
         }
 
         if ($allowedClients->isEmpty()) {
+            $userPermissions = $user ? $user->getAllPermissions()->pluck('name')->toArray() : [];
+            $userRoles = $user ? $user->getRoleNames()->toArray() : [];
+            $hasDashboardPerm = in_array('view dashboard', $userPermissions);
+            $isReceiptUser = in_array('Receipt Manager', $userRoles) || 
+                             in_array('Receipt Officer', $userRoles) || 
+                             in_array('view receipts', $userPermissions) || 
+                             in_array('manage receipts', $userPermissions);
+
+            if (!$isSuperAdmin && !$hasDashboardPerm && $isReceiptUser) {
+                return redirect()->route('receipts.index');
+            }
+
             return Inertia::render('dashboard', [
                 'complianceData'     => $this->getEmptyComplianceData(),
                 'clientSummary'      => [],
                 'allClientHeadcount' => [],
-                'auth'  => ['user' => ['name' => $user?->name ?? 'User']],
                 'flash' => $this->getFlash($request),
             ]);
         }
@@ -215,7 +226,6 @@ class DashboardController extends Controller
                 'complianceData'     => $emptyData,
                 'clientSummary'      => [],
                 'allClientHeadcount' => $allClientHeadcount,
-                'auth'  => ['user' => ['name' => $user?->name ?? 'User']],
                 'flash' => $this->getFlash($request),
             ]);
         }

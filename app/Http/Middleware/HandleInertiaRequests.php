@@ -65,7 +65,22 @@ class HandleInertiaRequests extends Middleware
                     'is_super_admin'  => (bool) $user->is_super_admin,
 
                     'roles'       => $user->getRoleNames()->toArray(),
-                    'permissions' => $user->getAllPermissions()->pluck('name')->toArray(),
+                    'permissions' => (function () use ($user) {
+                        $perms = array_values(array_unique(array_merge(
+                            $user->getAllPermissions()->pluck('name')->toArray(),
+                            $user->roles->flatMap(fn ($role) => $role->permissions->pluck('name'))->toArray()
+                        )));
+                        $roles = $user->getRoleNames()->toArray();
+                        if (in_array('Receipt Manager', $roles) || in_array('Receipt Officer', $roles) || collect($roles)->contains(fn ($r) => str_contains(strtolower($r), 'receipt'))) {
+                            if (!in_array('view receipts', $perms)) {
+                                $perms[] = 'view receipts';
+                            }
+                            if (!in_array('manage receipts', $perms)) {
+                                $perms[] = 'manage receipts';
+                            }
+                        }
+                        return $perms;
+                    })(),
 
                     'clients' => $user->clients()
                         ->select([

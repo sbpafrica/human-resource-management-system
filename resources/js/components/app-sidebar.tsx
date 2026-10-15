@@ -42,11 +42,13 @@ interface Client {
 }
 
 interface AuthUser {
-  permissions?: string[];
-  clients?: Client[];
+  id?: number;
   name?: string;
   email?: string;
   is_super_admin?: boolean;
+  roles?: string[];
+  permissions?: string[];
+  clients?: Client[];
 }
 
 interface CustomPageProps extends InertiaPageProps {
@@ -79,7 +81,18 @@ export function AppSidebar() {
     if (user === prevUserRef.current) return;
     prevUserRef.current = user;
 
-    const can = (perm: string) => Boolean(user.is_super_admin || user.permissions?.includes(perm));
+    const userRoles = user.roles || [];
+    const userPermissions = user.permissions || [];
+    const hasRole = (role: string) => userRoles.includes(role);
+    const isReceiptStaff = hasRole('Receipt Manager') || 
+                           hasRole('Receipt Officer') || 
+                           userRoles.some(r => r.toLowerCase().includes('receipt'));
+
+    const can = (perm: string) => Boolean(
+      user.is_super_admin || 
+      userPermissions.includes(perm) ||
+      (isReceiptStaff && (perm === 'view receipts' || perm === 'manage receipts'))
+    );
     const items: MenuItem[] = [];
 
     if (can('view dashboard')) {
@@ -94,7 +107,7 @@ export function AppSidebar() {
       items.push({ title: 'BankCodes', href: '/bankcodes', icon: ListTodo });
     }
 
-    if (can('view receipts') || can('manage receipts')) {
+    if (can('view receipts') || can('manage receipts') || isReceiptStaff) {
       items.push({ title: 'Receipts', href: '/receipts', icon: ReceiptText });
     }
 
