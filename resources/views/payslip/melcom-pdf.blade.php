@@ -181,7 +181,7 @@
             <td colspan="2">SSNIT</td>
             <td></td>
             <td></td>
-            <td class="text-center">{{ number_format((float)($payslip->ssnitee ?? $payslip->ssnit ?? 0), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->ssnitee ?? 0), 2) }}</td>
         </tr>
         <tr>
             <td colspan="2">Petra</td>

@@ -146,8 +146,9 @@ class PayslipController extends Controller
 
         $baseAliases = match ($dbName) {
             'ofiexternal', 'hygieneexternal' => ['hygieneexternal', 'ofiexternal'],
-            'ofibwh', 'olambwh'              => ['olambwh', 'ofibwh'],
+            'ofibwh', 'olambwh', 'bwh'       => ['olambwh', 'ofibwh'],
             'ofitemp', 'olamtem'             => ['olamtem', 'ofitemp'],
+            'nyonkopa'                       => ['nyonkopa'],
             'ofioffload', 'offload'          => ['offload', 'ofioffload'],
             'ofihygiene', 'olamhygiene', 'hygiene' => ['olamhygiene', 'hygiene', 'ofihygiene'],
             'fon', 'fonpackage'              => ['fonpackage', 'fon'],
@@ -257,7 +258,7 @@ class PayslipController extends Controller
         }
 
         // Detect Name field
-        $nameCandidates = ['name', 'empoyeename', 'employeename', 'employee_name', 'fullname', 'name1', 'full_name'];
+        $nameCandidates = ['name', 'names', 'empoyeename', 'employeename', 'employee_name', 'fullname', 'name1', 'full_name'];
         $nameCol = null;
         foreach ($nameCandidates as $candidate) {
             if (isset($colMap[$candidate])) {
@@ -313,6 +314,12 @@ class PayslipController extends Controller
         }
         if (str_contains($dbName, 'ofihygiene') || str_contains($slug, 'ofi-hygiene') || str_contains($slug, 'ofihygiene') || str_contains($shortName, 'hygiene') || str_contains($dbName, 'olamhygiene')) {
             return 'payslip.ofihygiene-pdf';
+        }
+        if (str_contains($dbName, 'ofitemp') || str_contains($slug, 'ofi-tempering') || str_contains($slug, 'ofitemp') || str_contains($dbName, 'olamtem') || str_contains($shortName, 'tempering')) {
+            return 'payslip.ofitemp-pdf';
+        }
+        if (str_contains($dbName, 'ofibwh') || str_contains($slug, 'ofi-bean-warehouse') || str_contains($slug, 'ofibwh') || str_contains($dbName, 'olambwh') || str_contains($shortName, 'bean wh')) {
+            return 'payslip.ofibwh-pdf';
         }
         if (str_contains($dbName, 'driver') || str_contains($slug, 'driver') || str_contains($shortName, 'driver')) {
             return 'payslip.drivers-pdf';
@@ -371,22 +378,21 @@ class PayslipController extends Controller
             $payslip = $this->normalizeCivPayslip($payslip, $client, $ssnit);
         }
     
-        // Convert object/array to object if needed and helper for property/array access with case-insensitivity
-        $getP = function($key) use ($payslip) {
-            $source = is_array($payslip) ? $payslip : (array) $payslip;
-            
+        // Freeze raw source data so mutated $payslip properties (e.g. weekendOT hours) don't shadow raw DB fields
+        $rawDbSource = is_array($payslip) ? $payslip : (array) $payslip;
+        $getP = function($key) use ($rawDbSource) {
             // 1. Direct match
-            if (isset($source[$key])) {
-                return $source[$key];
+            if (isset($rawDbSource[$key])) {
+                return $rawDbSource[$key];
             }
 
             $normalize = function($s) {
-                return str_replace([' ', '_', '-', 'ghc', '%', 'percent', '.'], '', strtolower((string)$s));
+                return str_replace([' ', '_', '-', 'ghc', '%', 'percent', '.', '&', 'and'], '', strtolower((string)$s));
             };
 
             // 2. Case-insensitive / normalized match
             $normalizedSearch = $normalize($key);
-            foreach ($source as $k => $val) {
+            foreach ($rawDbSource as $k => $val) {
                 if ($normalize($k) === $normalizedSearch) {
                     return $val;
                 }
@@ -441,6 +447,9 @@ class PayslipController extends Controller
     
         $payslip->department = $getP('department') 
             ?? $getP('dept') 
+            ?? $getP('work_location')
+            ?? $getP('worklocation')
+            ?? $getP('location')
             ?? $getP('shop') 
             ?? $getP('shopname') 
             ?? $getP('department1') 
@@ -449,30 +458,121 @@ class PayslipController extends Controller
             ?? ($getP('city') ?? '-');
     
         // ---------- BASIC & WORK DAYS ----------
-        $basicEarned = $getP('basicsalaryearned') ?? $getP('basicsalaryearnedghc') ?? $getP('basic_earned') ?? $getP('total2');
-        $basicBase   = $getP('basicsalary') ?? $getP('basicsalaryghc') ?? $getP('basic') ?? $getP('actualbasic') ?? $getP('rate');
-        $payslip->BASIC_SALARY_GHC        = (float) ($basicBase ?: ($basicEarned ?: 0));
-        $payslip->BASIC_SALARY_EARNED_GHC = (float) ($basicEarned ?: ($basicBase ?: 0));
-        $payslip->basic_earned            = $payslip->BASIC_SALARY_EARNED_GHC;
-        $payslip->basic                   = $payslip->BASIC_SALARY_GHC;
-    
-        $payslip->workdays = $getP('noofdayspresent')
+        $daysWorked = $getP('days_worked')
+            ?? $getP('daysworked')
+            ?? $getP('noofdayspresent')
             ?? $getP('workdays') 
             ?? $getP('numberofdaysworked') 
-            ?? $getP('legalworkdays') 
             ?? $getP('actualdays') 
             ?? $getP('noofdays') 
             ?? $getP('total1')
             ?? $getP('actualwork') 
             ?? $getP('total_weekdays') 
+            ?? $getP('legalworkdays') 
             ?? 0;
-    
+        $payslip->workdays = is_numeric($daysWorked) ? (float)$daysWorked : $daysWorked;
+
+        $rate = (float)(
+            $getP('rate') 
+            ?? $getP('dailyrate') 
+            ?? $getP('rate_ghc') 
+            ?? 0
+        );
+        $payslip->rate = $rate;
+
+        $basicEarned = $getP('earned_basic_salary')
+            ?? $getP('earnedbasicsalary')
+            ?? $getP('basicsalaryearned') 
+            ?? $getP('basicsalaryearnedghc') 
+            ?? $getP('basic_earned') 
+            ?? $getP('basicentitlement')
+            ?? $getP('total2') 
+            ?? $getP('base_salary') 
+            ?? $getP('basesalary') 
+            ?? null;
+
+        $basicBase = $getP('base_salary') 
+            ?? $getP('basesalary') 
+            ?? $getP('basic_salary')
+            ?? $getP('basicsalary') 
+            ?? $getP('basicsalaryghc') 
+            ?? $getP('basic') 
+            ?? $getP('actualbasic') 
+            ?? null;
+
+        // Support for OFI Bean Warehouse (olambwh) workers who are hourly/tonnage based without a fixed base salary
+        $amtVal = $getP('amt');
+        if (($basicEarned === null || (float)$basicEarned == 0) && ($basicBase === null || (float)$basicBase == 0) && $amtVal !== null && (float)$amtVal > 0) {
+            $basicEarned = round((float)$amtVal, 2);
+            $basicBase   = $basicEarned;
+        }
+
+        // If basic earned is absent but a base salary is already defined, default basic earned to base salary
+        if (($basicEarned === null || (float)$basicEarned == 0) && $basicBase !== null && (float)$basicBase > 0) {
+            $basicEarned = (float)$basicBase;
+        }
+
+        // If basic earned is absent but rate and workdays are present (and no fixed basic), calculate basic earned
+        if (($basicEarned === null || (float)$basicEarned == 0) && ($basicBase === null || (float)$basicBase == 0) && $rate > 0 && (float)$payslip->workdays > 0) {
+            $basicEarned = round($rate * (float)$payslip->workdays, 2);
+        }
+
+        $earnedVal = (float)($basicEarned ?: ($basicBase ?: 0));
+        $baseVal   = (float)($basicBase ?: ($basicEarned ?: ($rate ?: 0)));
+
+        $payslip->BASIC_SALARY_GHC        = $baseVal;
+        $payslip->BASIC_SALARY_EARNED_GHC = $earnedVal;
+        $payslip->basic_earned            = $earnedVal;
+        $payslip->basic                   = $earnedVal > 0 ? $earnedVal : $baseVal;
+
+        // Extra details for OFI BWH & Tempering
+        $payslip->amt             = (float)($getP('amt') ?? 0);
+        $payslip->amount          = (float)($getP('amount') ?? 0);
+        $payslip->weekdayhr       = (float)($getP('weekdayhr') ?? 0);
+        $payslip->weekdaytonage   = (float)($getP('weekdaytonage') ?? 0);
+        $payslip->weekdayrate     = (float)($getP('weekdayrate') ?? 0);
+        $payslip->weekdayothr     = (float)($getP('weekdayothr') ?? 0);
+        $payslip->weekdayotrate   = (float)($getP('weekdayotrate') ?? 0);
+        $payslip->weekdayotamt1   = (float)($getP('weekdayotamt1') ?? 0);
+        $payslip->weekendhr       = (float)($getP('weekendhr') ?? 0);
+        $payslip->weekendtonage   = (float)($getP('weekendtonage') ?? 0);
+        $payslip->weekendrate     = (float)($getP('weekendrate') ?? 0);
+        $payslip->total1          = (float)($getP('total1') ?? 0);
+        $payslip->total2          = (float)($getP('total2') ?? 0);
+        $payslip->totalamount     = (float)($getP('totalamount') ?? 0);
+
+        // ---------- ALLOWANCES ----------
+        $payslip->fuel_and_rent_allowance = (float)(
+            $getP('fuel_and_rent_allowance') 
+            ?? $getP('fuelandrentallowance') 
+            ?? $getP('fuel_and_rent') 
+            ?? $getP('f&tamount') 
+            ?? $getP('ftamount') 
+            ?? 0
+        );
+        $payslip->ftamount = $payslip->fuel_and_rent_allowance;
+        $payslip->f_and_t_amount = $payslip->fuel_and_rent_allowance;
         $payslip->transport = (float)($getP('transport') ?? $getP('transportghc') ?? 0);
-        $payslip->allowance = (float)($getP('allowance') 
-            ?? ($payslip->transport > 0 ? $payslip->transport : 0)
-            ?? $getP('total_allowance') 
-            ?? 0);
-    
+        $payslip->nightallowance = (float)($getP('nightallowance') ?? $getP('night_allowance') ?? 0);
+        $payslip->night = (float)($getP('night') ?? 0);
+        $payslip->medical = (float)($getP('medical') ?? $getP('medical_allowance') ?? 0);
+        $payslip->leave1 = (float)($getP('leave1') ?? $getP('leave_allowance') ?? $getP('leavepay') ?? 0);
+
+        // If table has employer total cost column (e.g. costofolam, cost_to_nyonkopa), medical and leave1 are employer costs
+        if ($getP('costofolam') !== null || $getP('cost_to_nyonkopa') !== null || $getP('cost_to_company') !== null) {
+            $payslip->medical = 0;
+            $payslip->leave1  = 0;
+        }
+
+        $payslip->general_allowance = (float)($getP('allowance') ?? $getP('total_allowance') ?? 0);
+
+        $payslip->allowance = (float) (
+            $payslip->general_allowance 
+            ?: ($payslip->fuel_and_rent_allowance 
+                ?: ($payslip->transport 
+                    ?: ($payslip->fuel_and_rent_allowance + $payslip->transport + $payslip->nightallowance + $payslip->medical + $payslip->leave1)))
+        );
+
         // ---------- OVERTIME HOURS MAPPING ----------
         $normalOtHrs = $getP('weekdayovertimehr')
             ?? $getP('weekdayovertimehrs')
@@ -482,9 +582,10 @@ class PayslipController extends Controller
             ?? $getP('normal_ot_hrs') 
             ?? $getP('normalOThrs') 
             ?? $getP('otworkdays') 
+            ?? $getP('weekdayothr')
             ?? $getP('normal_ot_days') 
             ?? 0;
-    
+
         $saturdayOtHrs = $getP('weekendovertimehr')
             ?? $getP('weekendovertimehrs')
             ?? $getP('overtimeweekend')
@@ -493,8 +594,10 @@ class PayslipController extends Controller
             ?? $getP('saturday_ot_hrs') 
             ?? $getP('saturdayOThrs') 
             ?? $getP('weekendOThrs') 
+            ?? $getP('weekendhr')
+            ?? $getP('weekendtonage')
             ?? 0;
-    
+
         $holidayOtHrs = $getP('holidayovertimehr')
             ?? $getP('holidayovertimehrs')
             ?? $getP('holiday') 
@@ -503,11 +606,11 @@ class PayslipController extends Controller
             ?? $getP('holidayOThrs') 
             ?? $getP('otweekend') 
             ?? 0;
-    
+
         $payslip->weekdaysOT       = $normalOtHrs;
         $payslip->weekendOT        = $saturdayOtHrs;
         $payslip->holiday          = $holidayOtHrs;
-    
+
         // ---------- OVERTIME AMOUNTS MAPPING ----------
         $normalOtAmt = $getP('weekdayovertimetotal')
             ?? $getP('weekdayovertimeamount') 
@@ -518,8 +621,9 @@ class PayslipController extends Controller
             ?? $getP('normal_overtime') 
             ?? $getP('normalot') 
             ?? $getP('normalotamt') 
+            ?? $getP('weekdayotamt1')
             ?? 0;
-    
+
         // Fallback calculation if monetary normal overtime value is absent
         if (($normalOtAmt == 0 || $normalOtAmt === null) && $payslip->weekdaysOT > 0) {
             $basicForCalc = $payslip->basic ?? 0;
@@ -529,7 +633,7 @@ class PayslipController extends Controller
                 $normalOtAmt = round($normalOtAmt, 2);
             }
         }
-    
+
         $saturdayOtAmt = $getP('weekendovertimetotal')
             ?? $getP('weekendovertimeamount') 
             ?? $getP('weekendovertimeamountghc') 
@@ -537,9 +641,10 @@ class PayslipController extends Controller
             ?? $getP('saturdayovertime') 
             ?? $getP('Saturday Overtime') 
             ?? $getP('saturday_overtime') 
+            ?? ($getP('weekendhr') !== null || $getP('weekendtonage') !== null ? $getP('amount') : null)
             ?? $getP('weekendot') 
             ?? 0;
-    
+
         $holidayOtAmt = $getP('holidayovertimetotal')
             ?? $getP('holidayovertimeamount') 
             ?? $getP('holidayovertimeamountghc') 
@@ -548,51 +653,19 @@ class PayslipController extends Controller
             ?? $getP('holidayot') 
             ?? 0;
         
-        $payslip->normalovertime   = $normalOtAmt;
-        $payslip->saturdayovertime = $saturdayOtAmt;
-        $payslip->holidayotamt     = $holidayOtAmt;
+        $payslip->normalovertime   = (float)$normalOtAmt;
+        $payslip->saturdayovertime = (float)$saturdayOtAmt;
+        $payslip->holidayotamt     = (float)$holidayOtAmt;
         
         $totalOvertime = (float)$normalOtAmt + (float)$saturdayOtAmt + (float)$holidayOtAmt;
-        $payslip->overtime = $getP('overtime') ?? $getP('totalovertimeamount') ?? $getP('totalovertimeamountghc') ?? $totalOvertime;
-    
-        // ---------- TOTALS & DEDUCTIONS ----------
-        $grossVal = (float) (
-            $getP('totalamount')
-            ?? $getP('grosspay') 
-            ?? $getP('grosssalary') 
-            ?? $getP('grosssalaryghc') 
-            ?? $getP('gross') 
-            ?? $getP('totalgrosspay') 
-            ?? $getP('gross_pay') 
-            ?? 0
-        );
+        $payslip->overtime = (float)($getP('overtime') ?? $getP('totalovertimeamount') ?? $getP('totalovertimeamountghc') ?? $totalOvertime);
 
-        if ($grossVal == 0) {
-            $grossVal = (float)($payslip->BASIC_SALARY_EARNED_GHC ?: ($payslip->basic ?? 0))
-                + (float)($payslip->allowance ?? 0)
-                + (float)($payslip->overtime ?? 0)
-                + (float)($getP('performancebonus') ?? $getP('bonus') ?? 0)
-                + (float)($getP('otherincome') ?? 0)
-                + (float)($getP('commission') ?? 0);
-        }
-
-        $payslip->grosspay = round($grossVal, 2);
-
-        $netVal = (float) (
-            $getP('takehomepay') 
-            ?? $getP('takehome') 
-            ?? $getP('netpay') 
-            ?? $getP('takehomepayghc') 
-            ?? $getP('banktransfer') 
-            ?? $getP('net_pay') 
-            ?? $getP('actualnetpay') 
-            ?? 0
-        );
-
+        // ---------- DEDUCTIONS ----------
         $payslip->paye = (float) (
             $getP('totaltaxdeductions') 
             ?? $getP('totaltaxdeduction') 
             ?? $getP('totaltax') 
+            ?? $getP('total_taxation') 
             ?? $getP('paye') 
             ?? $getP('payeghc') 
             ?? $getP('itsalaries') 
@@ -601,15 +674,43 @@ class PayslipController extends Controller
 
         $payslip->ssnitee = (float) (
             $getP('ssnitee') 
-            ?? $getP('ssnitee05percent') 
+            ?? $getP('ssnit_ee_5_5') 
+            ?? $getP('ssnitee55') 
             ?? $getP('ssnitee55percent') 
-            ?? $getP('ssnit_ee_0_5_percent') 
             ?? $getP('ssnit_ee_5_5_percent') 
             ?? $getP('ssnit_5_5_percent') 
+            ?? $getP('ssnit_ee_0_5_percent') 
+            ?? $getP('ssnitee05percent') 
             ?? $getP('ssf_13_percent') 
             ?? $getP('ssf') 
             ?? 0
         );
+
+        // Petra
+        $rawPetraFromDb = $getP('petra') ?? $getP('petra_5_percent') ?? $getP('petrafund') ?? $getP('tier3') ?? $getP('tier2') ?? null;
+        if ($rawPetraFromDb === null && $getP('ssnitee') !== null && $getP('ssnit') !== null && is_numeric($getP('ssnit')) && (float)$getP('ssnit') > 0) {
+            $rawPetraFromDb = $getP('ssnit');
+        }
+        if ($rawPetraFromDb !== null) {
+            $payslip->petra = round((float)$rawPetraFromDb, 2);
+        } else {
+            $payslip->petra = 0;
+        }
+        $payslip->petra_5_percent = $payslip->petra;
+        $payslip->PETRA_5         = $payslip->petra;
+        $payslip->petrafund       = $payslip->petra;
+        $payslip->tier2           = $payslip->petra;
+
+        // Employee Provident Fund (PF)
+        $rawPf = $getP('employeepf') 
+            ?? $getP('employee_pf') 
+            ?? $getP('employeeprovidentfund') 
+            ?? $getP('providentfund') 
+            ?? $getP('provident_fund') 
+            ?? $getP('pf') 
+            ?? 0;
+        $payslip->employeepf     = round((float)$rawPf, 2);
+        $payslip->provident_fund = $payslip->employeepf;
 
         $payslip->otherdeduction = (float) (
             $getP('deductions_surcharge_student_loan_ghc')
@@ -626,53 +727,129 @@ class PayslipController extends Controller
             ?? 0
         );
 
-        $payslip->totaldeductions = (float) (
-            $getP('totaldeductions')
+        $totalDeductionsVal = $getP('total_deductions')
+            ?? $getP('totaldeductions')
             ?? $getP('totaldeduction')
+            ?? $getP('total_deduction')
+            ?? null;
+
+        if ($totalDeductionsVal !== null && (float)$totalDeductionsVal > 0) {
+            $payslip->totaldeductions = round((float)$totalDeductionsVal, 2);
+        } else {
+            $payslip->totaldeductions = round(
+                (float)($payslip->ssnitee ?? 0)
+                + (float)($payslip->paye ?? 0)
+                + (float)($payslip->petra ?? 0)
+                + (float)($payslip->employeepf ?? 0)
+                + (float)($payslip->otherdeduction ?? 0)
+                + (float)($payslip->overtimetax ?? 0)
+                + (float)($getP('loan') ?? 0)
+                + (float)($getP('leavededuction') ?? 0)
+                + (float)($getP('annaultax') ?? 0),
+                2
+            );
+        }
+
+        $payslip->total_deductions = $payslip->totaldeductions;
+        $payslip->totaldeduction   = $payslip->totaldeductions;
+
+        // ---------- TOTALS (GROSS & NET) ----------
+        $netVal = (float) (
+            $getP('take_home_pay') 
+            ?? $getP('takehomepay') 
+            ?? $getP('takehome') 
+            ?? $getP('netpay') 
+            ?? $getP('takehomepayghc') 
+            ?? $getP('banktransfer') 
+            ?? $getP('net_pay') 
+            ?? $getP('actualnetpay') 
+            ?? $getP('finalnetpay')
+            ?? $getP('nap')
             ?? 0
         );
 
+        $grossVal = (float) (
+            $getP('gross_salary') 
+            ?? $getP('grosssalary') 
+            ?? $getP('grosssalaryghc') 
+            ?? $getP('grosspay') 
+            ?? $getP('gross_pay') 
+            ?? $getP('totalgrosspay') 
+            ?? $getP('grossnew')
+            ?? $getP('totalearn')
+            ?? $getP('gross')
+            ?? 0
+        );
+
+        // For OFI BWH (olambwh), true gross is totalamount + f&tamount
+        if ($grossVal == 0 && $getP('totalamount') !== null && ($getP('f&tamount') !== null || $getP('ftamount') !== null)) {
+            $grossVal = (float)$getP('totalamount') + (float)($getP('f&tamount') ?? $getP('ftamount'));
+        }
+
+        // For OFI Tempering (olamtem), true gross is totalamount + transport + nightallowance
+        if ($grossVal == 0 && $getP('totalamount') !== null && ($getP('rate') !== null || $getP('total2') !== null)) {
+            $grossVal = (float)$getP('totalamount') + (float)($getP('transport') ?? 0) + (float)($getP('nightallowance') ?? 0);
+        }
+
+        if ($grossVal == 0) {
+            $earningsSum = (float)($payslip->basic_earned ?: ($payslip->basic ?? 0))
+                + (float)($payslip->fuel_and_rent_allowance ?? 0)
+                + (float)($payslip->transport ?? 0)
+                + (float)($payslip->nightallowance ?? 0)
+                + (float)($payslip->medical ?? 0)
+                + (float)($payslip->leave1 ?? 0)
+                + (float)($payslip->general_allowance ?? 0)
+                + (float)($payslip->overtime ?? 0)
+                + (float)($getP('performancebonus') ?? $getP('bonus') ?? 0)
+                + (float)($getP('otherincome') ?? 0)
+                + (float)($getP('commission') ?? 0);
+
+            if ($earningsSum > 0) {
+                $grossVal = $earningsSum;
+            } elseif ($netVal > 0 && $payslip->totaldeductions > 0) {
+                $grossVal = $netVal + $payslip->totaldeductions;
+            } else {
+                $grossVal = (float)($getP('totalamount') ?? 0);
+            }
+        }
+
+        // If totalamount was an intermediate subtotal (e.g. basic + OT) and netVal + deductions is higher:
+        if ($netVal > 0 && $payslip->totaldeductions > 0 && $grossVal < $netVal) {
+            $grossVal = round($netVal + $payslip->totaldeductions, 2);
+        }
+
+        $payslip->grosspay = round($grossVal, 2);
+
         if ($netVal == 0 && $payslip->grosspay > 0) {
-            $deductionsSum = (float)($payslip->ssnitee ?? 0)
-                + (float)($payslip->paye ?? 0)
-                + (float)($payslip->otherdeduction ?? 0)
-                + (float)($getP('loan') ?? 0);
-            $netVal = max(0, $payslip->grosspay - $deductionsSum);
+            $netVal = max(0, round($payslip->grosspay - $payslip->totaldeductions, 2));
         }
 
-        $payslip->netpay = round($netVal, 2);
-        
-        $basicVal = (float)($payslip->basic ?? 0);
-        $rawPetraFromDb = $getP('petra') ?? $getP('petra_5_percent') ?? $getP('petrafund') ?? $getP('tier3') ?? $getP('tier2') ?? null;
+        $payslip->netpay        = round($netVal, 2);
+        $payslip->take_home_pay = $payslip->netpay;
+        $payslip->takehome      = $payslip->netpay;
 
-        if ($rawPetraFromDb !== null && (float)$rawPetraFromDb > 0) {
-            $payslip->petra = round((float)$rawPetraFromDb, 2);
-        } elseif ($basicVal > 0) {
-            $payslip->petra = round($basicVal <= 587.79 ? 29.39 : ($basicVal * 0.05), 2);
-        } else {
-            $payslip->petra = 0;
-        }
-
-        $payslip->trust = (float)($getP('trust') ?? 0);
-        $payslip->taxable = (float)($getP('taxableincome') ?? $getP('taxable') ?? 0);
-        $payslip->bank = $getP('bank') ?? $getP('bankname') ?? null;
-        $payslip->accountnumber = $getP('accountnumber') ?? $getP('account') ?? $getP('alcnum') ?? null;
-        $payslip->branch = $getP('branch') ?? null;
-        $payslip->nightallowance = (float)($getP('nightallowance') ?? 0);
-        $payslip->night = (float)($getP('night') ?? 0);
-        $payslip->medical = (float)($getP('medical') ?? 0);
+        // ---------- BANK & EXTRA INFO ----------
+        $payslip->trust         = (float)($getP('trust') ?? 0);
+        $payslip->taxable       = (float)($getP('taxableincome') ?? $getP('taxable') ?? 0);
+        $payslip->bank          = $getP('bank') ?? $getP('bankname') ?? $getP('bank1') ?? null;
+        $payslip->accountnumber = $getP('accountnumber') ?? $getP('account') ?? $getP('alcnum') ?? $getP('account1') ?? $getP('account2') ?? $getP('account_number') ?? null;
+        $payslip->branch        = $getP('branch') ?? $getP('branch1') ?? null;
+        $payslip->bankname      = $payslip->bank;
+        $payslip->alcnum        = $payslip->accountnumber;
     
         // Preserve the SSNIT string identity number safely without overwriting data properties
-        if ((!isset($ssnit) || $ssnit === '-' || empty($ssnit)) && !empty($getP('ssnit'))) {
-            $ssnit = (string) $getP('ssnit');
+        $rawSsnit = $getP('ssnit') ?? $getP('ssnit12') ?? $getP('ssnit2') ?? $getP('ssnit_number') ?? $getP('ssnitno') ?? $getP('ssnit1a');
+        if ((!isset($ssnit) || $ssnit === '-' || empty($ssnit)) && !empty($rawSsnit)) {
+            $ssnit = (string) $rawSsnit;
         }
         $payslip->ssnit_number = $ssnit;
-        $payslip->SSNIT = $ssnit;
+        $payslip->SSNIT        = $ssnit;
+        $payslip->ghcard       = $getP('ghcard1') ?? $getP('ghcard') ?? $getP('ghana_card') ?? $getP('ghanacard') ?? null;
 
         // Cross-template compatibility aliases for Jay Kay and custom templates
-        $payslip->basic_salary              = $payslip->basic;
-        $payslip->earned_basic_salary       = $payslip->basic_earned;
-        $payslip->days_worked               = $payslip->workdays;
+        $payslip->basic_salary              = (float)($getP('basic_salary') ?? $payslip->BASIC_SALARY_GHC ?? $payslip->basic);
+        $payslip->earned_basic_salary       = (float)($getP('earned_basic_salary') ?? $payslip->basic_earned);
+        $payslip->days_worked               = $getP('days_worked') ?? $getP('daysworked') ?? $payslip->workdays;
         $payslip->gross_salary              = $payslip->grosspay;
         $payslip->take_home_pay             = $payslip->netpay;
         $payslip->ssnit_ee                  = $payslip->ssnitee;
@@ -774,6 +951,21 @@ class PayslipController extends Controller
 
         $ssnit = DB::table('ssnit')->where('staffid', $staffId)->value('ssnit1a') ?? '-';
         $payslip = $this->normalizePayslip($payslip, $client, $ssnit);
+
+        $bankRecord = DB::table('bankdetails')->where('employid', $staffId)->first();
+        if ($bankRecord) {
+            if (empty($payslip->bank) || $payslip->bank === '-') {
+                $payslip->bank = (!empty($bankRecord->bank) && $bankRecord->bank !== '-') ? $bankRecord->bank : ($payslip->bank ?? '-');
+                $payslip->bankname = $payslip->bank;
+            }
+            if (empty($payslip->accountnumber) || $payslip->accountnumber === '-') {
+                $payslip->accountnumber = (!empty($bankRecord->account) && $bankRecord->account !== '-') ? $bankRecord->account : ($payslip->accountnumber ?? '-');
+                $payslip->alcnum = $payslip->accountnumber;
+            }
+            if (empty($payslip->branch) || $payslip->branch === '-') {
+                $payslip->branch = (!empty($bankRecord->branch) && $bankRecord->branch !== '-') ? $bankRecord->branch : ($payslip->branch ?? '-');
+            }
+        }
 
         $employees = DB::table($tableName)
             ->select(

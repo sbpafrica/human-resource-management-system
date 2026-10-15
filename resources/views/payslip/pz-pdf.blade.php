@@ -141,6 +141,14 @@
         <td></td>
         <td class="text-center">{{ number_format((float)($payslip->ssnitee ?? 0), 2) }}</td>
     </tr>
+    @if((float)($payslip->petra ?? $payslip->petra_5_percent ?? 0) > 0)
+    <tr>
+        <td colspan="2">Petra (5%)</td>
+        <td></td>
+        <td></td>
+        <td class="text-center">{{ number_format((float)($payslip->petra ?? $payslip->petra_5_percent ?? 0), 2) }}</td>
+    </tr>
+    @endif
     <tr>
         <td colspan="2">Annual Bonus Tax</td>
         <td></td>
