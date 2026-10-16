@@ -197,50 +197,57 @@ class MelcomStatController extends Controller
 
         foreach ($payrollData as $index => $row) {
             $currentRow = $dataStartRow + $index;
-            $ssnitRecord = $ssnitData->get($row->employ);
+            $staffId = $row->employ ?? $row->staff_id ?? $row->staffid ?? '';
+            $ssnitRecord = $ssnitData->get($staffId);
 
             // Ser. No
             $sheet->setCellValue('A' . $currentRow, $index + 1);
 
             // TIN / GH. CARD NO.
-            $sheet->setCellValue('B' . $currentRow, $ssnitRecord->national ?? $row->{'COL 12'} ?? '');
+            $sheet->setCellValue('B' . $currentRow, $ssnitRecord->national ?? $row->{'COL 12'} ?? $row->national ?? $row->ghana_card ?? '');
 
             // Name Of Employee
-            $sheet->setCellValue('C' . $currentRow, $row->empoyeename ?? '');
+            $sheet->setCellValue('C' . $currentRow, $row->empoyeename ?? $row->employee_name ?? $row->name ?? '');
 
             // Position
-            $sheet->setCellValue('D' . $currentRow, $row->designation ?? '');
+            $sheet->setCellValue('D' . $currentRow, $row->designation ?? $row->position ?? '');
 
             // Residency/ Part-Time/ Casual
-            $residency = ($row->categories ?? null) === 'Casual'
-    ? 'Casual'
-    : 'Resident-Full-Time';
+            $residency = ($row->categories ?? $row->category ?? null) === 'Casual'
+                ? 'Casual'
+                : 'Resident-Full-Time';
             $sheet->setCellValue('E' . $currentRow, $residency);
 
             // Basic Salary
-            $sheet->setCellValue('F' . $currentRow, $row->basicentitlement ?? 0);
+            $basicSalary = (float)($row->basicentitlement ?? $row->basic_salary ?? $row->basic ?? 0);
+            $sheet->setCellValue('F' . $currentRow, $basicSalary);
 
             // Secondary Employment (Y / N)
             $sheet->setCellValue('G' . $currentRow, 'N');
 
             // Paid SSNIT (Y / N)
-            $paidSsnit = ($row->ssnit > 0) ? 'Y' : 'N';
+            $ssnitAmount = (float)($row->ssnit ?? $row->ssnitee ?? $row->ssf ?? 0);
+            $paidSsnit = ($ssnitAmount > 0) ? 'Y' : 'N';
             $sheet->setCellValue('H' . $currentRow, $paidSsnit);
 
             // Social Security Fund
-            $sheet->setCellValue('I' . $currentRow, $row->ssnit ?? 0);
+            $sheet->setCellValue('I' . $currentRow, $ssnitAmount);
 
             // Third Tier
-            $sheet->setCellValue('J' . $currentRow, $row->nssf ?? 0);
+            $nssfAmount = (float)($row->nssf ?? $row->petra ?? $row->tier2 ?? 0);
+            $sheet->setCellValue('J' . $currentRow, $nssfAmount);
 
             // Cash Allowances
-            $sheet->setCellValue('K' . $currentRow, ($row->gross - $row->basicentitlement) ?? 0);
+            $grossAmount = (float)($row->gross ?? $row->grosspay ?? $row->totalearn ?? 0);
+            $cashAllowances = max(0, $grossAmount - $basicSalary);
+            $sheet->setCellValue('K' . $currentRow, $cashAllowances);
 
             // Bonus Income
             $sheet->setCellValue('L' . $currentRow, 0);
 
             // Final Tax on Bonus Income
-            $sheet->setCellValue('M' . $currentRow, 0);
+            $bonusTax = (float)($row->bonustax ?? 0);
+            $sheet->setCellValue('M' . $currentRow, $bonusTax);
 
             // Excess Bonus
             $sheet->setCellValue('N' . $currentRow, 0);
@@ -269,16 +276,20 @@ class MelcomStatController extends Controller
             // Chargeable Income
             $sheet->setCellValueExplicit('V' . $currentRow, '=S' . $currentRow . '-U' . $currentRow, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA);
 
-            // Tax Deductible
-            /*$taxFormula = '=IF(V' . $currentRow . '<=0,0,IF(V' . $currentRow . '<=490,0,IF(V' . $currentRow . '<=600,(V' . $currentRow . '-490)*0.05,IF(V' . $currentRow . '<=730,5.5+(V' . $currentRow . '-600)*0.1,IF(V' . $currentRow . '<=3897,18.5+(V' . $currentRow . '-730)*0.175,IF(V' . $currentRow . '<=19897,572.725+(V' . $currentRow . '-3897)*0.25,IF(V' . $currentRow . '<=50417,4572.725+(V' . $currentRow . '-19897)*0.3,13728.725+(V' . $currentRow . '-50417)*0.35)))))))';
-            $sheet->setCellValueExplicit('W' . $currentRow, $taxFormula, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA);*/
-            $sheet->setCellValue('W' . $currentRow, $row->paye);
+            // Tax Deductible (PAYE)
+            $paye = (float)($row->paye ?? $row->normaltax ?? ($row->totaltax ?? $row->tax ?? 0));
+            // If totaltax was used and bonustax was present, subtract bonustax so M + W doesn't double-count
+            if (!isset($row->paye) && !isset($row->normaltax) && isset($row->totaltax) && $bonusTax > 0) {
+                $paye = max(0, $paye - $bonusTax);
+            }
+            $sheet->setCellValue('W' . $currentRow, $paye);
 
             // Overtime Income
             $sheet->setCellValue('X' . $currentRow, 0);
 
             // Overtime Tax
-            $sheet->setCellValue('Y' . $currentRow, 0);
+            $overtimeTax = (float)($row->overtimetax ?? 0);
+            $sheet->setCellValue('Y' . $currentRow, $overtimeTax);
 
             // Total Tax Payable
             $sheet->setCellValueExplicit('Z' . $currentRow, '=M' . $currentRow . '+W' . $currentRow . '+Y' . $currentRow, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA);

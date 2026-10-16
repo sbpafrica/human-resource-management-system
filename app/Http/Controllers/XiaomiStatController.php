@@ -270,7 +270,8 @@ class XiaomiStatController extends Controller
             // Tax Deductible
             /*$taxFormula = '=IF(V' . $currentRow . '<=0,0,IF(V' . $currentRow . '<=490,0,IF(V' . $currentRow . '<=600,(V' . $currentRow . '-490)*0.05,IF(V' . $currentRow . '<=730,5.5+(V' . $currentRow . '-600)*0.1,IF(V' . $currentRow . '<=3897,18.5+(V' . $currentRow . '-730)*0.175,IF(V' . $currentRow . '<=19897,572.725+(V' . $currentRow . '-3897)*0.25,IF(V' . $currentRow . '<=50417,4572.725+(V' . $currentRow . '-19897)*0.3,13728.725+(V' . $currentRow . '-50417)*0.35)))))))';
             $sheet->setCellValueExplicit('W' . $currentRow, $taxFormula, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA);*/
-            $sheet->setCellValue('W' . $currentRow, $row->paye);
+            $paye = (float)($row->paye ?? $row->normaltax ?? ($row->totaltax ?? $row->tax ?? 0));
+            $sheet->setCellValue('W' . $currentRow, $paye);
 
             // Overtime Income
             $sheet->setCellValue('X' . $currentRow, ($row->otworkingday + $row->otholiday) ?? 0);
