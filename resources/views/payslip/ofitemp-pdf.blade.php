@@ -96,9 +96,12 @@
             <td>Department / Work Area</td>
             <td>{{ $payslip->department ?? $payslip->dept ?? '-' }}</td>
         </tr>
+        @php
+            $hasBasic = !empty($payslip->has_basic_salary) ? true : ((float)($payslip->raw_basic ?? 0) > 0);
+        @endphp
         <tr>
-            <td>Daily Rate</td>
-            <td>GHS {{ number_format((float)($payslip->rate ?: ($payslip->BASIC_SALARY_GHC ?: 0)), 2) }}</td>
+            <td>{{ $hasBasic ? 'Basic Salary' : 'Daily Rate' }}</td>
+            <td>GHS {{ number_format((float)($hasBasic ? ($payslip->raw_basic ?: $payslip->basic) : ($payslip->rate ?: ($payslip->daily_rate ?: ($payslip->BASIC_SALARY_GHC ?: 0)))), 2) }}</td>
             <td></td>
             <td>Days Worked</td>
             <td>{{ $payslip->workdays ?? $payslip->noofdays ?? $payslip->total1 ?? 0 }}</td>
@@ -112,9 +115,9 @@
             <th class="header text-center">Deductions (GHS)</th>
         </tr>
 
-        <!-- Basic Salary Earned -->
+        <!-- Basic Salary / Daily Rate Earned -->
         <tr>
-            <td colspan="2">Basic Salary Earned</td>
+            <td colspan="2">{{ $hasBasic ? 'Basic Salary Earned' : 'Daily Rate Earned' }}</td>
             <td class="text-right">{{ (int)($payslip->workdays ?? $payslip->noofdays ?? $payslip->total1 ?? 0) }} days</td>
             <td class="text-center">{{ number_format((float)($payslip->BASIC_SALARY_EARNED_GHC ?: ($payslip->basic_earned ?: ($payslip->basic ?: ($payslip->total2 ?: 0)))), 2) }}</td>
             <td></td>

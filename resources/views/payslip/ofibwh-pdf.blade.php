@@ -96,15 +96,29 @@
             <td>Department / Work Area</td>
             <td>{{ $payslip->department ?? 'Bean Warehouse' }}</td>
         </tr>
+        @php
+            $hasBasic = !empty($payslip->has_basic_salary) 
+                ? true 
+                : ((float)($payslip->raw_basic ?? 0) > 0 || ((float)($payslip->basic ?? 0) > 0 && empty($payslip->is_casual) && (float)($payslip->weekdayhr ?? 0) == 0 && (float)($payslip->weekdaytonage ?? 0) == 0 && (float)($payslip->amt ?? 0) == 0));
+            $dailyRateVal = (float)($payslip->daily_rate ?: ($payslip->rate ?: ($payslip->weekdayrate ?: 0)));
+            $regularAmt = (float)($payslip->amt ?? $payslip->basic_earned ?? 0);
+            $weekdayHrs = (float)($payslip->weekdayhr ?? 0);
+            $weekdayTons = (float)($payslip->weekdaytonage ?? 0);
+        @endphp
         <tr>
-            <td>Basic Salary</td>
-            <td>
-                @if((float)($payslip->basic ?? 0) > 0)
-                    GHS {{ number_format((float)$payslip->basic, 2) }}
-                @else
-                    Daily / Piece Rate
-                @endif
-            </td>
+            @if($hasBasic)
+                <td>Basic Salary</td>
+                <td>GHS {{ number_format((float)($payslip->raw_basic ?: $payslip->basic), 2) }}</td>
+            @else
+                <td>Daily Rate</td>
+                <td>
+                    @if($dailyRateVal > 0)
+                        GHS {{ number_format($dailyRateVal, 2) }}
+                    @else
+                        Daily Rate
+                    @endif
+                </td>
+            @endif
             <td></td>
             <td>Days Worked</td>
             <td>{{ $payslip->workdays ?? 0 }}</td>
@@ -118,19 +132,12 @@
             <th class="header text-center">Deductions (GHS)</th>
         </tr>
 
-        <!-- Basic Salary / Regular Hours / Weekday Tonnage -->
-        @php
-            $hasBasic = (float)($payslip->basic ?? 0) > 0;
-            $regularAmt = (float)($payslip->amt ?? $payslip->basic_earned ?? 0);
-            $weekdayHrs = (float)($payslip->weekdayhr ?? 0);
-            $weekdayTons = (float)($payslip->weekdaytonage ?? 0);
-        @endphp
-
+        <!-- Basic Salary / Regular Hours / Weekday Tonnage / Daily Rate -->
         @if($hasBasic)
         <tr>
             <td colspan="2">Basic Salary Earned</td>
             <td class="text-right">{{ (int)($payslip->workdays ?? 0) }} days</td>
-            <td class="text-center">{{ number_format((float)$payslip->basic, 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->basic_earned ?: $payslip->basic), 2) }}</td>
             <td></td>
         </tr>
         @elseif($weekdayHrs > 0)
@@ -147,9 +154,9 @@
             <td class="text-center">{{ number_format($regularAmt, 2) }}</td>
             <td></td>
         </tr>
-        @elseif($regularAmt > 0)
+        @elseif($regularAmt > 0 || (int)($payslip->workdays ?? 0) > 0)
         <tr>
-            <td colspan="2">Basic / Regular Pay</td>
+            <td colspan="2">Daily Rate Earned</td>
             <td class="text-right">{{ (int)($payslip->workdays ?? 0) }} days</td>
             <td class="text-center">{{ number_format($regularAmt, 2) }}</td>
             <td></td>

@@ -473,12 +473,15 @@ class PayslipController extends Controller
         $payslip->workdays = is_numeric($daysWorked) ? (float)$daysWorked : $daysWorked;
 
         $rate = (float)(
-            $getP('rate') 
+            $getP('daily_rate') 
             ?? $getP('dailyrate') 
+            ?? $getP('rate') 
             ?? $getP('rate_ghc') 
+            ?? $getP('weekdayrate')
             ?? 0
         );
         $payslip->rate = $rate;
+        $payslip->daily_rate = $rate;
 
         $basicEarned = $getP('earned_basic_salary')
             ?? $getP('earnedbasicsalary')
@@ -491,7 +494,7 @@ class PayslipController extends Controller
             ?? $getP('basesalary') 
             ?? null;
 
-        $basicBase = $getP('base_salary') 
+        $rawBasic = $getP('base_salary') 
             ?? $getP('basesalary') 
             ?? $getP('basic_salary')
             ?? $getP('basicsalary') 
@@ -499,6 +502,13 @@ class PayslipController extends Controller
             ?? $getP('basic') 
             ?? $getP('actualbasic') 
             ?? null;
+
+        $hasFixedBasic = ($rawBasic !== null && is_numeric($rawBasic) && (float)$rawBasic > 0);
+        $payslip->has_basic_salary = $hasFixedBasic;
+        $payslip->is_casual        = !$hasFixedBasic;
+        $payslip->raw_basic        = $hasFixedBasic ? (float)$rawBasic : 0;
+
+        $basicBase = $hasFixedBasic ? (float)$rawBasic : null;
 
         // Support for OFI Bean Warehouse (olambwh) workers who are hourly/tonnage based without a fixed base salary
         $amtVal = $getP('amt');
@@ -520,10 +530,10 @@ class PayslipController extends Controller
         $earnedVal = (float)($basicEarned ?: ($basicBase ?: 0));
         $baseVal   = (float)($basicBase ?: ($basicEarned ?: ($rate ?: 0)));
 
-        $payslip->BASIC_SALARY_GHC        = $baseVal;
+        $payslip->BASIC_SALARY_GHC        = $hasFixedBasic ? $baseVal : 0;
         $payslip->BASIC_SALARY_EARNED_GHC = $earnedVal;
         $payslip->basic_earned            = $earnedVal;
-        $payslip->basic                   = $earnedVal > 0 ? $earnedVal : $baseVal;
+        $payslip->basic                   = $hasFixedBasic ? $baseVal : $earnedVal;
 
         // Extra details for OFI BWH & Tempering
         $payslip->amt             = (float)($getP('amt') ?? 0);

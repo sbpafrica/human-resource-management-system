@@ -1099,11 +1099,17 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                                     <td className="p-2">{payslip.department || payslip.workarea || payslip.dept || '-'}</td>
                                 </tr>
                                 <tr>
-                                    <td className="p-2">Basic Salary</td>
                                     <td className="p-2">
-                                        {Number(payslip.BASIC_SALARY_GHC || payslip.basic || 0) > 0 
-                                            ? Number(payslip.BASIC_SALARY_GHC || payslip.basic).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                                            : "Daily / Piece Rate"}
+                                        {(payslip.has_basic_salary === true || (Number(payslip.raw_basic ?? 0) > 0) || (Number(payslip.BASIC_SALARY_GHC ?? 0) > 0 && !payslip.is_casual && Number(payslip.weekdayhr ?? 0) === 0 && Number(payslip.weekdaytonage ?? 0) === 0 && Number(payslip.amt ?? 0) === 0))
+                                            ? "Basic Salary"
+                                            : "Daily Rate"}
+                                    </td>
+                                    <td className="p-2">
+                                        {(payslip.has_basic_salary === true || (Number(payslip.raw_basic ?? 0) > 0) || (Number(payslip.BASIC_SALARY_GHC ?? 0) > 0 && !payslip.is_casual && Number(payslip.weekdayhr ?? 0) === 0 && Number(payslip.weekdaytonage ?? 0) === 0 && Number(payslip.amt ?? 0) === 0))
+                                            ? Number(payslip.raw_basic || payslip.BASIC_SALARY_GHC || payslip.basic || 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                            : (Number(payslip.daily_rate || payslip.rate || payslip.weekdayrate || 0) > 0
+                                                ? `GHS ${Number(payslip.daily_rate || payslip.rate || payslip.weekdayrate).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                : "Daily Rate")}
                                     </td>
                                     <td className="p-2"></td>
                                     <td className="p-2">Days Worked</td>
@@ -1121,7 +1127,9 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                                             ? "Weekday Tonnage Pay" 
                                             : Number(payslip.weekdayhr ?? 0) > 0 
                                             ? "Regular Hours Pay" 
-                                            : "Basic Salary Earned"}
+                                            : (payslip.has_basic_salary === true || (Number(payslip.raw_basic ?? 0) > 0) || (Number(payslip.BASIC_SALARY_GHC ?? 0) > 0 && !payslip.is_casual && Number(payslip.weekdayhr ?? 0) === 0 && Number(payslip.weekdaytonage ?? 0) === 0 && Number(payslip.amt ?? 0) === 0))
+                                                ? "Basic Salary Earned"
+                                                : "Daily Rate Earned"}
                                     </td>
                                     <td className="p-2 text-right">
                                         {Number(payslip.weekdaytonage ?? 0) > 0 
