@@ -2108,6 +2108,12 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td></td>
         </tr>
         <tr>
+            <td colSpan={2} className="p-2">Commission</td>
+            <td></td>
+            <td className="p-2 text-center">{Number(payslip.commission ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td></td>
+        </tr>
+        <tr>
             <td colSpan={2} className="p-2">Overtime</td>
             <td></td>
             <td className="p-2 text-center">{Number(payslip.overtime ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
@@ -2126,6 +2132,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                 {(
                     Number(payslip.actualbasic ?? 0) +
                     Number(payslip.monthlykpi ?? 0) +
+                    Number(payslip.commission ?? 0) +
                     Number(payslip.overtime ?? 0) +
                     Number(payslip.transport ?? 0)
                 ).toLocaleString('en-GH', { minimumFractionDigits: 2 })}
@@ -2168,6 +2175,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                 {(
                     Number(payslip.actualbasic ?? 0) +
                     Number(payslip.monthlykpi ?? 0) +
+                    Number(payslip.commission ?? 0) +
                     Number(payslip.overtime ?? 0) +
                     Number(payslip.transport ?? 0) +
                     Number(payslip['13thmonth'] ?? 0)

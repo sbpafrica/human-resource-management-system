@@ -873,6 +873,7 @@ class PayslipController extends Controller
         $payslip->saturday_amount           = (float)($getP('saturday_amount') ?? $payslip->saturdayovertime ?? 0);
         $payslip->overtime_hours            = $getP('overtime_hours') ?? $getP('overtimehrs') ?? 0;
         $payslip->overtime_amount           = (float)($getP('overtime_amount') ?? $payslip->overtime ?? 0);
+        $payslip->commission                = (float)($getP('commission') ?? 0);
 
         return $payslip;
     }
