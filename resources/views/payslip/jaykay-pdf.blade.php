@@ -91,7 +91,7 @@
         <td>-</td>
     </tr>
     <tr>
-        <td class="header">Basic Salary</td>
+        <td class="header">Basic Salary Earned</td>
         <td>{{ number_format((float)($payslip->basic_salary ?? 0), 2) }}</td>
         <td colspan="3"></td>
     </tr>
@@ -138,7 +138,7 @@
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">SSNIT</td>
+        <td colspan="2">SSNIT (0.5%)</td>
         <td></td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->ssnit_ee ?? 0), 2) }}</td>

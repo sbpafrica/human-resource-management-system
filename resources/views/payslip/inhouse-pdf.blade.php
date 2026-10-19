@@ -109,12 +109,6 @@
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">Commission</td>
-        <td></td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->commission ?? 0), 2) }}</td>
-        <td></td>
-    </tr>
-    <tr>
         <td colspan="2">Overtime</td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->overtime ?? 0), 2) }}</td>
@@ -132,31 +126,35 @@
         <td colspan="2" class="total">Gross Salary</td>
         <td></td>
         <td style="text-align: center;" class="total">
-            {{ number_format((float)($payslip->actualbasic ?? 0) + (float)($payslip->monthlykpi ?? 0) + (float)($payslip->commission ?? 0) + (float)($payslip->overtime ?? 0) + (float)($payslip->transport ?? 0), 2) }}
+            {{ number_format((float)($payslip->actualbasic ?? 0) + (float)($payslip->monthlykpi ?? 0) + (float)($payslip->overtime ?? 0) + (float)($payslip->transport ?? 0), 2) }}
         </td>
         <td></td>
     </tr>
 
     <!-- Deductions -->
     <tr>
-        <td colspan="2">SSNIT</td>
+        <td colspan="2">SSNIT (0.5%)</td>
         <td></td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->ssnitpay ?? 0), 2) }}</td>
     </tr>
+
+    @if((float)($payslip->petra ?? $payslip->petra_5_percent ?? 0) > 0)
+    <tr>
+        <td colspan="2">Petra (5%)</td>
+        <td></td>
+        <td></td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->petra ?? $payslip->petra_5_percent ?? 0), 2) }}</td>
+    </tr>
+    @endif
+
     <tr>
         <td colspan="2">PAYE</td>
         <td></td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->totaltax ?? 0), 2) }}</td>
     </tr>
-    <tr>
-        <td colspan="2">Salary Loan</td>
-        <td></td>
-        <td></td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->loans ?? 0), 2) }}</td>
-    </tr>
-
+    
     <!-- Annual Bonus (Earnings) -->
     <tr>
         <td colspan="2">Annual Bonus</td>
@@ -171,11 +169,32 @@
         <td style="text-align: center;">{{ number_format((float)($payslip->endyeartax ?? 0), 2) }}</td>
     </tr>
 
+    <tr>
+        <td colspan="2">Salary Loan</td>
+        <td></td>
+        <td></td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->loans ?? 0), 2) }}</td>
+    </tr>
+
+    <tr>
+        <td colspan="2">Commission</td>
+        <td></td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->commission ?? 0), 2) }}</td>
+        <td></td>
+    </tr>
+
+    <tr>
+        <td colspan="2">Commission Tax</td>
+        <td></td>
+        <td></td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->commissiontax ?? 0), 2) }}</td>
+    </tr>
+
     <!-- Total -->
     <tr>
         <td colspan="3" class="total">Total</td>
         <td style="text-align: center;" class="total">
-            {{ number_format((float)($payslip->actualbasic ?? 0) + (float)($payslip->monthlykpi ?? 0) + (float)($payslip->commission ?? 0) + (float)($payslip->overtime ?? 0) + (float)($payslip->transport ?? 0) + (float)($payslip->endyearmonth ?? 0), 2) }}
+            {{ number_format((float)($payslip->actualbasic ?? 0) + (float)($payslip->monthlykpi ?? 0) + (float)($payslip->overtime ?? 0) + (float)($payslip->transport ?? 0) + (float)($payslip->commission ?? 0) + (float)($payslip->endyearmonth ?? 0), 2) }}
         </td>
         <td style="text-align: center;" class="total">
             {{ number_format((float)($payslip->totaldeduction ?? 0), 2) }}

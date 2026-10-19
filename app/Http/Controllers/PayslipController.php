@@ -755,7 +755,8 @@ class PayslipController extends Controller
                 + (float)($payslip->overtimetax ?? 0)
                 + (float)($getP('loan') ?? 0)
                 + (float)($getP('leavededuction') ?? 0)
-                + (float)($getP('annaultax') ?? 0),
+                + (float)($getP('annaultax') ?? 0)
+                + (float)($getP('commissiontax') ?? $getP('commission_tax') ?? 0),
                 2
             );
         }
@@ -874,6 +875,7 @@ class PayslipController extends Controller
         $payslip->overtime_hours            = $getP('overtime_hours') ?? $getP('overtimehrs') ?? 0;
         $payslip->overtime_amount           = (float)($getP('overtime_amount') ?? $payslip->overtime ?? 0);
         $payslip->commission                = (float)($getP('commission') ?? 0);
+        $payslip->commissiontax             = (float)($getP('commissiontax') ?? $getP('commission_tax') ?? 0);
 
         return $payslip;
     }

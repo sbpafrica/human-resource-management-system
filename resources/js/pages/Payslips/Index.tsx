@@ -1350,7 +1350,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td></td>
         </tr>
         <tr>
-            <td colSpan={2} className="p-2">SSNIT</td>
+            <td colSpan={2} className="p-2">SSNIT (0.5%)</td>
             <td></td>
             <td></td>
             <td className="p-2 text-center">{(payslip.ssnit_ee ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -2140,22 +2140,24 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td></td>
         </tr>
         <tr>
-            <td colSpan={2} className="p-2">SSNIT</td>
+            <td colSpan={2} className="p-2">SSNIT (0.5%)</td>
             <td></td>
             <td></td>
             <td className="p-2 text-center">{Number(payslip.ssnitpay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
         </tr>
+        {Number(payslip.petra ?? payslip.petra_5_percent ?? 0) > 0 && (
+            <tr>
+                <td colSpan={2} className="p-2">Petra (5%)</td>
+                <td></td>
+                <td></td>
+                <td className="p-2 text-center">{Number(payslip.petra ?? payslip.petra_5_percent ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            </tr>
+        )}
         <tr>
             <td colSpan={2} className="p-2">PAYE</td>
             <td></td>
             <td></td>
             <td className="p-2 text-center">{Number(payslip.totaltax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
-        </tr>
-        <tr>
-            <td colSpan={2} className="p-2">Salary Loan</td>
-            <td></td>
-            <td></td>
-            <td className="p-2 text-center">{Number(payslip.loans ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Annual Bonus</td>
@@ -2168,6 +2170,18 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td></td>
             <td></td>
             <td className="p-2 text-center">{Number(payslip['13thtax'] ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+        </tr>
+        <tr>
+            <td colSpan={2} className="p-2">Salary Loan</td>
+            <td></td>
+            <td></td>
+            <td className="p-2 text-center">{Number(payslip.loans ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+        </tr>
+        <tr>
+            <td colSpan={2} className="p-2">Commission Tax</td>
+            <td></td>
+            <td></td>
+            <td className="p-2 text-center">{Number(payslip.commissiontax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
         </tr>
         <tr style={{ backgroundColor: '#3498db', color: 'white' }}>
             <td colSpan={3} className="p-2 font-bold">Total</td>
