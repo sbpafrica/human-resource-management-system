@@ -67,6 +67,15 @@
             <td>Department</td>
             <td>{{ $payslip->department ?? $payslip->dept ?? $payslip->workarea ?? $payslip->work_location ?? '-' }}</td>
         </tr>
+        @if(!empty($payslip->start_date) && $payslip->start_date !== '-')
+        <tr>
+            <td>Start Date</td>
+            <td>{{ $payslip->start_date }}</td>
+            <td></td>
+            <td></td>
+            <td></td>
+        </tr>
+        @endif
         <tr>
             <th colspan="2" class="header" style="text-align: center;">Item</th>
             <th class="header" style="text-align: center;">Description/Days/Hours</th>
@@ -75,7 +84,7 @@
         </tr>
         <tr>
             <td colspan="2">Basic Salary</td>
-            <td style="text-align: right;">{{ data_get($payslip, 'workdays', 0) ?: '-' }}</td>
+            <td style="text-align: right;">{{ data_get($payslip, 'workdays', 0) ?: (data_get($payslip, 'description') ?: (data_get($payslip, 'start_date') ? 'Start: ' . data_get($payslip, 'start_date') : '')) }}</td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'basic_earned', data_get($payslip, 'basic', 0)), 2) }}</td>
             <td></td>
         </tr>
@@ -134,36 +143,46 @@
             <td></td>
         </tr>
         @endif
+        @if((float)data_get($payslip, 'performstand', 0) > 0)
         <tr>
             <td colspan="2">Performance Bonus</td>
             <td style="text-align: right;">{{ data_get($payslip, 'coefficient', 0) ?: '-' }}</td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'performstand', 0), 2) }}</td>
             <td></td>
         </tr>
+        @endif
+        @if((float)data_get($payslip, 'normalovertime', data_get($payslip, 'otworkingday', 0)) > 0)
         <tr>
             <td colspan="2">Overtime Weekday</td>
             <td style="text-align: right;">{{ data_get($payslip, 'weekdaysOT', data_get($payslip, 'normalOThrs', data_get($payslip, 'otworkdays', 0))) ?: '-' }}</td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'normalovertime', data_get($payslip, 'otworkingday', 0)), 2) }}</td>
             <td></td>
         </tr>
+        @endif
+        @if((float)data_get($payslip, 'saturdayovertime', data_get($payslip, 'otholiday', 0)) > 0)
         <tr>
             <td colspan="2">Overtime Weekend/Holiday</td>
             <td style="text-align: right;">{{ data_get($payslip, 'weekendOT', data_get($payslip, 'weekendOThrs', data_get($payslip, 'otweekend', 0))) ?: '-' }}</td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'saturdayovertime', data_get($payslip, 'otholiday', 0)), 2) }}</td>
             <td></td>
         </tr>
+        @endif
+        @if((float)data_get($payslip, 'other', 0) > 0)
         <tr>
             <td colspan="2">Other Income</td>
             <td></td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'other', 0), 2) }}</td>
             <td></td>
         </tr>
+        @endif
+        @if((float)data_get($payslip, 'commission', 0) > 0)
         <tr>
             <td colspan="2">Commission</td>
             <td></td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'commission', 0), 2) }}</td>
             <td></td>
         </tr>
+        @endif
         @if((float)data_get($payslip, 'quarterlybonus', 0) > 0)
         <tr>
             <td colspan="2">Quarterly Bonus</td>
@@ -186,12 +205,14 @@
             <td style="text-align: center; font-weight: bold;">{{ number_format((float)data_get($payslip, 'grosspay', data_get($payslip, 'totalamount', data_get($payslip, 'gross', 0))), 2) }}</td>
             <td></td>
         </tr>
+        @if((float)data_get($payslip, 'annaulbonus', 0) > 0)
         <tr>
             <td colspan="2">Annual Bonus</td>
             <td></td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'annaulbonus', 0), 2) }}</td>
             <td></td>
         </tr>
+        @endif
         <tr>
             <td colspan="2">SSNIT</td>
             <td></td>
@@ -222,30 +243,38 @@
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'employeepf', data_get($payslip, 'provident_fund', 0)), 2) }}</td>
         </tr>
         @endif
+        @if((float)data_get($payslip, 'leavededuction', 0) > 0 || (float)data_get($payslip, 'leavedays', 0) > 0)
         <tr>
             <td colspan="2">Leave</td>
             <td style="text-align: center;">{{ data_get($payslip, 'leavedays', 0) ?: '-' }}</td>
             <td></td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'leavededuction', 0), 2) }}</td>
         </tr>
+        @endif
+        @if((float)data_get($payslip, 'otherdeduction', data_get($payslip, 'deductions', 0)) > 0)
         <tr>
             <td colspan="2">Other Deduction</td>
+            <td style="text-align: center;">{{ data_get($payslip, 'deduction_description', data_get($payslip, 'description', '')) }}</td>
             <td></td>
-            <td></td>
-            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'otherdeduction', 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'otherdeduction', data_get($payslip, 'deductions', 0)), 2) }}</td>
         </tr>
+        @endif
+        @if((float)data_get($payslip, 'loan', 0) > 0)
         <tr>
             <td colspan="2">Loan</td>
             <td></td>
             <td></td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'loan', 0), 2) }}</td>
         </tr>
+        @endif
+        @if((float)data_get($payslip, 'annaultax', 0) > 0)
         <tr>
             <td colspan="2">Annual Tax</td>
             <td></td>
             <td></td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'annaultax', 0), 2) }}</td>
         </tr>
+        @endif
         <tr>
             <td colspan="3" class="total">Total</td>
             <td class="total" style="text-align: center;">

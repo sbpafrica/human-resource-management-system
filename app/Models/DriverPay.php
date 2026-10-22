@@ -14,24 +14,27 @@ class DriverPay extends Model
 
     protected $fillable = [
         'employ', 'name', 'report', 'dept', 'dob', 'joindate', 'ssnitnum',
-        'age', 'remarks', 'salary', 'week', 'basic', 'allowance',
-        'sat', 'satOT', 'ssfyeed', 'ssfyerd', 'paye', 'ottax',
+        'age', 'remarks', 'new_basic', 'salary', 'week', 'basic', 'allowance',
+        'sat', 'satOT', 'basic_all', 'ssfyee', 'ssfyer', 'ssfyeed', 'ssfyerd', 'ottax', 'taxable', 'paye',
         'advance', 'totaldeduct', 'netpay', 'servicecharge'
     ];
 
     protected $casts = [
         'age'           => 'double',
         'remarks'       => 'integer',
+        'new_basic'     => 'double',
         'salary'        => 'integer',
         'week'          => 'integer',
         'basic'         => 'double',
         'allowance'     => 'double',
         'sat'           => 'double',
         'satOT'         => 'double',
+        'basic_all'     => 'double',
         'ssfyeed'       => 'double',
         'ssfyerd'       => 'double',
-        'paye'          => 'double',
         'ottax'         => 'double',
+        'taxable'       => 'double',
+        'paye'          => 'double',
         'advance'       => 'double',
         'totaldeduct'   => 'double',
         'netpay'        => 'double',
@@ -60,23 +63,26 @@ class DriverPay extends Model
                     `ssnitnum` VARCHAR(50) NULL,
                     `age` DOUBLE NULL DEFAULT 0,
                     `remarks` INT NULL DEFAULT 0,
+                    `new_basic` DOUBLE NULL DEFAULT 0,
                     `salary` INT NULL DEFAULT 0,
                     `week` INT NULL DEFAULT 0,
                     `basic` DOUBLE NULL DEFAULT 0,
                     `allowance` DOUBLE NULL DEFAULT 0,
                     `sat` DOUBLE NULL DEFAULT 0,
                     `satOT` DOUBLE NULL DEFAULT 0,
+                    `basic_all` DOUBLE NULL DEFAULT 0,
                     `ssfyee` DOUBLE NULL DEFAULT 0,
                     `ssfyer` DOUBLE NULL DEFAULT 0,
                     `ssfyeed` DOUBLE NULL DEFAULT 0,
                     `ssfyerd` DOUBLE NULL DEFAULT 0,
-                    `paye` DOUBLE NULL DEFAULT 0,
                     `ottax` DOUBLE NULL DEFAULT 0,
+                    `taxable` DOUBLE NULL DEFAULT 0,
+                    `paye` DOUBLE NULL DEFAULT 0,
                     `advance` DOUBLE NULL DEFAULT 0,
                     `totaldeduct` DOUBLE NULL DEFAULT 0,
                     `netpay` DOUBLE NULL DEFAULT 0,
                     `servicecharge` DOUBLE NULL DEFAULT 0
-                ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             ");
         }
     }

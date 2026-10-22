@@ -174,7 +174,22 @@ class TwelliumPinController extends Controller
             'password' => $pincode,
         ]);
 
-        return redirect()->back()->with('success', "User '{$staffId}' added successfully with PIN: {$pincode}");
+        $message = "User '{$staffId}' added successfully with PIN: {$pincode}.";
+
+        $phone = $this->resolveEmployeePhone($staffId);
+        if ($phone) {
+            $smsText = "Click https://employeeportal.sbpafrica.group to access your payslips.\nStaff ID: {$staffId}\nPIN: {$pincode}";
+            $result = $this->sendSingleSMS($phone, $smsText);
+            if ($result['success']) {
+                $message .= " SMS sent automatically to {$phone}.";
+            } else {
+                $message .= " (Failed to send SMS: {$result['error']}).";
+            }
+        } else {
+            $message .= " (No phone number found in contact records to send SMS).";
+        }
+
+        return redirect()->back()->with('success', $message);
     }
 
     public function changePin(Request $request)
@@ -399,11 +414,11 @@ class TwelliumPinController extends Controller
                 $existingIds[$staffId] = true;
                 $successCount++;
 
-                // If phone contact is available, send SMS
-                $contact = EmployeeContact::where('staffid', $staffId)->first();
-                if ($contact && $contact->phone) {
+                // If phone contact is available, send SMS automatically
+                $phone = $this->resolveEmployeePhone($staffId);
+                if ($phone) {
                     $smsText = "Click https://employeeportal.sbpafrica.group to access your payslips.\nStaff ID: {$staffId}\nPIN: {$pinCode}";
-                    $smsResult = $this->sendSingleSMS($contact->phone, $smsText);
+                    $smsResult = $this->sendSingleSMS($phone, $smsText);
                     if ($smsResult['success']) {
                         $smsSuccessCount++;
                     } else {
@@ -573,5 +588,14 @@ class TwelliumPinController extends Controller
             Log::error('mNotify Exception: ' . $e->getMessage());
             return ['success' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    private function resolveEmployeePhone(string $staffId): ?string
+    {
+        $phone = DB::table('employeecontact')->where('staffid', $staffId)->value('phone');
+        if (empty($phone)) {
+            $phone = DB::table('employees')->where('staff_id', $staffId)->value('phone1');
+        }
+        return !empty($phone) ? trim((string)$phone) : null;
     }
 }

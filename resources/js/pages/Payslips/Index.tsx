@@ -341,7 +341,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         const total = selectedEmployees.length;
         const targetMonth = data.month || month;
 
-        setToastMessage(`Generating ZIP for ${total} payslip(s)... Your download will begin shortly.`);
+        setToastMessage(`Generating bulk payslips for ${total} employee(s) (3 per page)... Your download will begin shortly.`);
         setToastType("success");
         setShowToast(true);
 
@@ -625,7 +625,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                                         className="bg-blue-500 hover:bg-blue-600 text-white"
                                     >
                                         <Download className="h-4 w-4 mr-2" />
-                                        {isDownloadingMultiple ? "Downloading..." : "Download PDFs"}
+                                        {isDownloadingMultiple ? "Downloading..." : "Download Bulk PDFs (3 per page)"}
                                     </Button>
                                 </div>
                             </div>

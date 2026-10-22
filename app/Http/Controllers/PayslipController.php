@@ -100,6 +100,8 @@ class PayslipController extends Controller
             'olamfood'      => 'olam-food-ingredients',
             'gmoney'        => 'g-money-financial-services-limited',
             'avara'         => 'avara-rc-limited',
+            'transburkina'  => 'transsion-bfa',
+            'transsionbfa'  => 'transsion-bfa',
             'civ'           => 'civ-bunge',
             'togobunge'     => 'togo-bunge',
             'beninbunge'    => 'benin-bunge',
@@ -282,6 +284,9 @@ class PayslipController extends Controller
         if (str_contains($dbName, 'avara') || str_contains($slug, 'avara') || str_contains($shortName, 'avara')) {
             return 'payslip.avara-pdf';
         }
+        if (str_contains($dbName, 'driver') || str_contains($slug, 'driver') || str_contains($shortName, 'driver')) {
+            return 'payslip.drivers-pdf';
+        }
         if (str_contains($dbName, 'melcom') || str_contains($slug, 'melcom')) {
             return 'payslip.melcom-pdf';
         }
@@ -321,11 +326,36 @@ class PayslipController extends Controller
         if (str_contains($dbName, 'ofibwh') || str_contains($slug, 'ofi-bean-warehouse') || str_contains($slug, 'ofibwh') || str_contains($dbName, 'olambwh') || str_contains($shortName, 'bean wh')) {
             return 'payslip.ofibwh-pdf';
         }
-        if (str_contains($dbName, 'driver') || str_contains($slug, 'driver') || str_contains($shortName, 'driver')) {
-            return 'payslip.drivers-pdf';
+        if (str_contains($dbName, 'nyonkopa') || str_contains($slug, 'nyonkopa') || str_contains($shortName, 'nyonkopa')) {
+            return 'payslip.nyonkopa-pdf';
+        }
+        if (str_contains($dbName, 'transburkina') || str_contains($slug, 'transburkina') || str_contains($slug, 'transsion-bfa') || str_contains($dbName, 'transsionbfa') || str_contains($shortName, 'burkina')) {
+            return 'payslip.transburkina-pdf';
         }
 
         return 'payslip.pdf';
+    }
+
+    private function resolveBulkPayslipView($client): string
+    {
+        $dbName    = strtolower((string)($client->client_dbname ?? ''));
+        $slug      = strtolower((string)($client->slug ?? ''));
+        $shortName = strtolower((string)($client->short_name ?? ''));
+
+        if (str_contains($dbName, 'driver') || str_contains($slug, 'driver') || str_contains($shortName, 'driver')) {
+            return 'payslip.drivers-bulk-pdf';
+        }
+        if (str_contains($dbName, 'melcom') || str_contains($slug, 'melcom')) {
+            return 'payslip.melcom-bulk-pdf';
+        }
+        if (str_contains($dbName, 'nyonkopa') || str_contains($slug, 'nyonkopa') || str_contains($shortName, 'nyonkopa')) {
+            return 'payslip.nyonkopa-bulk-pdf';
+        }
+        if (str_contains($dbName, 'transburkina') || str_contains($slug, 'transburkina') || str_contains($slug, 'transsion-bfa') || str_contains($dbName, 'transsionbfa') || str_contains($shortName, 'burkina')) {
+            return 'payslip.transburkina-bulk-pdf';
+        }
+
+        return 'payslip.general-bulk-pdf';
     }
 
     /**
@@ -456,6 +486,11 @@ class PayslipController extends Controller
             ?? $getP('workarea') 
             ?? $getP('1stlevel') 
             ?? ($getP('city') ?? '-');
+
+        $payslip->work_location         = $getP('work_location') ?? $getP('worklocation') ?? $getP('location') ?? $payslip->department;
+        $payslip->start_date            = $getP('start_date') ?? $getP('startdate') ?? $getP('date_joined') ?? null;
+        $payslip->description           = $getP('description') ?? $getP('descriptions') ?? null;
+        $payslip->deduction_description = $getP('deduction_description') ?? $getP('deduction_desc') ?? null;
     
         // ---------- BASIC & WORK DAYS ----------
         $daysWorked = $getP('days_worked')
@@ -464,13 +499,16 @@ class PayslipController extends Controller
             ?? $getP('workdays') 
             ?? $getP('numberofdaysworked') 
             ?? $getP('actualdays') 
+            ?? $getP('week')
             ?? $getP('noofdays') 
             ?? $getP('total1')
             ?? $getP('actualwork') 
             ?? $getP('total_weekdays') 
             ?? $getP('legalworkdays') 
             ?? 0;
-        $payslip->workdays = is_numeric($daysWorked) ? (float)$daysWorked : $daysWorked;
+        $payslip->workdays   = is_numeric($daysWorked) ? (float)$daysWorked : $daysWorked;
+        $payslip->actualdays = $payslip->workdays;
+        $payslip->week       = $getP('week') ?? $payslip->workdays;
 
         $rate = (float)(
             $getP('daily_rate') 
@@ -606,6 +644,7 @@ class PayslipController extends Controller
             ?? $getP('weekendOThrs') 
             ?? $getP('weekendhr')
             ?? $getP('weekendtonage')
+            ?? $getP('sat')
             ?? 0;
 
         $holidayOtHrs = $getP('holidayovertimehr')
@@ -615,11 +654,13 @@ class PayslipController extends Controller
             ?? $getP('holiday_ot_hrs') 
             ?? $getP('holidayOThrs') 
             ?? $getP('otweekend') 
+            ?? $getP('holidayot')
             ?? 0;
 
         $payslip->weekdaysOT       = $normalOtHrs;
         $payslip->weekendOT        = $saturdayOtHrs;
         $payslip->holiday          = $holidayOtHrs;
+        $payslip->sat              = $saturdayOtHrs;
 
         // ---------- OVERTIME AMOUNTS MAPPING ----------
         $normalOtAmt = $getP('weekdayovertimetotal')
@@ -651,6 +692,8 @@ class PayslipController extends Controller
             ?? $getP('saturdayovertime') 
             ?? $getP('Saturday Overtime') 
             ?? $getP('saturday_overtime') 
+            ?? $getP('satOT')
+            ?? $getP('satot')
             ?? ($getP('weekendhr') !== null || $getP('weekendtonage') !== null ? $getP('amount') : null)
             ?? $getP('weekendot') 
             ?? 0;
@@ -666,6 +709,7 @@ class PayslipController extends Controller
         $payslip->normalovertime   = (float)$normalOtAmt;
         $payslip->saturdayovertime = (float)$saturdayOtAmt;
         $payslip->holidayotamt     = (float)$holidayOtAmt;
+        $payslip->satOT            = (float)$saturdayOtAmt;
         
         $totalOvertime = (float)$normalOtAmt + (float)$saturdayOtAmt + (float)$holidayOtAmt;
         $payslip->overtime = (float)($getP('overtime') ?? $getP('totalovertimeamount') ?? $getP('totalovertimeamountghc') ?? $totalOvertime);
@@ -693,8 +737,12 @@ class PayslipController extends Controller
             ?? $getP('ssnitee05percent') 
             ?? $getP('ssf_13_percent') 
             ?? $getP('ssf') 
+            ?? $getP('ssfyeed')
+            ?? $getP('ssfyee')
             ?? 0
         );
+        $payslip->ssfyeed = $payslip->ssnitee;
+        $payslip->ssfyee  = $payslip->ssnitee;
 
         // Petra
         $rawPetraFromDb = $getP('petra') ?? $getP('petra_5_percent') ?? $getP('petrafund') ?? $getP('tier3') ?? $getP('tier2') ?? null;
@@ -723,24 +771,31 @@ class PayslipController extends Controller
         $payslip->provident_fund = $payslip->employeepf;
 
         $payslip->otherdeduction = (float) (
-            $getP('deductions_surcharge_student_loan_ghc')
+            $getP('deductions')
+            ?? $getP('deduction')
+            ?? $getP('deductions_surcharge_student_loan_ghc')
             ?? $getP('otherdeduction') 
             ?? $getP('otherdeductions') 
             ?? $getP('student_loan')
             ?? $getP('surcharge') 
             ?? 0
         );
+        $payslip->deductions = $payslip->otherdeduction;
+        $payslip->deduction  = $payslip->otherdeduction;
 
         $payslip->overtimetax = (float) (
             $getP('overtime_tax_ghc')
             ?? $getP('overtimetax')
+            ?? $getP('ottax')
             ?? 0
         );
+        $payslip->ottax = $payslip->overtimetax;
 
         $totalDeductionsVal = $getP('total_deductions')
             ?? $getP('totaldeductions')
             ?? $getP('totaldeduction')
             ?? $getP('total_deduction')
+            ?? $getP('totaldeduct')
             ?? null;
 
         if ($totalDeductionsVal !== null && (float)$totalDeductionsVal > 0) {
@@ -800,6 +855,33 @@ class PayslipController extends Controller
         // For OFI Tempering (olamtem), true gross is totalamount + transport + nightallowance
         if ($grossVal == 0 && $getP('totalamount') !== null && ($getP('rate') !== null || $getP('total2') !== null)) {
             $grossVal = (float)$getP('totalamount') + (float)($getP('transport') ?? 0) + (float)($getP('nightallowance') ?? 0);
+        }
+
+        // For Drivers (driverssnit), gross salary is basic + allowance + saturday overtime
+        $payslip->new_basic = (float)($getP('new_basic') ?? $getP('salary') ?? 0);
+        $payslip->basic_all = (float)($getP('basic_all') ?? (($payslip->basic ?? 0) + ($payslip->allowance ?? 0)));
+        $payslip->taxable   = (float)($getP('taxable') ?? 0);
+
+        if ($getP('satOT') !== null || $getP('sat') !== null || str_contains($client->client_dbname ?? '', 'driver') || str_contains($client->slug ?? '', 'driver')) {
+            $driverBasic = (float)($payslip->basic ?? 0);
+            if ($payslip->petra == 0 && $driverBasic > 0) {
+                $payslip->petra           = round($driverBasic * 0.05, 2);
+                $payslip->petra_5_percent = $payslip->petra;
+                $payslip->PETRA_5         = $payslip->petra;
+                $payslip->petrafund       = $payslip->petra;
+                $payslip->tier2           = $payslip->petra;
+            }
+            if ($driverBasic > 0 && ($payslip->ssnitee == 0 || $payslip->ssnitee == (float)($payslip->ssfyeed ?? 0))) {
+                $payslip->ssnitee = round($driverBasic * 0.005, 2);
+                $payslip->ssnit   = $payslip->ssnitee;
+            }
+        }
+
+        if (($grossVal == 0 || $getP('satOT') !== null) && ($getP('week') !== null || $getP('satOT') !== null)) {
+            $driverGross = (float)($payslip->basic ?? 0) + (float)($payslip->allowance ?? $payslip->transport ?? 0) + (float)($payslip->saturdayovertime ?? 0);
+            if ($driverGross > 0) {
+                $grossVal = $driverGross;
+            }
         }
 
         if ($grossVal == 0) {
@@ -876,6 +958,104 @@ class PayslipController extends Controller
         $payslip->overtime_amount           = (float)($getP('overtime_amount') ?? $payslip->overtime ?? 0);
         $payslip->commission                = (float)($getP('commission') ?? 0);
         $payslip->commissiontax             = (float)($getP('commissiontax') ?? $getP('commission_tax') ?? 0);
+
+        // Transsion BFA / Burkina Faso statutory deductions & payroll items
+        $isTransburkina = str_contains($client->client_dbname ?? '', 'transburkina') 
+            || str_contains($client->slug ?? '', 'transburkina') 
+            || str_contains($client->slug ?? '', 'transsion-bfa') 
+            || str_contains($client->client_dbname ?? '', 'transsionbfa') 
+            || str_contains($client->short_name ?? '', 'burkina');
+
+        $cnss = (float)(
+            $getP('cnsssalaire') 
+            ?? $getP('cnss') 
+            ?? $getP('cnss_salaire') 
+            ?? $getP('cnssexonere') 
+            ?? $getP('cnss_exonere')
+            ?? $getP('cnss_ee')
+            ?? 0
+        );
+        if ($cnss == 0 && $isTransburkina && ($payslip->basic ?? 0) > 0) {
+            $cnss = round((float)$payslip->basic * 0.055, 2);
+        }
+        $payslip->cnss = $cnss;
+
+        $fsp = (float)(
+            $getP('wht') 
+            ?? $getP('fsp') 
+            ?? $getP('1% fsp') 
+            ?? $getP('fonds_de_soutien_patriotique') 
+            ?? $getP('soutien_patriotique')
+            ?? 0
+        );
+        if ($fsp == 0 && $isTransburkina) {
+            $napBase = (float)($getP('nap') ?? 0);
+            $finalNet = (float)($getP('finalnetpay') ?? 0);
+            if ($napBase > 0 && $finalNet > 0 && $napBase > $finalNet) {
+                $fsp = round($napBase - $finalNet, 2);
+            } elseif ($napBase > 0) {
+                $fsp = round($napBase * 0.01, 2);
+            }
+        }
+        $payslip->fsp = $fsp;
+        $payslip->wht = $fsp;
+
+        $iuts = (float)(
+            $getP('iutsnet') 
+            ?? $getP('iuts_net') 
+            ?? $getP('iutssalaire') 
+            ?? $getP('iuts') 
+            ?? $getP('iutsimpos') 
+            ?? 0
+        );
+        if ($iuts == 0 && $isTransburkina && $grossVal > 0 && ($getP('nap') !== null || $getP('finalnetpay') !== null)) {
+            $napVal = (float)($getP('nap') ?? ((float)$getP('finalnetpay') + $fsp));
+            $otherD = (float)($getP('otherdeduct') ?? 0) + (float)($getP('lateness') ?? 0) + (float)($getP('casual') ?? 0);
+            $calcIuts = round($grossVal - $cnss - $napVal - $otherD, 2);
+            if ($calcIuts > 0) {
+                $iuts = $calcIuts;
+            }
+        }
+        $payslip->iuts = $iuts;
+
+        $payslip->lwork       = (float)($getP('lwork') ?? $getP('legalworkdays') ?? $getP('legal_work_days') ?? 0);
+        $payslip->acwork      = (float)($getP('acwork') ?? $getP('actualwork') ?? $getP('actual_work_days') ?? 0);
+        $payslip->kpiindex    = $getP('kpiindex') ?? $getP('kpi_index') ?? null;
+        $payslip->overtimes   = (float)($getP('overtimes') ?? $getP('overtime') ?? 0);
+        $payslip->housing     = (float)($getP('housing') ?? 0);
+        $payslip->work        = (float)($getP('work') ?? 0);
+        $payslip->kpiactual   = (float)($getP('kpiactual') ?? $getP('kpistandard') ?? 0);
+        $payslip->progra      = (float)($getP('progra') ?? 0);
+        $payslip->salescomm   = (float)($getP('salescomm') ?? 0);
+        $payslip->lateness    = (float)($getP('lateness') ?? 0);
+        $payslip->casual      = (float)($getP('casual') ?? 0);
+        $payslip->otherdeduct = (float)($getP('otherdeduct') ?? 0);
+        $payslip->nap         = (float)($getP('nap') ?? 0);
+        $payslip->finalnetpay = (float)($getP('finalnetpay') ?? 0);
+
+        $cnssNoVal = $getP('cnssno') ?? $getP('cnss_no') ?? $getP('cnssnum') ?? $ssnit ?? '-';
+        if (!empty($cnssNoVal) && $cnssNoVal !== '-') {
+            $payslip->cnssno       = (string)$cnssNoVal;
+            $payslip->ssnit_number = (string)$cnssNoVal;
+            $payslip->SSNIT        = (string)$cnssNoVal;
+        } else {
+            $payslip->cnssno = '-';
+        }
+
+        if ($isTransburkina) {
+            $payslip->ssnitee          = $payslip->cnss;
+            $payslip->paye             = $payslip->iuts;
+            $payslip->totaldeductions  = round($payslip->cnss + $payslip->iuts + $payslip->fsp + $payslip->otherdeduct + $payslip->lateness + $payslip->casual, 2);
+            $payslip->total_deductions = $payslip->totaldeductions;
+            $payslip->totaldeduction   = $payslip->totaldeductions;
+            if ($payslip->finalnetpay > 0) {
+                $payslip->netpay        = $payslip->finalnetpay;
+                $payslip->take_home_pay = $payslip->finalnetpay;
+            } elseif ($payslip->nap > 0) {
+                $payslip->netpay        = round($payslip->nap - $payslip->fsp, 2);
+                $payslip->take_home_pay = $payslip->netpay;
+            }
+        }
 
         return $payslip;
     }
@@ -1453,6 +1633,53 @@ class PayslipController extends Controller
 
                 $logoPath = public_path('images/sbpafricalogo.png');
                 $cachedLogoData = file_exists($logoPath) ? 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath)) : null;
+
+                $format = $request->input('format', 'pdf');
+
+                // 3 payslips per page bulk PDF download
+                if ($format !== 'zip') {
+                    $preparedData = [];
+                    foreach ($staffIds as $id) {
+                        $payslip = $payslips->get($id);
+                        if (!$payslip) continue;
+
+                        $ssnit   = $ssnits->get($id) ?? '-';
+                        $payslip = $this->normalizePayslip($payslip, $client, $ssnit);
+                        $bank    = $banks->get($id);
+
+                        $preparedData[] = [
+                            'payslip' => $payslip,
+                            'bank'    => [
+                                'bankname' => (!empty(data_get($bank, 'bank')) && data_get($bank, 'bank') !== '-') ? data_get($bank, 'bank') : ($payslip->bank ?? '-'),
+                                'name'     => (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') ? data_get($bank, 'name') : ($payslip->name ?? '-'),
+                                'alcnum'   => (!empty(data_get($bank, 'account')) && data_get($bank, 'account') !== '-') ? data_get($bank, 'account') : ($payslip->accountnumber ?? '-'),
+                                'branch'   => (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') ? data_get($bank, 'branch') : ($payslip->branch ?? '-'),
+                            ],
+                            'ssnit'   => $ssnit,
+                        ];
+                    }
+
+                    if (empty($preparedData)) {
+                        return response()->json(['error' => 'No payslips found for selected employees.'], 404);
+                    }
+
+                    $bulkView = $this->resolveBulkPayslipView($client);
+                    $chunks   = array_chunk($preparedData, 3);
+
+                    $pdf = Pdf::loadView($bulkView, [
+                        'chunks'         => $chunks,
+                        'formattedMonth' => $formattedMonth,
+                        'logoData'       => $cachedLogoData,
+                        'client'         => $client,
+                    ])->setOptions([
+                        'isRemoteEnabled' => false,
+                        'isFontSubsettingEnabled' => false,
+                        'defaultFont' => 'Helvetica',
+                    ])->setPaper('a4', 'portrait');
+
+                    $filename = "{$safeShort}_Bulk_Payslips_{$month}.pdf";
+                    return $pdf->download($filename);
+                }
 
                 $tempDir = storage_path('app/tmp/bulk_' . uniqid());
                 if (!is_dir($tempDir)) {

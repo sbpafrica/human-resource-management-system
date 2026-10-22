@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
@@ -115,7 +116,23 @@ class EmployeePinController extends Controller
             'pincode'  => $pincode,
         ]);
 
-        return redirect()->back()->with('success', "Employee {$staffId} added successfully with PIN: {$pincode}");
+        $msg = "Employee {$staffId} added successfully with PIN: {$pincode}.";
+
+        // Automatically dispatch SMS if phone number is found
+        $phone = $this->resolveEmployeePhone($staffId);
+        if ($phone) {
+            $msgText = "Click on the link below to check your Pay slip\nStaffID: {$staffId}\nPinCode: {$pincode}\nDetails: https://employee.sbpafrica.group";
+            $smsResult = $this->sendSingleSMS($phone, $msgText);
+            if ($smsResult['success']) {
+                $msg .= " SMS sent automatically to {$phone}.";
+            } else {
+                $msg .= " (Could not send SMS: {$smsResult['error']})";
+            }
+        } else {
+            $msg .= " (No phone number found in contact records to send SMS).";
+        }
+
+        return redirect()->back()->with('success', $msg);
     }
 
     public function sendSms(Request $request)
@@ -134,20 +151,43 @@ class EmployeePinController extends Controller
             return redirect()->back()->with('error', "Employee with Staff ID '{$staffId}' not found.");
         }
 
-        $pincode   = $pinRecord->pincode;
-        $apiKey    = (string) config('services.mnotify.api_key', config('services.mnotify.key'));
-        $senderId  = (string) config('services.mnotify.sender_id', 'SBPAFRICA');
-        $msgText   = "Click on the link below to check your Pay slip\nStaffID: {$staffId}\nPinCode: {$pincode}\nDetails: https://employee.sbpafrica.group";
+        $pincode = $pinRecord->pincode;
+        $msgText = "Click on the link below to check your Pay slip\nStaffID: {$staffId}\nPinCode: {$pincode}\nDetails: https://employee.sbpafrica.group";
 
-        // Clean and format phone number for delivery
-        $cleanPhone = preg_replace('/\D/', '', $phone);
-        if (str_starts_with($cleanPhone, '0') && strlen($cleanPhone) === 10) {
-            $formattedPhone = '+233' . substr($cleanPhone, 1);
-        } elseif (str_starts_with($cleanPhone, '233') && strlen($cleanPhone) === 12) {
-            $formattedPhone = '+' . $cleanPhone;
-        } else {
-            $formattedPhone = $phone;
+        $res = $this->sendSingleSMS($phone, $msgText);
+        if ($res['success']) {
+            return redirect()->back()->with('success', "SMS sent successfully to {$phone}.");
         }
+
+        return redirect()->back()->with('error', "Failed to send SMS to {$phone}: " . ($res['error'] ?? 'Unknown error'));
+    }
+
+    private function isValidPhoneNumber(string $phone)
+    {
+        $phone = preg_replace('/\s+/', '', $phone);
+        $phone = preg_replace('/[^\d+]/', '', $phone);
+
+        if (preg_match('/^0\d{9}$/', $phone)) {
+            return '+233' . substr($phone, 1);
+        }
+        if (preg_match('/^\+\d{10,15}$/', $phone)) {
+            return $phone;
+        }
+        if (preg_match('/^233\d{9}$/', $phone)) {
+            return '+' . $phone;
+        }
+        return false;
+    }
+
+    private function sendSingleSMS(string $phoneNumber, string $message): array
+    {
+        $validatedPhone = $this->isValidPhoneNumber($phoneNumber);
+        if ($validatedPhone === false) {
+            return ['success' => false, 'error' => "Invalid phone number format: {$phoneNumber}"];
+        }
+
+        $apiKey   = (string) config('services.mnotify.api_key', config('services.mnotify.key'));
+        $senderId = (string) config('services.mnotify.sender_id', 'SBPAFRICA');
 
         try {
             // Primary: mNotify v2 JSON API
@@ -155,9 +195,9 @@ class EmployeePinController extends Controller
                 'Content-Type' => 'application/json',
                 'Accept'       => 'application/json',
             ])->post("https://api.mnotify.com/api/sms/quick?key=" . urlencode($apiKey), [
-                'recipient'     => [$formattedPhone],
+                'recipient'     => [$validatedPhone],
                 'sender'        => $senderId,
-                'message'       => $msgText,
+                'message'       => $message,
                 'is_schedule'   => false,
                 'schedule_date' => '',
             ]);
@@ -167,31 +207,36 @@ class EmployeePinController extends Controller
                 $status = strtolower((string)($data['status'] ?? ''));
                 $code = (string)($data['code'] ?? ($data['response_code'] ?? ''));
                 if ($status === 'success' || $code === '1000' || $code === '200' || $code === '2000') {
-                    return redirect()->back()->with('success', "SMS sent successfully to {$phone}.");
+                    return ['success' => true, 'error' => null];
                 }
             }
 
             // Fallback: legacy HTTP endpoint
             $fallback = Http::withoutVerifying()->timeout(20)->get('http://apps.mnotify.net/smsapi', [
                 'key'       => $apiKey,
-                'to'        => $formattedPhone,
-                'msg'       => $msgText,
+                'to'        => $validatedPhone,
+                'msg'       => $message,
                 'sender_id' => $senderId,
             ]);
 
             if ($fallback->successful() || str_contains(strtolower($fallback->body()), '1000') || str_contains(strtolower($fallback->body()), 'success')) {
-                return redirect()->back()->with('success', "SMS sent successfully to {$phone}.");
+                return ['success' => true, 'error' => null];
             }
 
-            Log::warning('mNotify SMS failed', [
-                'primary'  => $response->body(),
-                'fallback' => $fallback->body(),
-            ]);
-            return redirect()->back()->with('success', "SMS dispatched to {$phone}.");
+            return ['success' => false, 'error' => 'mNotify response error: ' . ($response->body() ?: $fallback->body())];
         } catch (\Exception $e) {
-            Log::error('mNotify SMS Exception: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Failed to communicate with SMS server.');
+            Log::error('mNotify Exception: ' . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    private function resolveEmployeePhone(string $staffId): ?string
+    {
+        $phone = DB::table('employeecontact')->where('staffid', $staffId)->value('phone');
+        if (empty($phone)) {
+            $phone = DB::table('employees')->where('staff_id', $staffId)->value('phone1');
+        }
+        return !empty($phone) ? trim((string)$phone) : null;
     }
 
     public function destroy($staffid)
@@ -288,6 +333,8 @@ class EmployeePinController extends Controller
 
             $successCount = 0;
             $errorCount = 0;
+            $smsSuccessCount = 0;
+            $smsFailedCount = 0;
 
             foreach ($validRows as $r) {
                 $staffid = $r['staffid'];
@@ -312,10 +359,30 @@ class EmployeePinController extends Controller
                 ]);
 
                 $successCount++;
+
+                // Automatically send SMS if phone contact is found
+                $phone = $this->resolveEmployeePhone($staffid);
+                if ($phone) {
+                    $msgText = "Click on the link below to check your Pay slip\nStaffID: {$staffid}\nPinCode: {$pincode}\nDetails: https://employee.sbpafrica.group";
+                    $smsRes = $this->sendSingleSMS($phone, $msgText);
+                    if ($smsRes['success']) {
+                        $smsSuccessCount++;
+                    } else {
+                        $smsFailedCount++;
+                    }
+                }
             }
 
             $msg = "Bulk upload completed! Imported: {$successCount} employee PIN(s).";
-            if ($errorCount) $msg .= " Errors: {$errorCount}.";
+            if ($smsSuccessCount > 0) {
+                $msg .= " Sent {$smsSuccessCount} SMS automatically.";
+            }
+            if ($smsFailedCount > 0) {
+                $msg .= " Failed to send {$smsFailedCount} SMS.";
+            }
+            if ($errorCount) {
+                $msg .= " Errors: {$errorCount}.";
+            }
 
             return redirect()->back()->with('success', $msg);
 

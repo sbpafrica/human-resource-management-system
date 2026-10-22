@@ -66,6 +66,7 @@ interface Props {
     to: number | null;
     total: number;
   };
+  autoPrintReceipt?: ReceiptItem | null;
   filters: {
     search: string;
     status: string;
@@ -88,6 +89,7 @@ interface Props {
   flash?: {
     success?: string;
     error?: string;
+    print_receipt_id?: number | string;
   };
 }
 
@@ -102,6 +104,7 @@ const DEFAULT_DESCRIPTIONS = ["Forms", "Medicals", "Police reports"];
 
 export default function ReceiptIndex({
   receipts,
+  autoPrintReceipt,
   filters,
   stats,
   totalRecords,
@@ -222,6 +225,17 @@ export default function ReceiptIndex({
     }
   }, [flash]);
 
+  useEffect(() => {
+    if (autoPrintReceipt) {
+      setSelectedReceipt(autoPrintReceipt);
+      setIsViewOpen(true);
+      const timer = setTimeout(() => {
+        printReceiptDocument(autoPrintReceipt);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [autoPrintReceipt]);
+
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearch(value);
@@ -287,6 +301,16 @@ export default function ReceiptIndex({
       {},
       {
         onFinish: () => setInitiatingId(null),
+      }
+    );
+  };
+
+  const handleMarkPaid = (id: number) => {
+    router.post(
+      route("receipts.mark-paid", id),
+      {},
+      {
+        preserveScroll: true,
       }
     );
   };
@@ -393,8 +417,7 @@ export default function ReceiptIndex({
     }
   };
 
-  const handlePrint = () => {
-    if (!selectedReceipt) return;
+  const printReceiptDocument = (item: ReceiptItem) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
@@ -402,7 +425,7 @@ export default function ReceiptIndex({
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Receipt #${selectedReceipt.receipt_number}</title>
+        <title>Receipt #${item.receipt_number}</title>
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 650px; margin: 0 auto; border: 2px solid #0284c7; border-radius: 8px; }
           .header { text-align: center; border-bottom: 2px solid #0284c7; padding-bottom: 15px; margin-bottom: 20px; }
@@ -430,29 +453,29 @@ export default function ReceiptIndex({
           <p>Official Payment Receipt</p>
         </div>
         <div class="receipt-title">
-          <div><strong>Date:</strong> ${selectedReceipt.receipt_date}</div>
-          <div class="no">RECEIPT #${selectedReceipt.receipt_number}</div>
+          <div><strong>Date:</strong> ${item.receipt_date}</div>
+          <div class="no">RECEIPT #${item.receipt_number}</div>
         </div>
         <table class="details-table">
-          <tr><td class="label">Received From:</td><td>${selectedReceipt.applicant_name}</td></tr>
-          <tr><td class="label">Contact / Phone:</td><td>${selectedReceipt.contact}</td></tr>
-          <tr><td class="label">Address:</td><td>${selectedReceipt.address}</td></tr>
-          <tr><td class="label">Position:</td><td>${selectedReceipt.position}</td></tr>
-          <tr><td class="label">Client / Company:</td><td>${selectedReceipt.client}</td></tr>
-          <tr><td class="label">Payment For:</td><td>${selectedReceipt.descriptions}</td></tr>
-          <tr><td class="label">Payment Mode:</td><td>${selectedReceipt.mode_of_payment}</td></tr>
-          <tr><td class="label">Status:</td><td>${selectedReceipt.status}</td></tr>
+          <tr><td class="label">Received From:</td><td>${item.applicant_name}</td></tr>
+          <tr><td class="label">Contact / Phone:</td><td>${item.contact}</td></tr>
+          <tr><td class="label">Address:</td><td>${item.address}</td></tr>
+          <tr><td class="label">Position:</td><td>${item.position}</td></tr>
+          <tr><td class="label">Client / Company:</td><td>${item.client}</td></tr>
+          <tr><td class="label">Payment For:</td><td>${item.descriptions}</td></tr>
+          <tr><td class="label">Payment Mode:</td><td>${item.mode_of_payment}</td></tr>
+          <tr><td class="label">Status:</td><td>${item.status}</td></tr>
         </table>
         <div class="amount-box">
           <div>TOTAL AMOUNT PAID</div>
-          <div class="amount">GHS ${Number(selectedReceipt.amount_paid).toFixed(2)}</div>
+          <div class="amount">GHS ${Number(item.amount_paid).toFixed(2)}</div>
         </div>
         <div class="footer">
           <div class="signature-box">
             <div class="signature-line">Applicant Signature</div>
           </div>
           <div class="signature-box">
-            <div><strong>${selectedReceipt.receiving_officer}</strong></div>
+            <div><strong>${item.receiving_officer}</strong></div>
             <div class="signature-line">Receiving Officer Signature</div>
           </div>
         </div>
@@ -466,6 +489,12 @@ export default function ReceiptIndex({
     setTimeout(() => {
       printWindow.print();
     }, 250);
+  };
+
+  const handlePrint = () => {
+    if (selectedReceipt) {
+      printReceiptDocument(selectedReceipt);
+    }
   };
 
   const hasActiveFilters =
@@ -816,16 +845,27 @@ export default function ReceiptIndex({
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
                               {item.status === "Pending" && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={initiatingId === item.id}
-                                  className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-800"
-                                  title="Pay with Paystack"
-                                  onClick={() => handlePaystackCheckout(item.id)}
-                                >
-                                  <CreditCard className="h-3.5 w-3.5" />
-                                </Button>
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-800"
+                                    title="Mark as Paid"
+                                    onClick={() => handleMarkPaid(item.id)}
+                                  >
+                                    <CheckCircle className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={initiatingId === item.id}
+                                    className="h-7 w-7 p-0 text-sky-600 hover:text-sky-800"
+                                    title="Pay with Paystack"
+                                    onClick={() => handlePaystackCheckout(item.id)}
+                                  >
+                                    <CreditCard className="h-3.5 w-3.5" />
+                                  </Button>
+                                </>
                               )}
                               <Button
                                 size="sm"
@@ -915,21 +955,30 @@ export default function ReceiptIndex({
                         <div><strong className="text-foreground">Officer:</strong> {item.receiving_officer}</div>
                       </div>
 
-                      <div className="flex items-center justify-end gap-2 pt-1 border-t">
+                      <div className="flex flex-wrap items-center justify-end gap-1.5 pt-1 border-t">
                         {item.status === "Pending" && (
-                          <Button
-                            size="sm"
-                            disabled={initiatingId === item.id}
-                            className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                            onClick={() => handlePaystackCheckout(item.id)}
-                          >
-                            <CreditCard className="h-3 w-3 mr-1" /> Pay Now
-                          </Button>
+                          <>
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs px-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                              onClick={() => handleMarkPaid(item.id)}
+                            >
+                              <CheckCircle className="h-3 w-3 mr-1" /> Mark Paid
+                            </Button>
+                            <Button
+                              size="sm"
+                              disabled={initiatingId === item.id}
+                              className="h-7 text-xs px-2 bg-sky-600 hover:bg-sky-700 text-white"
+                              onClick={() => handlePaystackCheckout(item.id)}
+                            >
+                              <CreditCard className="h-3 w-3 mr-1" /> Pay Now
+                            </Button>
+                          </>
                         )}
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7 text-xs px-2.5 text-sky-600"
+                          className="h-7 text-xs px-2 text-sky-600"
                           onClick={() => openViewModal(item)}
                         >
                           <Eye className="h-3 w-3 mr-1" /> View / Print
@@ -1169,11 +1218,15 @@ export default function ReceiptIndex({
                   <Label htmlFor="status" className="text-xs">Status</Label>
                   <Input
                     id="status"
-                    value="Pending"
+                    value={addForm.data.mode_of_payment === "Cash" ? "Paid" : "Pending"}
                     disabled
-                    className="h-9 text-xs sm:text-sm bg-muted cursor-not-allowed"
+                    className="h-9 text-xs sm:text-sm bg-muted cursor-not-allowed font-medium"
                   />
-                  <p className="text-[10px] text-muted-foreground">Status is set automatically after payment verification.</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {addForm.data.mode_of_payment === "Cash"
+                      ? "Cash receipts are marked Paid immediately."
+                      : "Momo receipts become Paid automatically after Paystack checkout."}
+                  </p>
                 </div>
               </div>
 
@@ -1189,25 +1242,38 @@ export default function ReceiptIndex({
                 />
               </div>
 
-              {/* Paystack Online Payment Checkbox */}
-              <div className="flex items-center space-x-2 border p-3 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200">
-                <Checkbox
-                  id="initiate_paystack"
-                  checked={addForm.data.initiate_paystack}
-                  onCheckedChange={(checked) => addForm.setData("initiate_paystack", !!checked)}
-                />
-                <label htmlFor="initiate_paystack" className="text-xs font-semibold text-emerald-900 dark:text-emerald-300 cursor-pointer flex items-center gap-1.5">
-                  <CreditCard className="h-4 w-4 text-emerald-600" />
-                  Proceed directly to Paystack Online Checkout after saving
-                </label>
-              </div>
+              {addForm.data.mode_of_payment === "Momo" ? (
+                <div className="flex items-center gap-2.5 border p-3 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-900 dark:text-emerald-300 text-xs">
+                  <CreditCard className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>
+                    <strong>Automatic Online Payment:</strong> You will be redirected immediately to Paystack after clicking below to complete payment with Mobile Money.
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5 border p-3 rounded-md bg-sky-50 dark:bg-sky-950/40 border-sky-200 text-sky-900 dark:text-sky-300 text-xs">
+                  <Printer className="h-4 w-4 text-sky-600 shrink-0" />
+                  <span>
+                    <strong>Cash Payment:</strong> Receipt will be marked as Paid immediately and printable receipt will open.
+                  </span>
+                </div>
+              )}
 
               <DialogFooter className="pt-3 flex flex-col-reverse sm:flex-row gap-2">
                 <Button type="button" variant="outline" className="w-full sm:w-auto h-9 text-xs" onClick={() => setIsAddOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={addForm.processing} className="w-full sm:w-auto h-9 text-xs bg-sky-600 hover:bg-sky-700 text-white">
-                  {addForm.processing ? "Processing..." : addForm.data.initiate_paystack ? "Save & Pay with Paystack" : "Create & Issue Receipt"}
+                <Button
+                  type="submit"
+                  disabled={addForm.processing}
+                  className={`w-full sm:w-auto h-9 text-xs text-white ${
+                    addForm.data.mode_of_payment === "Momo"
+                      ? "bg-emerald-600 hover:bg-emerald-700"
+                      : "bg-sky-600 hover:bg-sky-700"
+                  }`}
+                >
+                  {addForm.processing
+                    ? (addForm.data.mode_of_payment === "Momo" ? "Connecting to Paystack..." : "Issuing Receipt...")
+                    : (addForm.data.mode_of_payment === "Momo" ? "Issue & Pay with Paystack" : "Issue & Print Receipt")}
                 </Button>
               </DialogFooter>
             </form>
@@ -1352,14 +1418,20 @@ export default function ReceiptIndex({
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="edit_status" className="text-xs">Status</Label>
-                  <Input
-                    id="edit_status"
+                  <Label htmlFor="edit_status" className="text-xs">Status *</Label>
+                  <Select
                     value={editForm.data.status}
-                    disabled
-                    className="h-9 text-xs sm:text-sm bg-muted cursor-not-allowed"
-                  />
-                  <p className="text-[10px] text-muted-foreground">Status is updated automatically via payment verification.</p>
+                    onValueChange={(val: "Pending" | "Paid" | "Archived") => editForm.setData("status", val)}
+                  >
+                    <SelectTrigger id="edit_status" className="h-9 text-xs sm:text-sm">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Pending">Pending</SelectItem>
+                      <SelectItem value="Paid">Paid</SelectItem>
+                      <SelectItem value="Archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

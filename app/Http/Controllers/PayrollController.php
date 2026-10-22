@@ -87,6 +87,9 @@ class PayslipController extends Controller
         if (str_contains($dbName, 'avara') || str_contains($slug, 'avara') || str_contains($shortName, 'avara')) {
             return 'payslip.avara-pdf';
         }
+        if (str_contains($dbName, 'driver') || str_contains($slug, 'driver') || str_contains($shortName, 'driver')) {
+            return 'payslip.drivers-pdf';
+        }
         if (str_contains($dbName, 'melcom') || str_contains($slug, 'melcom')) {
             return 'payslip.melcom-pdf';
         }
@@ -113,9 +116,6 @@ class PayslipController extends Controller
         }
         if (str_contains($dbName, 'civ') || str_contains($slug, 'civ')) {
             return 'payslip.civ-pdf';
-        }
-        if (str_contains($dbName, 'driver') || str_contains($slug, 'driver')) {
-            return 'payslip.drivers-pdf';
         }
 
         return 'payslip.pdf';

@@ -13,7 +13,7 @@ import {
   FileText,
 } from "lucide-react";
 import AppLayout from "@/layouts/app-layout";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 interface ReceiptItem {
@@ -45,6 +45,18 @@ const breadcrumbs = [
 
 export default function ReceiptShow({ receipt }: Props) {
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("print") === "1" || urlParams.get("auto_print") === "1") {
+        const timer = setTimeout(() => {
+          window.print();
+        }, 500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, []);
 
   const copyReceiptNumber = () => {
     navigator.clipboard.writeText(receipt.receipt_number).then(() => {

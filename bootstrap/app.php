@@ -33,6 +33,8 @@ return Application::configure(basePath: dirname(__DIR__))
         'payslips/*/send-email',
         'payslips/*/send-sms',
         'payslips/*/download-multiple',
+        'receipts/verify-payment',
+        'receipts/paystack-webhook',
     ]);
 })
 

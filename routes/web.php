@@ -215,6 +215,10 @@ Route::get('/payslips/{client}/download/{month}/{staffId}', [PayslipController::
     ])
     ->name('payslips.download');
 
+// Public Paystack Payment Callback & Webhook
+Route::get('/receipts/verify-payment', [ReceiptController::class, 'verifyPayment'])->name('receipts.verify-payment');
+Route::post('/receipts/paystack-webhook', [ReceiptController::class, 'handleWebhook'])->name('receipts.paystack-webhook');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::resource('lists', ListController::class);
@@ -408,10 +412,10 @@ Route::post('/employeeportal/bulk-archive', [EmployeePortalController::class, 'b
     Route::post('/twelliumaccra2/delete-month', [TwelliumAccra2Controller::class, 'deleteMonth'])->name('twelliumaccra2.delete-month');
 
     // Receipts Routes
-    Route::get('/receipts/verify-payment', [ReceiptController::class, 'verifyPayment'])->name('receipts.verify-payment');
-    Route::post('/receipts/{id}/initiate-payment', [ReceiptController::class, 'initiatePayment'])->name('receipts.initiate-payment');
     Route::get('/receipts', [ReceiptController::class, 'index'])->name('receipts.index');
     Route::post('/receipts', [ReceiptController::class, 'store'])->name('receipts.store');
+    Route::post('/receipts/{id}/initiate-payment', [ReceiptController::class, 'initiatePayment'])->name('receipts.initiate-payment');
+    Route::post('/receipts/{id}/mark-paid', [ReceiptController::class, 'markPaid'])->name('receipts.mark-paid');
     Route::put('/receipts/{id}', [ReceiptController::class, 'update'])->name('receipts.update');
     Route::delete('/receipts/{id}', [ReceiptController::class, 'destroy'])->name('receipts.destroy');
     Route::post('/receipts/bulk-destroy', [ReceiptController::class, 'bulkDestroy'])->name('receipts.bulk-destroy');

@@ -85,7 +85,7 @@
         </tr>
         <tr>
             <td class="bold">Basic</td>
-            <td class="bold">{{ number_format((float)($payslip->basic ?? 0), 2) }}</td>
+            <td class="bold">{{ number_format((float)($payslip->new_basic ?: ($payslip->salary ?: ($payslip->basic ?? 0))), 2) }}</td>
             <td></td>
             <td class="bold"></td>
             <td class="bold"></td>
@@ -120,12 +120,36 @@
             <td style="text-align:center;" class="bold">{{ number_format($gross, 2) }}</td>
             <td></td>
         </tr>
+        @php
+            $basicEarned = (float)($payslip->basic ?? 0);
+            $totalSsf    = (float)($payslip->ssfyeed ?? $payslip->ssfyee ?? 0);
+            $petraAmt    = (isset($payslip->petra) && (float)$payslip->petra > 0)
+                            ? (float)$payslip->petra
+                            : round($basicEarned * 0.05, 2);
+            $ssnitAmt    = ($totalSsf > 0)
+                            ? round($totalSsf - $petraAmt, 2)
+                            : round($basicEarned * 0.005, 2);
+        @endphp
         <tr>
             <td colspan="2">SSNIT</td>
             <td style="text-align:right;"></td>
             <td style="text-align:center;"></td>
-            <td style="text-align:center;">{{ number_format((float)($payslip->ssfyeed ?? $payslip->ssfyee ?? 0), 2) }}</td>
+            <td style="text-align:center;">{{ number_format($ssnitAmt, 2) }}</td>
         </tr>
+        <tr>
+            <td colspan="2">Petra</td>
+            <td style="text-align:right;"></td>
+            <td style="text-align:center;"></td>
+            <td style="text-align:center;">{{ number_format($petraAmt, 2) }}</td>
+        </tr>
+        @if(!empty($payslip->advance) && (float)$payslip->advance > 0)
+        <tr>
+            <td colspan="2">Salary Advance</td>
+            <td style="text-align:right;"></td>
+            <td style="text-align:center;"></td>
+            <td style="text-align:center;">{{ number_format((float)$payslip->advance, 2) }}</td>
+        </tr>
+        @endif
         <tr>
             <td colspan="2">Normal Tax-Regular</td>
             <td style="text-align:right;"></td>

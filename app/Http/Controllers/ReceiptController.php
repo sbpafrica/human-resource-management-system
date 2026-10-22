@@ -101,8 +101,16 @@ class ReceiptController extends Controller
         $allClients = array_values(array_unique(array_filter(array_merge($defaultClients, $dbClients))));
         sort($allClients);
 
+        // Auto print receipt if returning from payment or cash issuance
+        $autoPrintId = $request->query('print_id') ?? $request->session()->get('print_receipt_id');
+        $autoPrintReceipt = null;
+        if ($autoPrintId) {
+            $autoPrintReceipt = DB::table('receipts')->where('id', $autoPrintId)->first();
+        }
+
         return Inertia::render('Receipts/Index', [
             'receipts' => $receipts,
+            'autoPrintReceipt' => $autoPrintReceipt,
             'filters'  => [
                 'search'    => $search ?? '',
                 'status'    => $status ?? 'all',
@@ -190,15 +198,15 @@ class ReceiptController extends Controller
             $staffId = 'rep1234';
         }
 
-        $initiatePaystack = (bool) $request->input('initiate_paystack', false);
-        // Status is strictly 'Pending' upon creation. Only automatic payment verification can mark it 'Paid'.
-        $status = 'Pending';
+        $modeOfPayment = $request->input('mode_of_payment', 'Momo');
+        // Cash receipts are marked Paid immediately; Momo starts Pending until Paystack payment is confirmed
+        $status = ($modeOfPayment === 'Cash') ? 'Paid' : 'Pending';
 
         $applicantName = trim($request->input('applicant_name'));
         $amountPaid    = $request->input('amount_paid');
         $contact       = trim($request->input('contact'));
 
-        DB::table('receipts')->insert([
+        $receiptId = DB::table('receipts')->insertGetId([
             'receipt_number'    => $receiptNumber,
             'applicant_name'    => $applicantName,
             'address'           => trim($request->input('address')),
@@ -208,18 +216,20 @@ class ReceiptController extends Controller
             'descriptions'      => $descriptions,
             'amount_paid'       => $amountPaid,
             'receiving_officer' => trim($request->input('receiving_officer')),
-            'mode_of_payment'   => $request->input('mode_of_payment', 'Momo'),
+            'mode_of_payment'   => $modeOfPayment,
             'receipt_date'      => $request->input('receipt_date', date('Y-m-d')),
             'staffid'           => $staffId,
             'status'            => $status,
         ]);
 
-        if ($initiatePaystack) {
+        // If Mobile Money, automatically launch Paystack checkout immediately
+        if ($modeOfPayment === 'Momo') {
             return $this->processPaystackInitialization($receiptNumber, $applicantName, $amountPaid, $contact, $user ? $user->email : null);
         }
 
-        return redirect()->back()
-            ->with('success', "Receipt #{$receiptNumber} created successfully for {$applicantName}.");
+        // Cash payment: already marked Paid, redirect directly to official receipt view for printing
+        return redirect()->route('receipts.show', $receiptId)
+            ->with('success', "Cash Receipt #{$receiptNumber} created successfully and marked as Paid.");
     }
 
     public function initiatePayment(Request $request, $id)
@@ -261,7 +271,11 @@ class ReceiptController extends Controller
             $result = $response->json();
 
             if ($response->successful() && isset($result['status']) && $result['status'] === true && isset($result['data']['status']) && $result['data']['status'] === 'success') {
-                $receipt = DB::table('receipts')->where('receipt_number', $reference)->first();
+                $baseReceiptNumber = explode('_', $reference)[0];
+                $receipt = DB::table('receipts')
+                    ->where('receipt_number', $baseReceiptNumber)
+                    ->orWhere('receipt_number', $reference)
+                    ->first();
 
                 if ($receipt) {
                     DB::table('receipts')
@@ -271,6 +285,7 @@ class ReceiptController extends Controller
                             'mode_of_payment' => 'Momo',
                         ]);
                     $receiptId = $receipt->id;
+                    $recNo = $receipt->receipt_number;
                 } else {
                     // Check if pending receipt exists in session as fallback
                     $pendingData = session('pending_receipt');
@@ -288,7 +303,7 @@ class ReceiptController extends Controller
                         }
 
                         $receiptId = DB::table('receipts')->insertGetId([
-                            'receipt_number'    => $reference,
+                            'receipt_number'    => $baseReceiptNumber,
                             'applicant_name'    => $pendingData['applicant_name'] ?? 'N/A',
                             'address'           => $pendingData['address'] ?? 'N/A',
                             'contact'           => $pendingData['contact'] ?? 'N/A',
@@ -302,14 +317,15 @@ class ReceiptController extends Controller
                             'staffid'           => $staffId,
                             'status'            => 'Paid',
                         ]);
-
+                        $recNo = $baseReceiptNumber;
                         session()->forget('pending_receipt');
                     } else {
                         return redirect()->route('receipts.index')->with('success', "Payment verified for reference #{$reference}, but matching receipt record was not found.");
                     }
                 }
 
-                return redirect()->route('receipts.show', $receiptId)->with('success', "Payment verified successfully! Receipt #{$reference} marked as Paid.");
+                return redirect()->route('receipts.show', $receiptId)
+                    ->with('success', "Payment verified successfully! Receipt #{$recNo} marked as Paid.");
             }
 
             $errorMsg = $result['message'] ?? 'Payment verification failed or was cancelled.';
@@ -318,6 +334,55 @@ class ReceiptController extends Controller
             Log::error('Paystack Verification Exception: ' . $e->getMessage());
             return redirect()->route('receipts.index')->with('error', 'Paystack Connection Error: ' . $e->getMessage());
         }
+    }
+
+    public function handleWebhook(Request $request)
+    {
+        $secretKey = (string) config('services.paystack.secret_key');
+        $signature = $request->header('x-paystack-signature');
+
+        if (empty($signature) || empty($secretKey)) {
+            return response()->json(['message' => 'Unauthorized signature'], 400);
+        }
+
+        $input = $request->getContent();
+        if ($signature !== hash_hmac('sha512', $input, trim($secretKey))) {
+            return response()->json(['message' => 'Invalid signature'], 400);
+        }
+
+        $event = json_decode($input, true);
+        if (isset($event['event']) && $event['event'] === 'charge.success') {
+            $data = $event['data'] ?? [];
+            $reference = $data['reference'] ?? '';
+            if ($reference) {
+                $baseReceiptNumber = explode('_', $reference)[0];
+                DB::table('receipts')
+                    ->where('receipt_number', $baseReceiptNumber)
+                    ->orWhere('receipt_number', $reference)
+                    ->update([
+                        'status'          => 'Paid',
+                        'mode_of_payment' => 'Momo',
+                    ]);
+            }
+        }
+
+        return response()->json(['status' => 'success'], 200);
+    }
+
+    public function markPaid(Request $request, $id)
+    {
+        $receipt = DB::table('receipts')->where('id', $id)->first();
+        if (!$receipt) {
+            return redirect()->back()->with('error', 'Receipt not found.');
+        }
+
+        DB::table('receipts')->where('id', $id)->update([
+            'status' => 'Paid',
+        ]);
+
+        return redirect()->back()
+            ->with('success', "Receipt #{$receipt->receipt_number} marked as Paid.")
+            ->with('print_receipt_id', $receipt->id);
     }
 
     private function processPaystackInitialization(string $receiptNumber, string $applicantName, $amountPaid, string $contact, ?string $userEmail)
@@ -333,15 +398,24 @@ class ReceiptController extends Controller
 
         $email = filter_var($userEmail, FILTER_VALIDATE_EMAIL) ? $userEmail : 'billing@sbpafrica.group';
 
+        // Add unique timestamp suffix to reference to avoid Duplicate Transaction Reference on retries
+        $paystackRef = $receiptNumber . '_' . time();
+
         $payload = [
             'amount'       => $amountInPesewas,
             'email'        => $email,
             'currency'     => 'GHS',
-            'reference'    => $receiptNumber,
+            'reference'    => $paystackRef,
             'callback_url' => route('receipts.verify-payment'),
             'metadata'     => [
-                'mobile_number' => $contact,
-                'custom_fields' => [
+                'receipt_number' => $receiptNumber,
+                'mobile_number'  => $contact,
+                'custom_fields'  => [
+                    [
+                        'display_name'  => 'Receipt Number',
+                        'variable_name' => 'receipt_number',
+                        'value'         => $receiptNumber,
+                    ],
                     [
                         'display_name'  => 'Applicant Name',
                         'variable_name' => 'applicant_name',
@@ -366,10 +440,10 @@ class ReceiptController extends Controller
             }
 
             $errorMsg = $result['message'] ?? 'Failed to initialize Paystack payment.';
-            return redirect()->back()->with('error', "Paystack API Error: {$errorMsg}");
+            return redirect()->route('receipts.index')->with('error', "Paystack API Error: {$errorMsg}");
         } catch (\Exception $e) {
             Log::error('Paystack Initiation Exception: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Paystack Connection Error: ' . $e->getMessage());
+            return redirect()->route('receipts.index')->with('error', 'Paystack Connection Error: ' . $e->getMessage());
         }
     }
 
@@ -414,6 +488,11 @@ class ReceiptController extends Controller
                 ->with('error', 'Please select at least one description.');
         }
 
+        $status = $request->input('status', $receipt->status);
+        if (!in_array($status, ['Pending', 'Paid', 'Archived'])) {
+            $status = $receipt->status;
+        }
+
         DB::table('receipts')->where('id', $id)->update([
             'receipt_number'    => trim($request->input('receipt_number')),
             'applicant_name'    => trim($request->input('applicant_name')),
@@ -426,8 +505,7 @@ class ReceiptController extends Controller
             'receiving_officer' => trim($request->input('receiving_officer')),
             'mode_of_payment'   => $request->input('mode_of_payment'),
             'receipt_date'      => $request->input('receipt_date'),
-            // Status remains untouched — only payment verification can update status
-            'status'            => $receipt->status,
+            'status'            => $status,
         ]);
 
         return redirect()->back()
