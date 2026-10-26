@@ -1377,6 +1377,13 @@ Route::get('/cpanel-setup', function (\Illuminate\Http\Request $request) {
     return response($html);
 });
 
+// ── Payroll AI & Pre-flight Inspection Endpoints (All 31 Clients) ──────────────────────
+Route::middleware(['auth'])->prefix('payroll-ai')->name('payroll-ai.')->group(function () {
+    Route::post('/inspect', [App\Http\Controllers\Api\PayrollAiController::class, 'inspectSpreadsheet'])->name('inspect');
+    Route::post('/audit-table', [App\Http\Controllers\Api\PayrollAiController::class, 'auditExistingMonth'])->name('audit-table');
+    Route::post('/match-headers', [App\Http\Controllers\Api\PayrollAiController::class, 'matchHeaders'])->name('match-headers');
+});
+
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
 
