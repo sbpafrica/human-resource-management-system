@@ -74,6 +74,21 @@
     $totalDeductions = round($cnss + $iuts + $fsp + $otherdeduct + $lateness + $casual, 2);
 
     $netPay = $finalNet > 0 ? $finalNet : ($nap > 0 ? round($nap - $fsp, 2) : max(0, round($gross - $totalDeductions, 2)));
+
+    // French month translation
+    $frMonths = [
+        'January' => 'Janvier', 'February' => 'Février', 'March' => 'Mars',
+        'April' => 'Avril', 'May' => 'Mai', 'June' => 'Juin',
+        'July' => 'Juillet', 'August' => 'Août', 'September' => 'Septembre',
+        'October' => 'Octobre', 'November' => 'Novembre', 'December' => 'Décembre'
+    ];
+    $displayMonth = $formattedMonth;
+    foreach ($frMonths as $en => $fr) {
+        if (stripos($displayMonth, $en) !== false) {
+            $displayMonth = str_ireplace($en, $fr, $displayMonth);
+            break;
+        }
+    }
 @endphp
     <table>
         <tr>
@@ -89,7 +104,7 @@
         </tr>
         <tr>
             <td colspan="2"></td>
-            <td class="text-center header">{{ $formattedMonth }}</td>
+            <td class="text-center header">{{ $displayMonth }}</td>
             <td colspan="2"></td>
         </tr>
         <tr>

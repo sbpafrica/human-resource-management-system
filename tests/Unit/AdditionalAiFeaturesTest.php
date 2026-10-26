@@ -63,4 +63,48 @@ class AdditionalAiFeaturesTest extends TestCase
         $this->assertStringContainsString('SSNIT', $deductionResponse['reply']);
         $this->assertStringContainsString('Petra', $deductionResponse['reply']);
     }
+
+    public function test_copilot_generates_client_payslip_links_and_payroll_actions(): void
+    {
+        $copilot = app(EmployeeCopilotService::class);
+
+        // Test Bunge Benin payslip generation for October (handling typos like octorber)
+        $res = $copilot->handleMessage('GENERAL', 'Generate a payslip for bunge benin for octorber');
+
+        $this->assertStringContainsString('Bunge Benin', $res['reply']);
+        $this->assertNotEmpty($res['actions']);
+        $this->assertStringContainsString('/payslips/beninbunge', $res['actions'][0]['url']);
+        $this->assertStringContainsString('10', $res['actions'][0]['url']);
+        $this->assertEquals('/benin-bunge?month=2026-10', $res['actions'][1]['url']);
+
+        // Test Melcom payslip generation
+        $melcomRes = $copilot->handleMessage('GENERAL', 'Generate payslips for Melcom for September');
+        $this->assertStringContainsString('Melcom Distribution', $melcomRes['reply']);
+        $this->assertStringContainsString('/payslips/melcom', $melcomRes['actions'][0]['url']);
+    }
+
+    public function test_copilot_explains_statutory_formulas_and_system_audits(): void
+    {
+        $copilot = app(EmployeeCopilotService::class);
+
+        // Test statutory pension formulas
+        $statutory = $copilot->handleMessage('GENERAL', 'How is SSNIT 5.5% and Petra Tier 2 5% calculated?');
+        $this->assertStringContainsString('SSNIT Tier 1', $statutory['reply']);
+        $this->assertStringContainsString('Petra Tier 2', $statutory['reply']);
+        $this->assertStringContainsString('5.5%', $statutory['reply']);
+        $this->assertStringContainsString('5.0%', $statutory['reply']);
+
+        // Test absenteeism formula
+        $absent = $copilot->handleMessage('GENERAL', 'How are absenteeism deductions calculated in Ghanaian payroll?');
+        $this->assertStringContainsString('Absenteeism', $absent['reply']);
+        $this->assertStringContainsString('Basic Salary', $absent['reply']);
+        $this->assertStringContainsString('Act 651', $absent['reply']);
+
+        // Test HR audits navigation
+        $audit = $copilot->handleMessage('GENERAL', 'Open SSNIT Audit and Bank Audit');
+        $this->assertNotEmpty($audit['actions']);
+        $urls = array_column($audit['actions'], 'url');
+        $this->assertContains('/hr-audit/bank', $urls);
+        $this->assertContains('/hr-audit/ssnit', $urls);
+    }
 }

@@ -378,7 +378,7 @@ class BeninBungePayController extends Controller
                     continue;
                 }
 
-                // Skip summary/footnote rows (e.g. overtime summaries, bank notes, totals)
+                // Skip summary/footnote rows (e.g. overtime summaries, bank notes, totals, swift codes)
                 $firstCellsText = strtoupper(implode(' ', array_slice($row, 0, 5)));
                 if (
                     str_contains($firstCellsText, 'WEEKEND') ||
@@ -390,22 +390,77 @@ class BeninBungePayController extends Controller
                     str_contains($firstCellsText, 'RATE') ||
                     str_contains($firstCellsText, 'PAID') ||
                     str_contains($firstCellsText, 'REMARQUE') ||
-                    preg_match('/^[A-Z]{2}[0-9]{10,}/', $name)
+                    str_contains($firstCellsText, 'COMPTE') ||
+                    str_contains($firstCellsText, 'ACCOUNT') ||
+                    str_contains($firstCellsText, 'INVOICE') ||
+                    preg_match('/^[A-Z]{2}[0-9]{10,}/', $name) ||
+                    preg_match('/^[A-Z]{6,}[0-9]*/', $name)
                 ) {
                     continue;
                 }
 
-                // Auto-generate Staff ID if missing or blank
+                // If both basic salary and gross salary are zero/empty, this is not an active employee row
+                $basicVal = (float)($record['basic_salary'] ?? 0);
+                $grossVal = (float)($record['gross_salaries'] ?? ($record['gross_amount'] ?? 0));
+                if ($basicVal <= 0 && $grossVal <= 0) {
+                    continue;
+                }
+
+                // Auto-resolve Staff ID if missing or blank
                 if (empty($staffId)) {
-                    $staffId = 'BEN-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
-                    while (in_array($staffId, $seenStaffIds)) {
+                    if (str_contains(strtoupper($fullName), 'AKODE')) {
+                        $staffId = 'SBPTWMA1594';
+                    } else {
+                        // Check previous bungebenin tables for this person's ID
+                        try {
+                            $prevTables = DB::select("SHOW TABLES LIKE 'bungebenin%'");
+                            foreach ($prevTables as $pt) {
+                                $ptName = array_values((array)$pt)[0];
+                                if ($ptName === $tableName) continue;
+                                $existingStaff = DB::table($ptName)
+                                    ->where('names', 'like', '%' . $name . '%')
+                                    ->whereNotNull('staff_id')
+                                    ->where('staff_id', '!=', '')
+                                    ->value('staff_id');
+                                if ($existingStaff) {
+                                    $staffId = $existingStaff;
+                                    break;
+                                }
+                            }
+                        } catch (\Throwable $e) {}
+                    }
+
+                    if (empty($staffId)) {
                         $staffId = 'BEN-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
+                        while (in_array($staffId, $seenStaffIds)) {
+                            $staffId = 'BEN-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
+                        }
                     }
                     $record['staff_id'] = $staffId;
                 }
 
                 if (in_array($record['staff_id'], $seenStaffIds)) {
                     $record['staff_id'] .= '-' . ($index + 1);
+                }
+
+                // Sync bank details if present on row
+                if (!empty($record['bank_account_number'])) {
+                    try {
+                        if (Schema::hasTable('bankdetails')) {
+                            DB::table('bankdetails')->updateOrInsert(
+                                ['staffid' => $record['staff_id']],
+                                [
+                                    'name'       => $fullName,
+                                    'bankname'   => $record['bank_name'] ?: 'Ecobank, BJ',
+                                    'alcnum'     => $record['bank_account_number'],
+                                    'branch'     => 'Cotonou',
+                                    'updated_at' => now(),
+                                ]
+                            );
+                        }
+                    } catch (\Throwable $ex) {
+                        Log::warning("Could not sync Benin bank detail: " . $ex->getMessage());
+                    }
                 }
 
                 $seenStaffIds[] = $record['staff_id'];

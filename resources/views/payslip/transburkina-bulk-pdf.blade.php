@@ -58,6 +58,21 @@
     </style>
 </head>
 <body>
+@php
+    $frMonths = [
+        'January' => 'Janvier', 'February' => 'Février', 'March' => 'Mars',
+        'April' => 'Avril', 'May' => 'Mai', 'June' => 'Juin',
+        'July' => 'Juillet', 'August' => 'Août', 'September' => 'Septembre',
+        'October' => 'Octobre', 'November' => 'Novembre', 'December' => 'Décembre'
+    ];
+    $displayMonth = $formattedMonth;
+    foreach ($frMonths as $en => $fr) {
+        if (stripos($displayMonth, $en) !== false) {
+            $displayMonth = str_ireplace($en, $fr, $displayMonth);
+            break;
+        }
+    }
+@endphp
 @foreach($chunks as $chunkIndex => $chunk)
     <div class="bulk-page {{ !$loop->last ? 'page-break' : '' }}">
         @foreach($chunk as $itemIndex => $item)
@@ -127,7 +142,7 @@
                     <tr>
                         <td></td>
                         <td></td>
-                        <td style="text-align:center; font-weight:bold;">{{ $formattedMonth }}</td>
+                        <td style="text-align:center; font-weight:bold;">{{ $displayMonth }}</td>
                         <td colspan="2"></td>
                     </tr>
                     <tr>

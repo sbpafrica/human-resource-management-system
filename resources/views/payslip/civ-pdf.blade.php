@@ -66,6 +66,21 @@
         : (data_get($payslip, 'branch', '-'));
 
     $logoData = $logoData ?? (file_exists(public_path('images/sbpafricalogo.png')) ? 'data:image/png;base64,' . base64_encode(file_get_contents(public_path('images/sbpafricalogo.png'))) : null);
+
+    // French month translation
+    $frMonths = [
+        'January' => 'Janvier', 'February' => 'Février', 'March' => 'Mars',
+        'April' => 'Avril', 'May' => 'Mai', 'June' => 'Juin',
+        'July' => 'Juillet', 'August' => 'Août', 'September' => 'Septembre',
+        'October' => 'Octobre', 'November' => 'Novembre', 'December' => 'Décembre'
+    ];
+    $displayMonth = $formattedMonth;
+    foreach ($frMonths as $en => $fr) {
+        if (stripos($displayMonth, $en) !== false) {
+            $displayMonth = str_ireplace($en, $fr, $displayMonth);
+            break;
+        }
+    }
 @endphp
 
 <table>
@@ -90,7 +105,7 @@
     <tr>
         <td colspan="2"></td>
         <td style="text-align: center; font-weight: bold;">
-            {{ $formattedMonth }}
+            {{ $displayMonth }}
         </td>
         <td colspan="2"></td>
     </tr>

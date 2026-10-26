@@ -48,7 +48,7 @@ class EmployeeCopilotController extends Controller
     }
 
     /**
-     * Handles chatbot conversational interaction.
+     * Handles chatbot conversational interaction without requiring prior login.
      */
     public function chat(Request $request): JsonResponse
     {
@@ -58,26 +58,40 @@ class EmployeeCopilotController extends Controller
             'history' => ['nullable', 'array'],
         ]);
 
-        $staffId = $request->input('staff_id') ?: session('copilot_staff_id');
+        $message = trim((string) $request->input('message'));
 
+        // Check if staff ID was passed, stored in session, or mentioned in the message text (e.g. JK001, OFI012, EMP123)
+        $staffId = $request->input('staff_id') ?: session('copilot_staff_id');
         if (empty($staffId)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Session expired. Please log in with your Staff ID and PIN.',
-            ], 401);
+            if (preg_match_all('/\b([a-zA-Z]{2,4}[-_ ]?\d{2,6})\b/i', $message, $matches)) {
+                foreach ($matches[1] as $raw) {
+                    $candidate = strtoupper(str_replace([' ', '-', '_'], '', $raw));
+                    if (!preg_match('/^(GHS|GH|USD|EUR|CEDI)/i', $candidate)) {
+                        $staffId = $candidate;
+                        break;
+                    }
+                }
+            }
+            if (empty($staffId)) {
+                $staffId = 'GENERAL';
+            }
         }
 
         $result = $this->copilotService->handleMessage(
             $staffId,
-            $request->input('message'),
+            $message,
             $request->input('history', [])
         );
+
+        $actions = $result['actions'] ?? ($result['action'] ? [$result['action']] : []);
+        $primaryAction = $result['action'] ?? ($actions[0] ?? null);
 
         return response()->json([
             'success' => true,
             'reply' => $result['reply'],
-            'action' => $result['action'],
-            'context_summary' => $result['context_summary'],
+            'action' => $primaryAction,
+            'actions' => $actions,
+            'context_summary' => $result['context_summary'] ?? null,
         ]);
     }
 

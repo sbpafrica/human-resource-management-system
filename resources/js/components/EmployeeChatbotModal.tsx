@@ -1,50 +1,53 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-    MessageSquare,
     Send,
     Download,
     FileText,
     HelpCircle,
     Calendar,
-    ShieldCheck,
+    Sparkles,
     X,
-    Lock,
-    UserCheck,
     Loader2,
-    RefreshCw,
-    Bot
+    Bot,
+    Calculator,
+    Layers,
+    ExternalLink,
+    CheckCircle2,
+    ShieldAlert,
+    Briefcase
 } from 'lucide-react';
+
+interface ActionItem {
+    type?: string;
+    label: string;
+    url: string;
+    period?: string;
+}
 
 interface ChatMessage {
     id: string;
     sender: 'user' | 'assistant';
     text: string;
-    action?: {
-        type: string;
-        label: string;
-        url: string;
-        period?: string;
-    } | null;
+    action?: ActionItem | null;
+    actions?: ActionItem[];
     timestamp: string;
-}
-
-interface EmployeeContext {
-    staff_id: string;
-    name: string;
-    company: string;
-    position: string;
 }
 
 export default function EmployeeChatbotModal() {
     const [isOpen, setIsOpen] = useState(false);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [staffId, setStaffId] = useState('');
-    const [pin, setPin] = useState('');
-    const [authLoading, setAuthLoading] = useState(false);
-    const [authError, setAuthError] = useState('');
-    const [employee, setEmployee] = useState<EmployeeContext | null>(null);
-
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [messages, setMessages] = useState<ChatMessage[]>([
+        {
+            id: 'welcome',
+            sender: 'assistant',
+            text: `Hello! 👋 I am your HRS Operations Copilot.\n\nI assist HR administrators and payroll officers with everything on the system:\n• Payslip Generation: Instantly generate and open monthly payslips for all 31 clients (e.g. Bunge Benin, Melcom, Twellium, Jay Kay)\n• Payroll Ingestion: Direct navigation to client upload sheets and template downloads\n• Worker Deductions: Breakdown of why deductions happened (SSNIT Tier 1, Petra Tier 2, PAYE, days absent)\n• Statutory Rules: Ghanaian labor law, overtime rates, and pension contribution formulas\n• System Audits: Direct access to SSNIT, Bank, Petra, and Contact reconciliation audits.`,
+            actions: [
+                { type: 'view_payslips', label: 'Open Bunge Benin October Payslips', url: '/payslips/beninbunge?month=2026-10' },
+                { type: 'ai_audit', label: 'Run Pre-Flight AI Ingestion Audit', url: '/payroll-ai/inspect' },
+                { type: 'audit_ssnit', label: 'Open SSNIT Audit', url: '/hr-audit/ssnit' },
+            ],
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+    ]);
     const [inputText, setInputText] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -54,46 +57,10 @@ export default function EmployeeChatbotModal() {
     };
 
     useEffect(() => {
-        scrollToBottom();
-    }, [messages, isTyping]);
-
-    const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setAuthLoading(true);
-        setAuthError('');
-
-        try {
-            const res = await fetch('/copilot/auth', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
-                },
-                body: JSON.stringify({ staff_id: staffId, pin }),
-            });
-
-            const data = await res.json();
-            if (res.ok && data.success) {
-                setIsAuthenticated(true);
-                setEmployee(data.employee);
-
-                setMessages([
-                    {
-                        id: 'welcome',
-                        sender: 'assistant',
-                        text: `Hello ${data.employee.name}! 👋 I am your HRS Copilot. How can I help you today? You can ask for your latest payslip, check deduction breakdowns, review leave balance, or view pension contributions.`,
-                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    },
-                ]);
-            } else {
-                setAuthError(data.message || 'Invalid Staff ID or PIN. Please check your credentials.');
-            }
-        } catch {
-            setAuthError('Network error. Please try again.');
-        } finally {
-            setAuthLoading(false);
+        if (isOpen) {
+            scrollToBottom();
         }
-    };
+    }, [messages, isTyping, isOpen]);
 
     const handleSendMessage = async (textToSend?: string) => {
         const text = textToSend || inputText.trim();
@@ -119,7 +86,6 @@ export default function EmployeeChatbotModal() {
                 },
                 body: JSON.stringify({
                     message: text,
-                    staff_id: employee?.staff_id,
                     history: messages.map((m) => ({ sender: m.sender, text: m.text })),
                 }),
             });
@@ -131,9 +97,20 @@ export default function EmployeeChatbotModal() {
                     sender: 'assistant',
                     text: data.reply,
                     action: data.action,
+                    actions: data.actions || (data.action ? [data.action] : []),
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 };
                 setMessages((prev) => [...prev, botMsg]);
+            } else {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: String(Date.now() + 1),
+                        sender: 'assistant',
+                        text: data.message || 'Sorry, I could not process that request. Please try again.',
+                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    },
+                ]);
             }
         } catch {
             setMessages((prev) => [
@@ -154,22 +131,27 @@ export default function EmployeeChatbotModal() {
         handleSendMessage(prompt);
     };
 
+    const renderFormattedText = (text: string) => {
+        // Completely strip all markdown asterisks (** and *) to present pristine text
+        return text.replace(/\*\*/g, '').replace(/\*/g, '');
+    };
+
     return (
         <>
             {/* Floating Chat Trigger Button */}
             <button
                 onClick={() => setIsOpen(true)}
                 className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-sky-600 px-5 py-3 text-white shadow-xl hover:bg-sky-700 transition-all hover:scale-105 focus:outline-none focus:ring-4 focus:ring-sky-300"
-                aria-label="Open HRS Copilot"
+                aria-label="Open HR Copilot"
             >
                 <Bot className="h-5 w-5 animate-pulse" />
                 <span className="font-semibold text-sm">HRS Copilot</span>
             </button>
 
-            {/* Chatbot Modal Dialog */}
+            {/* Chatbot Dialog */}
             {isOpen && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:justify-end sm:p-6 bg-black/40 backdrop-blur-sm">
-                    <div className="flex flex-col h-[600px] w-full sm:w-[420px] rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden animate-in slide-in-from-bottom duration-200">
+                    <div className="flex flex-col h-[620px] w-full sm:w-[460px] rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden animate-in slide-in-from-bottom duration-200">
                         {/* Header */}
                         <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-sky-600 to-indigo-700 text-white">
                             <div className="flex items-center gap-2">
@@ -177,9 +159,9 @@ export default function EmployeeChatbotModal() {
                                     <Bot className="h-5 w-5 text-white" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-sm leading-tight">HRS Employee Copilot</h3>
+                                    <h3 className="font-bold text-sm leading-tight">HRS Operations Copilot</h3>
                                     <p className="text-xs text-sky-100 flex items-center gap-1">
-                                        <ShieldCheck className="h-3 w-3" /> Secure Self-Service
+                                        <Sparkles className="h-3 w-3 text-amber-300" /> HR & Payroll Assistant (All 31 Clients)
                                     </p>
                                 </div>
                             </div>
@@ -191,166 +173,142 @@ export default function EmployeeChatbotModal() {
                             </button>
                         </div>
 
-                        {/* Authentication Screen */}
-                        {!isAuthenticated ? (
-                            <div className="flex-1 p-6 flex flex-col justify-center bg-slate-50">
-                                <div className="text-center mb-6">
-                                    <div className="mx-auto h-12 w-12 rounded-full bg-sky-100 flex items-center justify-center text-sky-600 mb-3">
-                                        <Lock className="h-6 w-6" />
-                                    </div>
-                                    <h4 className="font-bold text-slate-800 text-lg">Employee Verification</h4>
-                                    <p className="text-xs text-slate-500 mt-1">
-                                        Enter your Staff ID and 4-digit PIN (or Ghana Card PIN) to access your payslips and deductions.
-                                    </p>
-                                </div>
+                        {/* Chat Messages Screen */}
+                        <div className="flex-1 flex flex-col justify-between overflow-hidden bg-slate-50">
+                            {/* Messages List */}
+                            <div className="flex-1 p-4 overflow-y-auto space-y-3">
+                                {messages.map((m) => {
+                                    const actionList = (m.actions && m.actions.length > 0)
+                                        ? m.actions
+                                        : (m.action ? [m.action] : []);
 
-                                <form onSubmit={handleLogin} className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                            Staff ID / Employee ID
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={staffId}
-                                            onChange={(e) => setStaffId(e.target.value.toUpperCase())}
-                                            placeholder="e.g. JK001 / OFI123"
-                                            required
-                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                            4-Digit PIN or Ghana Card PIN
-                                        </label>
-                                        <input
-                                            type="password"
-                                            value={pin}
-                                            onChange={(e) => setPin(e.target.value)}
-                                            placeholder="PIN code or GHA-XXXXXXXXX-X"
-                                            required
-                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                                        />
-                                    </div>
-
-                                    {authError && (
-                                        <p className="text-xs text-rose-600 bg-rose-50 p-2 rounded border border-rose-200">
-                                            {authError}
-                                        </p>
-                                    )}
-
-                                    <button
-                                        type="submit"
-                                        disabled={authLoading}
-                                        className="w-full flex items-center justify-center gap-2 rounded-lg bg-sky-600 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 transition disabled:opacity-50"
-                                    >
-                                        {authLoading ? (
-                                            <>
-                                                <Loader2 className="h-4 w-4 animate-spin" /> Verifying...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <UserCheck className="h-4 w-4" /> Verify & Access Chatbot
-                                            </>
-                                        )}
-                                    </button>
-                                </form>
-                            </div>
-                        ) : (
-                            /* Authenticated Chat Screen */
-                            <div className="flex-1 flex flex-col justify-between overflow-hidden bg-slate-50">
-                                {/* Employee Context Strip */}
-                                <div className="px-4 py-2 bg-sky-50 border-b border-sky-100 flex items-center justify-between text-xs text-sky-800">
-                                    <span className="font-semibold">{employee?.name} ({employee?.staff_id})</span>
-                                    <span className="text-slate-500">{employee?.company}</span>
-                                </div>
-
-                                {/* Chat Messages Container */}
-                                <div className="flex-1 p-4 overflow-y-auto space-y-3">
-                                    {messages.map((m) => (
+                                    return (
                                         <div
                                             key={m.id}
                                             className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
                                         >
                                             <div
-                                                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+                                                className={`max-w-[88%] rounded-2xl px-4 py-2.5 text-sm ${
                                                     m.sender === 'user'
                                                         ? 'bg-sky-600 text-white rounded-br-none'
                                                         : 'bg-white text-slate-800 shadow-sm border border-slate-200 rounded-bl-none whitespace-pre-line'
                                                 }`}
                                             >
-                                                {m.text}
+                                                {renderFormattedText(m.text)}
 
-                                                {/* Action Link (e.g. Payslip PDF Download) */}
-                                                {m.action && m.action.type === 'download_payslip' && (
-                                                    <a
-                                                        href={m.action.url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="mt-3 flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow"
-                                                    >
-                                                        <Download className="h-4 w-4" /> {m.action.label}
-                                                    </a>
+                                                {/* Render Action Buttons / Links */}
+                                                {actionList.length > 0 && (
+                                                    <div className="mt-3 pt-2 border-t border-slate-100 space-y-2">
+                                                        {actionList.map((act, idx) => {
+                                                            const isDownload = act.type === 'download_payslip';
+                                                            const isPayslip = act.type === 'view_payslips';
+                                                            const isAudit = act.type?.includes('audit');
+
+                                                            return (
+                                                                <a
+                                                                    key={idx}
+                                                                    href={act.url}
+                                                                    target={isDownload ? '_blank' : '_self'}
+                                                                    rel="noopener noreferrer"
+                                                                    className={`flex items-center justify-between gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition shadow-sm ${
+                                                                        isDownload
+                                                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                                                            : isPayslip
+                                                                            ? 'bg-sky-600 hover:bg-sky-700 text-white'
+                                                                            : isAudit
+                                                                            ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                                                            : 'bg-slate-100 hover:bg-sky-50 text-slate-800 hover:text-sky-900 border border-slate-200'
+                                                                    }`}
+                                                                >
+                                                                    <span className="flex items-center gap-2">
+                                                                        {isDownload ? (
+                                                                            <Download className="h-4 w-4 shrink-0" />
+                                                                        ) : isPayslip ? (
+                                                                            <FileText className="h-4 w-4 shrink-0" />
+                                                                        ) : isAudit ? (
+                                                                            <ShieldAlert className="h-4 w-4 shrink-0" />
+                                                                        ) : (
+                                                                            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                                                                        )}
+                                                                        <span className="line-clamp-1">{act.label}</span>
+                                                                    </span>
+                                                                    <span className="text-[11px] opacity-80 shrink-0">Open &rarr;</span>
+                                                                </a>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 )}
                                             </div>
                                             <span className="text-[10px] text-slate-400 mt-1 px-1">
                                                 {m.timestamp}
                                             </span>
                                         </div>
-                                    ))}
+                                    );
+                                })}
 
-                                    {isTyping && (
-                                        <div className="flex items-center gap-2 text-slate-400 text-xs py-1">
-                                            <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
-                                            <span>Copilot is typing...</span>
-                                        </div>
-                                    )}
+                                {isTyping && (
+                                    <div className="flex items-center gap-2 text-slate-400 text-xs py-1">
+                                        <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+                                        <span>Copilot is analyzing...</span>
+                                    </div>
+                                )}
 
-                                    <div ref={messagesEndRef} />
-                                </div>
-
-                                {/* Quick-Prompt Pills */}
-                                <div className="p-2 border-t border-slate-200 bg-white flex gap-1.5 overflow-x-auto scrollbar-none">
-                                    <button
-                                        onClick={() => handleQuickPrompt('Please download my latest payslip')}
-                                        className="shrink-0 flex items-center gap-1 rounded-full bg-slate-100 hover:bg-sky-50 hover:text-sky-700 px-3 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 transition"
-                                    >
-                                        <FileText className="h-3 w-3" /> Latest Payslip
-                                    </button>
-                                    <button
-                                        onClick={() => handleQuickPrompt('Why was my pay reduced this month?')}
-                                        className="shrink-0 flex items-center gap-1 rounded-full bg-slate-100 hover:bg-sky-50 hover:text-sky-700 px-3 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 transition"
-                                    >
-                                        <HelpCircle className="h-3 w-3" /> Explain Deductions
-                                    </button>
-                                    <button
-                                        onClick={() => handleQuickPrompt('How many days of leave do I have remaining?')}
-                                        className="shrink-0 flex items-center gap-1 rounded-full bg-slate-100 hover:bg-sky-50 hover:text-sky-700 px-3 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 transition"
-                                    >
-                                        <Calendar className="h-3 w-3" /> Leave Balance
-                                    </button>
-                                </div>
-
-                                {/* Input Field */}
-                                <div className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
-                                    <input
-                                        type="text"
-                                        value={inputText}
-                                        onChange={(e) => setInputText(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                        placeholder="Ask a question about your pay or leave..."
-                                        className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                                    />
-                                    <button
-                                        onClick={() => handleSendMessage()}
-                                        disabled={!inputText.trim() || isTyping}
-                                        className="h-9 w-9 rounded-lg bg-sky-600 text-white flex items-center justify-center hover:bg-sky-700 transition disabled:opacity-40"
-                                    >
-                                        <Send className="h-4 w-4" />
-                                    </button>
-                                </div>
+                                <div ref={messagesEndRef} />
                             </div>
-                        )}
+
+                            {/* Quick-Prompt Suggestions for HR Users */}
+                            <div className="p-2 border-t border-slate-200 bg-white flex gap-1.5 overflow-x-auto scrollbar-none">
+                                <button
+                                    onClick={() => handleQuickPrompt('Generate a payslip for Bunge Benin for October')}
+                                    className="shrink-0 flex items-center gap-1 rounded-full bg-slate-100 hover:bg-sky-50 hover:text-sky-700 px-3 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 transition"
+                                >
+                                    <FileText className="h-3 w-3 text-sky-600" /> Bunge Benin Payslips
+                                </button>
+                                <button
+                                    onClick={() => handleQuickPrompt('How is SSNIT 5.5% and Petra Tier 2 5% calculated?')}
+                                    className="shrink-0 flex items-center gap-1 rounded-full bg-slate-100 hover:bg-sky-50 hover:text-sky-700 px-3 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 transition"
+                                >
+                                    <Calculator className="h-3 w-3 text-emerald-600" /> Statutory Formulas
+                                </button>
+                                <button
+                                    onClick={() => handleQuickPrompt('How are absenteeism deductions calculated in Ghanaian payroll?')}
+                                    className="shrink-0 flex items-center gap-1 rounded-full bg-slate-100 hover:bg-sky-50 hover:text-sky-700 px-3 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 transition"
+                                >
+                                    <HelpCircle className="h-3 w-3 text-indigo-600" /> Absenteeism Rules
+                                </button>
+                                <button
+                                    onClick={() => handleQuickPrompt('Open SSNIT Audit and Bank Audit')}
+                                    className="shrink-0 flex items-center gap-1 rounded-full bg-slate-100 hover:bg-sky-50 hover:text-sky-700 px-3 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 transition"
+                                >
+                                    <ShieldAlert className="h-3 w-3 text-purple-600" /> Reconciliation Audits
+                                </button>
+                                <button
+                                    onClick={() => handleQuickPrompt('How do I run a Pre-Flight AI Ingestion Audit?')}
+                                    className="shrink-0 flex items-center gap-1 rounded-full bg-slate-100 hover:bg-sky-50 hover:text-sky-700 px-3 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 transition"
+                                >
+                                    <Sparkles className="h-3 w-3 text-amber-500" /> Pre-Flight AI Audit
+                                </button>
+                            </div>
+
+                            {/* Input Field */}
+                            <div className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+                                <input
+                                    type="text"
+                                    value={inputText}
+                                    onChange={(e) => setInputText(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                    placeholder="Ask about payslips, client payrolls, worker deductions, or audits..."
+                                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                />
+                                <button
+                                    onClick={() => handleSendMessage()}
+                                    disabled={!inputText.trim() || isTyping}
+                                    className="h-9 w-9 rounded-lg bg-sky-600 text-white flex items-center justify-center hover:bg-sky-700 transition disabled:opacity-40"
+                                >
+                                    <Send className="h-4 w-4" />
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
