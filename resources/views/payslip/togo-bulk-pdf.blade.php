@@ -192,7 +192,7 @@
                     @endif
                     @if($lunch > 0)
                     <tr>
-                        <td colspan="2">Subvention Repas (Lunch Subsidy)</td>
+                        <td colspan="2">Subvention Repas / Déjeuner</td>
                         <td></td>
                         <td style="text-align:right;">{{ number_format($lunch, 2) }}</td>
                         <td></td>

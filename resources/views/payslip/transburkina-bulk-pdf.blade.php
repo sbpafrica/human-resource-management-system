@@ -168,7 +168,7 @@
                     </tr>
                     <tr class="bold3">
                         <th colspan="2">Rubrique</th>
-                        <th>Description / Days / Hours</th>
+                        <th>Description / Jours / Heures</th>
                         <th>Gains (FCFA)</th>
                         <th>Retenues (FCFA)</th>
                     </tr>

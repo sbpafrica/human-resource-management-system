@@ -191,7 +191,7 @@
                     @endif
                     @if($lunch > 0)
                     <tr>
-                        <td colspan="2">Indemnité de Restauration (Lunch)</td>
+                        <td colspan="2">Indemnité de Restauration / Repas</td>
                         <td></td>
                         <td style="text-align:right;">{{ number_format($lunch, 2) }}</td>
                         <td></td>
@@ -207,7 +207,7 @@
                     @endif
                     @if($overtime > 0)
                     <tr>
-                        <td colspan="2">Heures Supplémentaires (Paid Overtime)</td>
+                        <td colspan="2">Heures Supplémentaires Payées</td>
                         <td></td>
                         <td style="text-align:right;">{{ number_format($overtime, 2) }}</td>
                         <td></td>

@@ -139,7 +139,7 @@
         @endif
         <tr>
             <th colspan="2" class="header text-center">Rubrique</th>
-            <th class="header text-center">Description / Days / Hours</th>
+            <th class="header text-center">Description / Jours / Heures</th>
             <th class="header text-center">Gains (FCFA)</th>
             <th class="header text-center">Retenues (FCFA)</th>
         </tr>
