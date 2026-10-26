@@ -88,10 +88,10 @@ class AdditionalAiFeaturesTest extends TestCase
         $copilot = app(EmployeeCopilotService::class);
 
         // Test statutory pension formulas
-        $statutory = $copilot->handleMessage('GENERAL', 'How is SSNIT 5.5% and Petra Tier 2 5% calculated?');
+        $statutory = $copilot->handleMessage('GENERAL', 'How is SSNIT and Petra Tier 2 calculated?');
         $this->assertStringContainsString('SSNIT Tier 1', $statutory['reply']);
         $this->assertStringContainsString('Petra Tier 2', $statutory['reply']);
-        $this->assertStringContainsString('5.5%', $statutory['reply']);
+        $this->assertStringContainsString('0.5%', $statutory['reply']);
         $this->assertStringContainsString('5.0%', $statutory['reply']);
 
         // Test absenteeism formula

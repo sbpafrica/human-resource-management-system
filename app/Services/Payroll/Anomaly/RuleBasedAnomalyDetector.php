@@ -91,10 +91,13 @@ class RuleBasedAnomalyDetector implements AnomalyDetectorInterface
                 ];
             }
 
-            // 5. Statutory SSNIT Tier 1 Check (5.5% of base/gross)
+            // 5. Statutory SSNIT Tier 1 Check (0.5% standard in HRS, or statutory 5.5%)
             $salaryBase = $basic > 0 ? $basic : $gross;
             if ($salaryBase > 0) {
-                $expectedSsnit = round($salaryBase * 0.055, 2);
+                $expectedSsnit05 = round($salaryBase * 0.005, 2);
+                $expectedSsnit55 = round($salaryBase * 0.055, 2);
+                $isMatchingRate = (abs($ssnit - $expectedSsnit05) <= 2.00) || (abs($ssnit - $expectedSsnit55) <= 5.00);
+
                 if ($ssnit === null || ($ssnit == 0 && $salaryBase > 200)) {
                     $anomalies[] = [
                         'type' => 'missing_ssnit_deduction',
@@ -102,20 +105,20 @@ class RuleBasedAnomalyDetector implements AnomalyDetectorInterface
                         'staff_id' => $staffId,
                         'employee_name' => $name,
                         'field' => 'ssnit_ee',
-                        'message' => "Missing SSNIT Tier 1 deduction. Expected ~GHS " . number_format($expectedSsnit, 2) . " (5.5%).",
+                        'message' => "Missing SSNIT deduction. Expected ~GHS " . number_format($expectedSsnit05, 2) . " (0.5%).",
                         'suggested_fix' => "Confirm if employee is exempt or rectify statutory deduction.",
-                        'metadata' => ['expected_ssnit' => $expectedSsnit, 'actual_ssnit' => $ssnit],
+                        'metadata' => ['expected_ssnit' => $expectedSsnit05, 'actual_ssnit' => $ssnit],
                     ];
-                } elseif (abs($ssnit - $expectedSsnit) > 5.00 && $ssnit > 0) {
+                } elseif (!$isMatchingRate && $ssnit > 0) {
                     $anomalies[] = [
                         'type' => 'ssnit_variance',
                         'severity' => 'info',
                         'staff_id' => $staffId,
                         'employee_name' => $name,
                         'field' => 'ssnit_ee',
-                        'message' => "SSNIT deduction (GHS " . number_format($ssnit, 2) . ") deviates from standard 5.5% (GHS " . number_format($expectedSsnit, 2) . ").",
+                        'message' => "SSNIT deduction (GHS " . number_format($ssnit, 2) . ") deviates from standard 0.5% (GHS " . number_format($expectedSsnit05, 2) . ").",
                         'suggested_fix' => "Verify if calculation includes allowances or special pension base.",
-                        'metadata' => ['expected_ssnit' => $expectedSsnit, 'actual_ssnit' => $ssnit],
+                        'metadata' => ['expected_ssnit' => $expectedSsnit05, 'actual_ssnit' => $ssnit],
                     ];
                 }
 

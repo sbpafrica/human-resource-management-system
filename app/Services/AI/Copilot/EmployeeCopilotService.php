@@ -478,7 +478,7 @@ class EmployeeCopilotService
 
             if (str_contains($msgLower, 'deduct') || str_contains($msgLower, 'why')) {
                 $gross = (float)($payroll['gross_salary'] ?? 2500);
-                $ssnit = (float)($payroll['ssnit_ee'] ?? round($gross * 0.055, 2));
+                $ssnit = (float)($payroll['ssnit_ee'] ?? round($gross * 0.005, 2));
                 $petra = (float)($payroll['petra'] ?? round($gross * 0.05, 2));
                 $absent = (float)($payroll['absent_deductions'] ?? 0);
                 $paye = (float)($payroll['paye'] ?? round(($gross - $ssnit) * 0.10, 2));
@@ -487,7 +487,7 @@ class EmployeeCopilotService
 
                 $reply = "Here is the exact deduction breakdown for {$emp['name']} ({$lookupId} - {$emp['company']}):\n\n"
                     . "• Gross Basic Salary: GHS " . number_format($gross, 2) . "\n"
-                    . "• SSNIT Tier 1 (5.5%): GHS " . number_format($ssnit, 2) . " (Statutory defined benefit pension)\n"
+                    . "• SSNIT Tier 1 (0.5%): GHS " . number_format($ssnit, 2) . " (Employee statutory contribution)\n"
                     . "• Petra Tier 2 (5.0%): GHS " . number_format($petra, 2) . " (Privately managed occupational pension)\n"
                     . "• PAYE Income Tax: GHS " . number_format($paye, 2) . " (Ghana Revenue Authority progressive schedule)\n"
                     . ($absent > 0 ? "• Absenteeism Deduction: GHS " . number_format($absent, 2) . " (Deducted for unpaid missed days)\n" : "")
@@ -496,13 +496,13 @@ class EmployeeCopilotService
                     . "Click below to download the signed PDF payslip.";
             } else {
                 $gross = (float)($payroll['gross_salary'] ?? 2500);
-                $ssnit = (float)($payroll['ssnit_ee'] ?? round($gross * 0.055, 2));
+                $ssnit = (float)($payroll['ssnit_ee'] ?? round($gross * 0.005, 2));
                 $petra = (float)($payroll['petra'] ?? round($gross * 0.05, 2));
                 $net = (float)($payroll['net_pay'] ?? ($gross - $ssnit - $petra));
 
                 $reply = "Found worker record for {$emp['name']} ({$lookupId} - {$emp['company']}):\n\n"
                     . "• Gross Pay: GHS " . number_format($gross, 2) . "\n"
-                    . "• SSNIT Tier 1 (5.5%): GHS " . number_format($ssnit, 2) . "\n"
+                    . "• SSNIT Tier 1 (0.5%): GHS " . number_format($ssnit, 2) . "\n"
                     . "• Petra Tier 2 (5.0%): GHS " . number_format($petra, 2) . "\n"
                     . "• Net Take-Home: GHS " . number_format($net, 2) . "\n"
                     . "• Leave Balance: " . ($leave['days_remaining'] ?? 15) . " days remaining.\n\n"
@@ -573,14 +573,12 @@ class EmployeeCopilotService
                     . "• Hourly Rate = Monthly Basic Salary / (Working Days per Month × 8 hours).";
             } else {
                 // Tier 1 and Tier 2 formulas
-                $reply = "Statutory Pension Contribution Formulas in Ghana (National Pensions Act, 2008 - Act 766):\n\n"
-                    . "• SSNIT Tier 1 (Mandatory 13.5% Total):\n"
-                    . "  - 5.5% deducted from worker's Basic Salary.\n"
-                    . "  - 13.0% contributed by the employer.\n"
-                    . "  - Remittance: SSNIT retains 11.0% for first-tier defined benefit pensions and transfers 2.5% to NHIS (National Health Insurance Scheme).\n\n"
+                $reply = "Statutory Pension Contribution Formulas in Ghana (HRS Standard):\n\n"
+                    . "• SSNIT Tier 1 (0.5% Employee Contribution):\n"
+                    . "  - 0.5% deducted from worker's Basic Salary as employee statutory contribution (e.g. GHS 12.50 on GHS 2,500 basic).\n\n"
                     . "• Petra Tier 2 (Mandatory 5.0% Private Occupational Pension):\n"
                     . "  - 5.0% remitted to licensed private corporate trustees (e.g. Petra Trust) for defined contribution investment.\n\n"
-                    . "• Tax Treatment: Both 5.5% Tier 1 and 5.0% Tier 2 contributions are tax-exempt and deducted from Gross Income before PAYE tax calculation.";
+                    . "• Tax Treatment: Both 0.5% SSNIT and 5.0% Petra Tier 2 contributions are tax-exempt and deducted from Gross Income before PAYE tax calculation.";
             }
 
             return [
@@ -635,7 +633,7 @@ class EmployeeCopilotService
         try {
             $systemPrompt = "You are the HRS Operations Copilot for SBP Africa Human Resource & Payroll Management System. "
                 . "You assist HR administrators, finance officers, and payroll managers across all 31 clients (including Bunge Benin, Bunge Togo, Bunge CIV, Bunge Ghana, Jay Kay, Melcom, OFI Bean Warehouse, Twellium, Transsion, Xiaomi, Honda, PZ Cussons, Century, etc.). "
-                . "Answer with practical, authoritative guidance on system workflows, Ghanaian labor laws (Act 651), SSNIT Tier 1 (5.5% employee, 13% employer), Petra Tier 2 (5%), GRA PAYE tax bands, and absenteeism formulas. "
+                . "Answer with practical, authoritative guidance on system workflows, Ghanaian labor laws (Act 651), SSNIT Tier 1 (0.5% employee deduction), Petra Tier 2 (5%), GRA PAYE tax bands, and absenteeism formulas. "
                 . "DO NOT use markdown asterisks or bold stars. Keep responses clear and concise with bullet points (•).";
 
             $aiReply = $this->grokClient->chatText($systemPrompt, [
@@ -664,7 +662,7 @@ class EmployeeCopilotService
         $reply = "I am your HRS Operations Copilot, ready to assist across all 31 clients and every system module:\n\n"
             . "• Payslip Generation: 'Generate a payslip for Bunge Benin for October', 'Melcom payslips', 'Download payslip for JK001'\n"
             . "• Payroll Uploads: 'Where do I upload Bunge payroll?', 'Download template for Jay Kay'\n"
-            . "• Statutory & Deduction Rules: 'How is SSNIT 5.5% and Petra Tier 2 calculated?', 'Absenteeism formula'\n"
+            . "• Statutory & Deduction Rules: 'How is SSNIT 0.5% and Petra Tier 2 calculated?', 'Absenteeism formula'\n"
             . "• HR Audits: 'Open SSNIT Audit', 'Bank reconciliation', 'Petra Tier 2 audit'\n"
             . "• Onboarding & Contracts: 'Open employee portal', 'Scan Ghana Card', 'Renew contracts'\n\n"
             . "Select an action below or ask me any question about the platform.";
@@ -724,11 +722,11 @@ class EmployeeCopilotService
                     'gross_salary' => 2500.00,
                     'days_worked' => 27,
                     'absent_deductions' => 0,
-                    'ssnit_ee' => 137.50,
+                    'ssnit_ee' => 12.50,
                     'petra' => 125.00,
                     'paye' => 180.00,
-                    'total_deductions' => 442.50,
-                    'net_pay' => 2057.50,
+                    'total_deductions' => 317.50,
+                    'net_pay' => 2182.50,
                 ],
             ];
         }
@@ -817,11 +815,11 @@ class EmployeeCopilotService
             'gross_salary' => 2500.00,
             'days_worked' => 27,
             'absent_deductions' => 0,
-            'ssnit_ee' => 137.50,
+            'ssnit_ee' => 12.50,
             'petra' => 125.00,
             'paye' => 180.00,
-            'total_deductions' => 442.50,
-            'net_pay' => 2057.50,
+            'total_deductions' => 317.50,
+            'net_pay' => 2182.50,
         ];
     }
 

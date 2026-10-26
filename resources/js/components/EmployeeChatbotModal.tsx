@@ -39,7 +39,7 @@ export default function EmployeeChatbotModal() {
         {
             id: 'welcome',
             sender: 'assistant',
-            text: `Hello! 👋 I am your HRS Operations Copilot.\n\nI assist HR administrators and payroll officers with everything on the system:\n• Payslip Generation: Instantly generate and open monthly payslips for all 31 clients (e.g. Bunge Benin, Melcom, Twellium, Jay Kay)\n• Payroll Ingestion: Direct navigation to client upload sheets and template downloads\n• Worker Deductions: Breakdown of why deductions happened (SSNIT Tier 1, Petra Tier 2, PAYE, days absent)\n• Statutory Rules: Ghanaian labor law, overtime rates, and pension contribution formulas\n• System Audits: Direct access to SSNIT, Bank, Petra, and Contact reconciliation audits.`,
+            text: `Hello! 👋 I am your HRS Operations Copilot.\n\nI assist HR administrators and payroll officers with everything on the system:\n• Payslip Generation: Instantly generate and open monthly payslips for all 31 clients (e.g. Bunge Benin, Melcom, Twellium, Jay Kay)\n• Payroll Ingestion: Direct navigation to client upload sheets and template downloads\n• Worker Deductions: Breakdown of why deductions happened (SSNIT Tier 1 0.5%, Petra Tier 2 5%, PAYE, days absent)\n• Statutory Rules: Ghanaian labor law, overtime rates, and pension contribution formulas\n• System Audits: Direct access to SSNIT, Bank, Petra, and Contact reconciliation audits.`,
             actions: [
                 { type: 'view_payslips', label: 'Open Bunge Benin October Payslips', url: '/payslips/beninbunge?month=2026-10' },
                 { type: 'ai_audit', label: 'Run Pre-Flight AI Ingestion Audit', url: '/payroll-ai/inspect' },
@@ -265,7 +265,7 @@ export default function EmployeeChatbotModal() {
                                     <FileText className="h-3 w-3 text-sky-600" /> Bunge Benin Payslips
                                 </button>
                                 <button
-                                    onClick={() => handleQuickPrompt('How is SSNIT 5.5% and Petra Tier 2 5% calculated?')}
+                                    onClick={() => handleQuickPrompt('How is SSNIT 0.5% and Petra Tier 2 5% calculated?')}
                                     className="shrink-0 flex items-center gap-1 rounded-full bg-slate-100 hover:bg-sky-50 hover:text-sky-700 px-3 py-1 text-[11px] font-medium text-slate-600 border border-slate-200 transition"
                                 >
                                     <Calculator className="h-3 w-3 text-emerald-600" /> Statutory Formulas
