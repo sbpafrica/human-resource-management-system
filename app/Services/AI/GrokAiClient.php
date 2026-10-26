@@ -84,4 +84,100 @@ class GrokAiClient
             return null;
         }
     }
+
+    /**
+     * Send a conversational request with multi-turn history expecting text/markdown response.
+     *
+     * @param string $systemPrompt
+     * @param array<int, array{role: string, content: string}> $messages
+     * @param float $temperature
+     * @return string|null
+     */
+    public function chatText(string $systemPrompt, array $messages, float $temperature = 0.3): ?string
+    {
+        if (!$this->isConfigured()) {
+            return null;
+        }
+
+        try {
+            $formattedMessages = array_merge([
+                ['role' => 'system', 'content' => $systemPrompt]
+            ], $messages);
+
+            $response = Http::withToken($this->apiKey)
+                ->timeout($this->timeout + 4)
+                ->acceptJson()
+                ->post("{$this->baseUrl}/chat/completions", [
+                    'model' => $this->model,
+                    'messages' => $formattedMessages,
+                    'temperature' => $temperature,
+                ]);
+
+            if (!$response->successful()) {
+                Log::channel('payroll_ai')->error("Grok chatText API error [{$response->status()}]: " . $response->body());
+                return null;
+            }
+
+            return $response->json('choices.0.message.content');
+        } catch (Throwable $e) {
+            Log::channel('payroll_ai')->error('Grok chatText exception: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Multimodal vision request to extract structured JSON from image documents
+     * (Ghana Card, SSNIT card, contracts, bank statements).
+     *
+     * @param string $systemPrompt
+     * @param string $instruction
+     * @param string $imageBase64
+     * @param string $mimeType e.g. 'image/jpeg', 'image/png'
+     * @return array|null
+     */
+    public function chatVisionJson(string $systemPrompt, string $instruction, string $imageBase64, string $mimeType = 'image/jpeg'): ?array
+    {
+        if (!$this->isConfigured()) {
+            return null;
+        }
+
+        // Use vision-capable model
+        $visionModel = str_contains($this->model, 'mini') ? 'grok-2-vision-1212' : ($this->model === 'grok-beta' ? 'grok-2-vision-1212' : $this->model);
+
+        try {
+            $dataUrl = "data:{$mimeType};base64,{$imageBase64}";
+
+            $response = Http::withToken($this->apiKey)
+                ->timeout($this->timeout + 10) // Vision OCR can take a few seconds longer
+                ->acceptJson()
+                ->post("{$this->baseUrl}/chat/completions", [
+                    'model' => $visionModel,
+                    'messages' => [
+                        ['role' => 'system', 'content' => $systemPrompt],
+                        [
+                            'role' => 'user',
+                            'content' => [
+                                ['type' => 'text', 'text' => $instruction],
+                                ['type' => 'image_url', 'image_url' => ['url' => $dataUrl]],
+                            ],
+                        ],
+                    ],
+                    'response_format' => ['type' => 'json_object'],
+                    'temperature' => 0.1,
+                ]);
+
+            if (!$response->successful()) {
+                Log::channel('payroll_ai')->error("Grok Vision error [{$response->status()}]: " . $response->body());
+                return null;
+            }
+
+            $content = $response->json('choices.0.message.content');
+            $decoded = json_decode((string) $content, true);
+
+            return is_array($decoded) ? $decoded : null;
+        } catch (Throwable $e) {
+            Log::channel('payroll_ai')->error('Grok chatVisionJson exception: ' . $e->getMessage());
+            return null;
+        }
+    }
 }

@@ -1384,6 +1384,25 @@ Route::middleware(['auth'])->prefix('payroll-ai')->name('payroll-ai.')->group(fu
     Route::post('/match-headers', [App\Http\Controllers\Api\PayrollAiController::class, 'matchHeaders'])->name('match-headers');
 });
 
+// ── Employee Self-Service Web Chatbot Copilot ───────────────────────────────────────────
+Route::prefix('copilot')->name('copilot.')->group(function () {
+    Route::post('/auth', [App\Http\Controllers\Api\EmployeeCopilotController::class, 'authenticate'])->name('auth');
+    Route::post('/chat', [App\Http\Controllers\Api\EmployeeCopilotController::class, 'chat'])->name('chat');
+    Route::get('/quick-stats', [App\Http\Controllers\Api\EmployeeCopilotController::class, 'quickStats'])->name('quick-stats');
+});
+
+// ── Document Intelligence (Ghana Card & Contract Vision OCR) ────────────────────────────
+Route::middleware(['auth'])->prefix('document-ai')->name('document-ai.')->group(function () {
+    Route::post('/scan', [App\Http\Controllers\Api\DocumentIntelligenceController::class, 'scan'])->name('scan');
+    Route::post('/save-employee', [App\Http\Controllers\Api\DocumentIntelligenceController::class, 'saveToEmployee'])->name('save-employee');
+});
+
+// ── Executive Natural Language Analytics ("Ask HRS Anything") ───────────────────────────
+Route::middleware(['auth'])->prefix('executive-ai')->name('executive-ai.')->group(function () {
+    Route::post('/ask', [App\Http\Controllers\Api\ExecutiveAnalyticsController::class, 'ask'])->name('ask');
+    Route::get('/suggestions', [App\Http\Controllers\Api\ExecutiveAnalyticsController::class, 'suggestions'])->name('suggestions');
+});
+
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
 
