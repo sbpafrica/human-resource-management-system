@@ -375,7 +375,8 @@ class PayslipController extends Controller
         $payslip->ssnit          = $ssnit;
         $payslip->department     = $payslip->{'1stlevel'} ?? ($payslip->city ?? '-');
         $payslip->workdays       = $payslip->actualwork ?? 0;
-        $payslip->basic          = $payslip->basic ?? ($payslip->actualbasic ?? 0);
+        $payslip->basic          = $payslip->basic ?? ($payslip->actualbasic ?? ($payslip->basicfixed ?? 0));
+        $payslip->basic_earned   = $payslip->basic;
         $payslip->coefficient    = $payslip->coefficient ?? 0;
         $payslip->performstand   = $payslip->monthlykpi ?? 0;
         $payslip->allowance      = (float)($payslip->transport ?? 0)
@@ -386,14 +387,189 @@ class PayslipController extends Controller
         $payslip->other          = 0;
         $payslip->commission     = 0;
         $payslip->grosspay       = $payslip->grosssalary ?? ($payslip->grosssalary1 ?? 0);
+        $payslip->gross          = $payslip->grosspay;
         $payslip->annaulbonus    = 0;
         $payslip->paye           = $payslip->itsalaries ?? 0;
+        $payslip->ssnitee        = $payslip->cnpssalaries ?? 0;
         $payslip->leavedays      = 0;
         $payslip->leavededuction = 0;
         $payslip->otherdeduction = $payslip->otherdeductions ?? 0;
+        $payslip->totaldeductions = (float)($payslip->totaldeduction ?? 0);
+        if ($payslip->totaldeductions <= 0) {
+            $payslip->totaldeductions = (float)$payslip->paye + (float)$payslip->ssnitee + (float)$payslip->otherdeduction;
+        }
+        $payslip->total_deductions = $payslip->totaldeductions;
         $payslip->loan           = 0;
         $payslip->annaultax      = 0;
         $payslip->netpay         = $payslip->netpay ?? 0;
+
+        return $payslip;
+    }
+
+    /**
+     * Convert Benin Bunge's payroll column names to common payslip fields.
+     */
+    private function normalizeBeninBungePayslip($payslip, $client, $ssnit = '-')
+    {
+        if (!$payslip) {
+            return $payslip;
+        }
+
+        $staffId = $payslip->staff_id ?? $payslip->staffid ?? $payslip->id ?? '-';
+        $payslip->staffida  = $staffId;
+        $payslip->staffid   = $staffId;
+        $payslip->staff_id  = $staffId;
+        $payslip->id        = $staffId;
+
+        $names      = trim((string)($payslip->names ?? ''));
+        $firstNames = trim((string)($payslip->first_names ?? ''));
+        $fullName   = trim($names . ' ' . $firstNames);
+        $payslip->name       = !empty($fullName) ? $fullName : ($names ?: ($firstNames ?: '-'));
+        $payslip->position   = $payslip->position ?? '-';
+        $payslip->brandname  = $client->short_name ?? 'Benin Bunge';
+        $payslip->department = $payslip->department ?? ($payslip->work_place ?? '-');
+        $payslip->workdays   = (float)($payslip->work_days ?? ($payslip->legal_work_days ?? 0));
+
+        // Basic salary
+        $basic = (float)($payslip->basic_salary ?? 0);
+        $payslip->basic        = $basic;
+        $payslip->basic_earned = $basic;
+        $payslip->raw_basic    = $basic;
+
+        // Allowances & Bonuses
+        $payslip->transport         = (float)($payslip->transport_allowance ?? 0);
+        $payslip->general_allowance = (float)($payslip->other_special_bonus_subsidy_etc ?? 0)
+            + (float)($payslip->communication_allowance ?? 0);
+        $payslip->allowance         = $payslip->transport + $payslip->general_allowance;
+
+        // Overtime (Paid Overtime maps to bonuses)
+        $payslip->normalovertime = (float)($payslip->bonuses ?? 0);
+        $payslip->overtime       = $payslip->normalovertime;
+
+        // Gross
+        $gross = (float)($payslip->gross_salaries ?? ($payslip->gross_amount ?? 0));
+        if ($gross <= 0 && $basic > 0) {
+            $gross = $basic + $payslip->allowance + $payslip->overtime;
+        }
+        $payslip->grosspay = $gross;
+        $payslip->gross    = $gross;
+
+        // Deductions
+        $ssnitVal = (float)($payslip->ps_pension_salarie ?? 0);
+        $payslip->ssnitee = $ssnitVal;
+
+        $payeVal = (float)($payslip->its ?? ($payslip->its2 ?? 0));
+        $payslip->paye = $payeVal;
+
+        $totalDeductions = (float)($payslip->its_deduction_totale ?? ($payslip->deduction ?? 0));
+        if ($totalDeductions <= 0 && ($ssnitVal > 0 || $payeVal > 0)) {
+            $totalDeductions = $ssnitVal + $payeVal;
+        }
+        $payslip->totaldeductions  = $totalDeductions;
+        $payslip->total_deductions = $totalDeductions;
+
+        // Net Pay
+        $net = (float)($payslip->net_a_payer ?? 0);
+        if ($net <= 0 && $gross > 0) {
+            $net = $gross - $totalDeductions;
+        }
+        $payslip->netpay   = $net;
+        $payslip->takehome = $net;
+
+        // Bank info
+        if (!empty($payslip->bank_name)) {
+            $payslip->bank     = $payslip->bank_name;
+            $payslip->bankname = $payslip->bank_name;
+        }
+        if (!empty($payslip->bank_account_number)) {
+            $payslip->accountnumber = $payslip->bank_account_number;
+            $payslip->alcnum        = $payslip->bank_account_number;
+        }
+
+        return $payslip;
+    }
+
+    /**
+     * Convert Togo Bunge's payroll column names to common payslip fields.
+     */
+    private function normalizeTogoBungePayslip($payslip, $client, $ssnit = '-')
+    {
+        if (!$payslip) {
+            return $payslip;
+        }
+
+        $staffId = $payslip->staffid ?? $payslip->staff_id ?? $payslip->id ?? '-';
+        $payslip->staffida  = $staffId;
+        $payslip->staffid   = $staffId;
+        $payslip->staff_id  = $staffId;
+        $payslip->id        = $staffId;
+
+        $nom      = trim((string)($payslip->nom ?? ''));
+        $prenom   = trim((string)($payslip->prenom ?? ''));
+        $fullName = trim($nom . ' ' . $prenom);
+        $payslip->name       = !empty($fullName) ? $fullName : ($nom ?: ($prenom ?: '-'));
+        $payslip->position   = $payslip->position ?? '-';
+        $payslip->brandname  = $client->short_name ?? 'Togo Bunge';
+        $payslip->department = $payslip->department ?? ($payslip->travail ?? '-');
+        $payslip->workdays   = (float)($payslip->reelle ?? ($payslip->legale ?? 0));
+
+        // Earnings
+        $basic = (float)($payslip->salarybase ?? 0);
+        $payslip->basic        = $basic;
+        $payslip->basic_earned = $basic;
+        $payslip->raw_basic    = $basic;
+
+        $payslip->transport         = (float)($payslip->indtransport ?? 0);
+        $payslip->general_allowance = (float)($payslip->indcom ?? 0)
+            + (float)($payslip->indconges ?? 0)
+            + (float)($payslip->autressbonus ?? 0);
+        $payslip->allowance    = $payslip->transport + $payslip->general_allowance;
+        $payslip->commission   = (float)($payslip->commission ?? 0);
+        $payslip->performstand = (float)($payslip->performstand ?? ($payslip->performprimes ?? 0));
+        $payslip->coefficient  = (float)($payslip->coefficient ?? 0);
+
+        // Gross
+        $gross = (float)($payslip->salairebrut ?? 0);
+        if ($gross <= 0 && $basic > 0) {
+            $gross = $basic + $payslip->allowance + $payslip->commission + $payslip->performstand;
+        }
+        $payslip->grosspay = $gross;
+        $payslip->gross    = $gross;
+
+        // Deductions
+        $cnss = (float)($payslip->cnss ?? 0);
+        $payslip->ssnitee = $cnss;
+
+        $irpp = (float)($payslip->irpp ?? 0);
+        $payslip->paye = $irpp;
+
+        $otherDeductions = (float)($payslip->deduction ?? 0);
+        $payslip->otherdeduction = $otherDeductions;
+
+        $totalDeductions = (float)($payslip->totaldeduction ?? 0);
+        if ($totalDeductions <= 0) {
+            $totalDeductions = $cnss + $irpp + $otherDeductions;
+        }
+        $payslip->totaldeductions  = $totalDeductions;
+        $payslip->total_deductions = $totalDeductions;
+
+        // Net
+        $net = (float)($payslip->netpayer ?? 0);
+        if ($net <= 0 && $gross > 0) {
+            $net = $gross - $totalDeductions;
+        }
+        $payslip->netpay   = $net;
+        $payslip->takehome = $net;
+
+        // Bank info
+        if (!empty($payslip->banques)) {
+            $payslip->bank     = $payslip->banques;
+            $payslip->bankname = $payslip->banques;
+        }
+        if (!empty($payslip->numero)) {
+            $payslip->accountnumber = $payslip->numero;
+            $payslip->alcnum        = $payslip->numero;
+        }
 
         return $payslip;
     }
@@ -404,8 +580,15 @@ class PayslipController extends Controller
             return $payslip;
         }
 
-        if ($client->client_dbname === 'civ') {
+        $clientDb   = strtolower(trim((string)($client->client_dbname ?? '')));
+        $clientSlug = strtolower(trim((string)($client->slug ?? '')));
+
+        if ($clientDb === 'civ' || str_contains($clientSlug, 'civ')) {
             $payslip = $this->normalizeCivPayslip($payslip, $client, $ssnit);
+        } elseif (str_contains($clientDb, 'benin') || str_contains($clientSlug, 'benin')) {
+            $payslip = $this->normalizeBeninBungePayslip($payslip, $client, $ssnit);
+        } elseif (str_contains($clientDb, 'togo') || str_contains($clientSlug, 'togo')) {
+            $payslip = $this->normalizeTogoBungePayslip($payslip, $client, $ssnit);
         }
     
         // Freeze raw source data so mutated $payslip properties (e.g. weekendOT hours) don't shadow raw DB fields
@@ -716,18 +899,26 @@ class PayslipController extends Controller
 
         // ---------- DEDUCTIONS ----------
         $payslip->paye = (float) (
-            $getP('totaltaxdeductions') 
+            $payslip->paye
+            ?? $getP('totaltaxdeductions') 
             ?? $getP('totaltaxdeduction') 
             ?? $getP('totaltax') 
             ?? $getP('total_taxation') 
             ?? $getP('paye') 
             ?? $getP('payeghc') 
             ?? $getP('itsalaries') 
+            ?? $getP('its')
+            ?? $getP('its2')
+            ?? $getP('irpp')
             ?? 0
         );
 
         $payslip->ssnitee = (float) (
-            $getP('ssnitee') 
+            $payslip->ssnitee
+            ?? $getP('ssnitee') 
+            ?? $getP('ps_pension_salarie')
+            ?? $getP('pspensionsalarie')
+            ?? $getP('cnss')
             ?? $getP('ssnit_ee_5_5') 
             ?? $getP('ssnitee55') 
             ?? $getP('ssnitee55percent') 
@@ -791,10 +982,14 @@ class PayslipController extends Controller
         );
         $payslip->ottax = $payslip->overtimetax;
 
-        $totalDeductionsVal = $getP('total_deductions')
+        $totalDeductionsVal = $payslip->totaldeductions
+            ?? $getP('total_deductions')
             ?? $getP('totaldeductions')
             ?? $getP('totaldeduction')
             ?? $getP('total_deduction')
+            ?? $getP('its_deduction_totale')
+            ?? $getP('itsdeductiontotale')
+            ?? $getP('deduction_totale')
             ?? $getP('totaldeduct')
             ?? null;
 
@@ -821,10 +1016,15 @@ class PayslipController extends Controller
 
         // ---------- TOTALS (GROSS & NET) ----------
         $netVal = (float) (
-            $getP('take_home_pay') 
+            $payslip->netpay
+            ?? $getP('take_home_pay') 
             ?? $getP('takehomepay') 
             ?? $getP('takehome') 
             ?? $getP('netpay') 
+            ?? $getP('net_a_payer')
+            ?? $getP('netapayer')
+            ?? $getP('netpayer')
+            ?? $getP('net_payer')
             ?? $getP('takehomepayghc') 
             ?? $getP('banktransfer') 
             ?? $getP('net_pay') 
@@ -835,8 +1035,13 @@ class PayslipController extends Controller
         );
 
         $grossVal = (float) (
-            $getP('gross_salary') 
+            $payslip->grosspay
+            ?? $getP('gross_salary') 
             ?? $getP('grosssalary') 
+            ?? $getP('gross_salaries')
+            ?? $getP('grosssalaries')
+            ?? $getP('salairebrut')
+            ?? $getP('salaire_brut')
             ?? $getP('grosssalaryghc') 
             ?? $getP('grosspay') 
             ?? $getP('gross_pay') 
@@ -924,9 +1129,9 @@ class PayslipController extends Controller
         // ---------- BANK & EXTRA INFO ----------
         $payslip->trust         = (float)($getP('trust') ?? 0);
         $payslip->taxable       = (float)($getP('taxableincome') ?? $getP('taxable') ?? 0);
-        $payslip->bank          = $getP('bank') ?? $getP('bankname') ?? $getP('bank1') ?? null;
-        $payslip->accountnumber = $getP('accountnumber') ?? $getP('account') ?? $getP('alcnum') ?? $getP('account1') ?? $getP('account2') ?? $getP('account_number') ?? null;
-        $payslip->branch        = $getP('branch') ?? $getP('branch1') ?? null;
+        $payslip->bank          = $payslip->bank ?? $getP('bank') ?? $getP('bankname') ?? $getP('bank_name') ?? $getP('banques') ?? $getP('banque') ?? $getP('bank1') ?? null;
+        $payslip->accountnumber = $payslip->accountnumber ?? $getP('accountnumber') ?? $getP('bank_account_number') ?? $getP('numero') ?? $getP('account') ?? $getP('alcnum') ?? $getP('account1') ?? $getP('account2') ?? $getP('account_number') ?? null;
+        $payslip->branch        = $payslip->branch ?? $getP('branch') ?? $getP('branch1') ?? null;
         $payslip->bankname      = $payslip->bank;
         $payslip->alcnum        = $payslip->accountnumber;
     

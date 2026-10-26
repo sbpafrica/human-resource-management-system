@@ -128,11 +128,11 @@
 
         <h4>2. DESIGNATION AND LOCATION</h4>
         <p class="clause">
-            <strong>2.1.</strong> The employee shall report to OLAM FOOD INGREDIENTS (ofi) (hereinafter known as “the Client”). The specific address location of the site to which the employee is assigned is recorded as <strong>NKAWKAW</strong> and under direct supervision of CLMRS Field Supervisor.
+            <strong>2.1.</strong> The employee shall report to {{ !empty($client) ? strtoupper($client) : 'OLAM FOOD INGREDIENTS (ofi)' }} (hereinafter known as “the Client”). The specific address location of the site to which the employee is assigned is recorded as <strong>{{ strtoupper($location ?? 'NKAWKAW') }}</strong> and under direct supervision of CLMRS Field Supervisor.
         </p>
 
         <p class="clause">
-            <strong>2.2.</strong> The employee is employed in the capacity of <strong>CLMRS FIELD OFFICER</strong> or in such other capacity of a like status as the client of the company may require. CLMRS Field Officer is the primary point of contact for households covered by the CLMRS.
+            <strong>2.2.</strong> The employee is employed in the capacity of <strong>{{ strtoupper($position1 ?? 'CLMRS FIELD OFFICER') }}</strong> or in such other capacity of a like status as the client of the company may require. CLMRS Field Officer is the primary point of contact for households covered by the CLMRS.
         </p>
 
         <div class="job-desc">
@@ -161,7 +161,7 @@
 
         <h4>3. DURATION</h4>
         <p class="clause">
-            The contract and/or assignment shall be for a duration of <strong>Twelve (12) months</strong> and shall commence on <strong>{{ \Carbon\Carbon::parse($startdate)->format('d/m/Y') }}</strong> and endure through to <strong>{{ \Carbon\Carbon::parse($enddate)->format('d/m/Y') }}</strong>. This contract is subject to <strong>six (6) months of probation</strong> and shall be renewed on grounds of performance and discipline.
+            The contract and/or assignment shall be for a duration of <strong>{{ !empty($duration) ? $duration . ' months' : 'Twelve (12) months' }}</strong> and shall commence on <strong>{{ \Carbon\Carbon::parse($startdate)->format('d/m/Y') }}</strong> and endure through to <strong>{{ \Carbon\Carbon::parse($enddate)->format('d/m/Y') }}</strong>. This contract is subject to <strong>six (6) months of probation</strong> and shall be renewed on grounds of performance and discipline.
         </p>
 
         <p class="clause">
@@ -212,7 +212,7 @@
         <h4>5. REMUNERATION</h4>
         <p class="clause">
             <strong>5.1.</strong> Payment of remuneration and overtime shall be made by way of electronic transfer directly into the employee’s bank account as provided, and will be net of any deductions made from your salary each month for SSNIT (1&2), PAYE and any authorized deductions where applicable. Your salary will be paid monthly.<br>
-            The employer shall, in consideration for the due rendering by the employee of his/her services in terms of this agreement, pay the employee a <strong>Basic Salary of GHC 5,500.00</strong>.<br>
+            The employer shall, in consideration for the due rendering by the employee of his/her services in terms of this agreement, pay the employee a <strong>Basic Salary of GHC {{ $basic ?? '5,500.00' }}</strong>@if(!empty($insurance))<strong> plus {{ $insurance }}</strong>@endif.<br>
             The employee will receive a pay slip indicating the various elements of the remuneration.
         </p>
 

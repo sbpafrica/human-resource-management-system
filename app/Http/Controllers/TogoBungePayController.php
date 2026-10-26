@@ -152,18 +152,90 @@ class TogoBungePayController extends Controller
             $reader = $extension === 'xls' ? new XlsReader() : new XlsxReader();
 
             $spreadsheet = $reader->load($file->getRealPath());
-            $rows        = $spreadsheet->getActiveSheet()->toArray();
+
+            $cleanStr = fn($s) => strtolower(trim(preg_replace('/\s+/', ' ', (string)$s)));
+            $keywords = [
+                'staff id', 'staffid', 'nom', 'prenom', 'department', 'position',
+                'salary base', 'net payer', 'travail', 'banques'
+            ];
+
+            $bestSheet          = null;
+            $bestScore          = 0;
+            $bestHeaderRowIndex = 0;
+
+            foreach ($spreadsheet->getAllSheets() as $sheet) {
+                $sheetTitle = strtolower(trim($sheet->getTitle()));
+                $sheetRows  = $sheet->toArray();
+                if (empty($sheetRows)) continue;
+
+                $isInvoice = str_contains($sheetTitle, 'invoice') || str_contains($sheetTitle, 'facture');
+                foreach (array_slice($sheetRows, 0, 15) as $rIdx => $candidateRow) {
+                    $matches = 0;
+                    foreach ($candidateRow as $cell) {
+                        $clean = $cleanStr($cell);
+                        if (in_array($clean, $keywords)) {
+                            $matches++;
+                        }
+                    }
+                    if ($matches > $bestScore && !$isInvoice) {
+                        $bestScore          = $matches;
+                        $bestSheet          = $sheet;
+                        $bestHeaderRowIndex = $rIdx;
+                    }
+                }
+            }
+
+            if ($bestSheet === null) {
+                $bestSheet          = $spreadsheet->getActiveSheet();
+                $rows               = $bestSheet->toArray();
+                $bestHeaderRowIndex = 0;
+                foreach (array_slice($rows, 0, 15) as $rIdx => $candidateRow) {
+                    $matches = 0;
+                    foreach ($candidateRow as $cell) {
+                        $clean = $cleanStr($cell);
+                        if (in_array($clean, $keywords)) {
+                            $matches++;
+                        }
+                    }
+                    if ($matches >= 2) {
+                        $bestHeaderRowIndex = $rIdx;
+                        break;
+                    }
+                }
+            } else {
+                $rows = $bestSheet->toArray();
+            }
 
             if (empty($rows)) {
                 return redirect()->route('togo-bunge.pay.index', ['month' => $selectedMonth])
                     ->with('error', 'The uploaded file is empty.');
             }
 
-            $headerRow = array_shift($rows);
+            $headerRowIndex = $bestHeaderRowIndex;
+
+            $headerRow = $rows[$headerRowIndex];
+            // Combine previous row headers if present (e.g. section headers on Row 1)
+            if ($headerRowIndex > 0) {
+                $prevRow = $rows[$headerRowIndex - 1];
+                $maxLen  = max(count($headerRow), count($prevRow));
+                for ($ci = 0; $ci < $maxLen; $ci++) {
+                    $curr = trim((string)($headerRow[$ci] ?? ''));
+                    $prev = trim((string)($prevRow[$ci] ?? ''));
+                    if ($curr === '' && $prev !== '') {
+                        $headerRow[$ci] = $prev;
+                    }
+                }
+            }
+            $rows = array_slice($rows, $headerRowIndex + 1);
+
             $headerMap = [
                 'staff id'        => 'staffid',
+                'matricule'       => 'staffid',
+                'id'              => 'staffid',
                 'nom'             => 'nom',
+                'names'           => 'nom',
                 'prenom'          => 'prenom',
+                'first names'     => 'prenom',
                 'department'      => 'department',
                 'join date'       => 'joindate',
                 'contract start'  => 'constart',
@@ -202,6 +274,7 @@ class TogoBungePayController extends Controller
                 'irpp'            => 'irpp',
                 'total deduction' => 'totaldeduction',
                 'net payer'       => 'netpayer',
+                'net a payer'     => 'netpayer',
                 'prestation'      => 'prestation',
                 'pension'         => 'pension',
                 'risques'         => 'risques',
@@ -225,12 +298,12 @@ class TogoBungePayController extends Controller
 
             DB::table($tableName)->truncate();
 
-            $validRecords = [];
-            $errors       = [];
+            $validRecords  = [];
+            $errors        = [];
+            $autoIdCounter = 1;
+            $seenStaffIds  = [];
 
             foreach ($rows as $index => $row) {
-                $rowNum = $index + 2;
-
                 $allEmpty = true;
                 foreach ($row as $cell) {
                     if (trim((string) $cell) !== '') { $allEmpty = false; break; }
@@ -243,17 +316,74 @@ class TogoBungePayController extends Controller
                     if (in_array($dbCol, $this->stringCols)) {
                         $record[$dbCol] = trim((string) $val);
                     } elseif (in_array($dbCol, $this->intCols)) {
-                        $record[$dbCol] = is_numeric($val) ? (int) $val : 0;
+                        $clean = str_replace([',', ' '], '', trim((string)$val));
+                        $record[$dbCol] = is_numeric($clean) ? (int) $clean : 0;
                     } else {
-                        $record[$dbCol] = is_numeric($val) ? (float) $val : 0;
+                        $clean = str_replace([',', ' '], '', trim((string)$val));
+                        $record[$dbCol] = is_numeric($clean) ? (float) $clean : 0;
                     }
                 }
 
-                if (empty($record['staffid'] ?? '')) {
-                    $errors[] = "Row {$rowNum}: Staff ID cannot be empty.";
+                $nom      = trim((string)($record['nom'] ?? ''));
+                $prenom   = trim((string)($record['prenom'] ?? ''));
+                $fullName = trim($nom . ' ' . $prenom);
+                $staffId  = trim((string)($record['staffid'] ?? ''));
+
+                if (empty($fullName)) {
+                    continue;
+                }
+                $lettersOnly = preg_replace('/[^a-zA-Z]/', '', $fullName);
+                if (strlen($lettersOnly) < 2) {
                     continue;
                 }
 
+                $upperName = strtoupper($fullName);
+                if (
+                    str_contains($upperName, 'ACCOUNT') ||
+                    str_contains($upperName, 'COMPTE') ||
+                    str_contains($upperName, 'TOTAL') ||
+                    str_contains($upperName, 'BANQUE') ||
+                    str_contains($upperName, 'BANK') ||
+                    str_contains($upperName, 'BENEFICIAIRE') ||
+                    str_contains($upperName, 'INVOICE') ||
+                    str_contains($upperName, 'STRATEGIC')
+                ) {
+                    continue;
+                }
+
+                $firstCellsText = strtoupper(implode(' ', array_slice($row, 0, 5)));
+                if (
+                    str_contains($firstCellsText, 'TOTAL') ||
+                    str_contains($firstCellsText, 'WEEKEND') ||
+                    str_contains($firstCellsText, 'SUNDAY') ||
+                    str_contains($firstCellsText, 'HOLIDAY') ||
+                    str_contains($firstCellsText, 'RATE') ||
+                    str_contains($firstCellsText, 'PAID') ||
+                    str_contains($firstCellsText, 'ACCOUNT') ||
+                    str_contains($firstCellsText, 'COMPTE') ||
+                    str_contains($firstCellsText, 'BANK') ||
+                    str_contains($firstCellsText, 'BANQUE') ||
+                    str_contains($firstCellsText, 'BENEFICIAIRE') ||
+                    str_contains($firstCellsText, 'INVOICE') ||
+                    str_contains($firstCellsText, 'STRATEGIC') ||
+                    preg_match('/^[A-Z]{2}[0-9]{10,}/', $nom)
+                ) {
+                    continue;
+                }
+
+                if (empty($staffId)) {
+                    $staffId = 'TG-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
+                    while (in_array($staffId, $seenStaffIds)) {
+                        $staffId = 'TG-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
+                    }
+                    $record['staffid'] = $staffId;
+                }
+
+                if (in_array($record['staffid'], $seenStaffIds)) {
+                    $record['staffid'] .= '-' . ($index + 1);
+                }
+
+                $seenStaffIds[] = $record['staffid'];
                 $validRecords[] = $record;
             }
 

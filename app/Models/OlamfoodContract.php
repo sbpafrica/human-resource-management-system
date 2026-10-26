@@ -31,6 +31,7 @@ class OlamfoodContract extends Model
         'hremail',
         'ghanacard',
         'digiaddress',
+        'insurance',
         'signature',
         'activate',
     ];

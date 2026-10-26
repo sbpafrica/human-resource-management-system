@@ -153,61 +153,174 @@ class BeninBungePayController extends Controller
             $reader = $extension === 'xls' ? new XlsReader() : new XlsxReader();
 
             $spreadsheet = $reader->load($file->getRealPath());
-            $rows        = $spreadsheet->getActiveSheet()->toArray();
+
+            $cleanStr = fn($s) => strtolower(trim(preg_replace('/\s+/', ' ', (string)$s)));
+            $keywords = [
+                'staff id', 'names', 'first names', 'department', 'position',
+                'basic salary', 'net a payer', 'work place', 'bank name', 'no'
+            ];
+
+            $bestSheet          = null;
+            $bestScore          = 0;
+            $bestHeaderRowIndex = 0;
+
+            foreach ($spreadsheet->getAllSheets() as $sheet) {
+                $sheetTitle = strtolower(trim($sheet->getTitle()));
+                $sheetRows  = $sheet->toArray();
+                if (empty($sheetRows)) continue;
+
+                $isInvoice = str_contains($sheetTitle, 'invoice') || str_contains($sheetTitle, 'facture');
+                foreach (array_slice($sheetRows, 0, 15) as $rIdx => $candidateRow) {
+                    $matches = 0;
+                    foreach ($candidateRow as $cell) {
+                        $clean = $cleanStr($cell);
+                        if (in_array($clean, $keywords)) {
+                            $matches++;
+                        }
+                    }
+                    if ($matches > $bestScore && !$isInvoice) {
+                        $bestScore          = $matches;
+                        $bestSheet          = $sheet;
+                        $bestHeaderRowIndex = $rIdx;
+                    }
+                }
+            }
+
+            if ($bestSheet === null) {
+                $bestSheet          = $spreadsheet->getActiveSheet();
+                $rows               = $bestSheet->toArray();
+                $bestHeaderRowIndex = 0;
+                foreach (array_slice($rows, 0, 15) as $rIdx => $candidateRow) {
+                    $matches = 0;
+                    foreach ($candidateRow as $cell) {
+                        $clean = $cleanStr($cell);
+                        if (in_array($clean, $keywords)) {
+                            $matches++;
+                        }
+                    }
+                    if ($matches >= 2) {
+                        $bestHeaderRowIndex = $rIdx;
+                        break;
+                    }
+                }
+            } else {
+                $rows = $bestSheet->toArray();
+            }
 
             if (empty($rows)) {
                 return redirect()->route('benin-bunge.pay.index', ['month' => $selectedMonth])
                     ->with('error', 'The uploaded file is empty.');
             }
 
-            $headerRow = array_shift($rows);
+            $headerRowIndex = $bestHeaderRowIndex;
+
+            $headerRow = $rows[$headerRowIndex];
+            // Combine previous row headers if present (e.g. section headers like "Gross salaries" and "NET A PAYER" on Row 1)
+            if ($headerRowIndex > 0) {
+                $prevRow = $rows[$headerRowIndex - 1];
+                $maxLen  = max(count($headerRow), count($prevRow));
+                for ($ci = 0; $ci < $maxLen; $ci++) {
+                    $curr = trim((string)($headerRow[$ci] ?? ''));
+                    $prev = trim((string)($prevRow[$ci] ?? ''));
+                    if ($curr === '' && $prev !== '') {
+                        $headerRow[$ci] = $prev;
+                    }
+                }
+            }
+            $rows = array_slice($rows, $headerRowIndex + 1);
+
             $headerMap = [
                 'staff id'                    => 'staff_id',
+                'matricule'                   => 'staff_id',
+                'id'                          => 'staff_id',
                 'names'                       => 'names',
+                'nom'                         => 'names',
+                'noms'                        => 'names',
+                'nom et prenom'               => 'names',
                 'first names'                 => 'first_names',
+                'prenom'                      => 'first_names',
+                'prenoms'                     => 'first_names',
                 'department'                  => 'department',
+                'departement'                 => 'department',
                 'joining date'                => 'joining_date',
+                'date embauche'               => 'joining_date',
                 'contract start date'         => 'contract_start_date',
+                'debut contrat'               => 'contract_start_date',
                 'contract end date'           => 'contract_end_date',
+                'fin contrat'                 => 'contract_end_date',
                 'position'                    => 'position',
+                'poste'                       => 'position',
                 'job grade'                   => 'job_grade',
+                'grade'                       => 'job_grade',
                 'work place'                  => 'work_place',
+                'lieu de travail'             => 'work_place',
                 'bank name'                   => 'bank_name',
+                'banque'                      => 'bank_name',
+                'banques'                     => 'bank_name',
                 'bank account number'         => 'bank_account_number',
+                'numero de compte'            => 'bank_account_number',
                 'social security number'      => 'social_security_number',
+                'social security numner'      => 'social_security_number',
+                'cnss'                        => 'social_security_number',
                 'legal work days'             => 'legal_work_days',
                 'work days'                   => 'work_days',
                 'basic salary'                => 'basic_salary',
+                'salaire de base'             => 'basic_salary',
                 'sursalaire'                  => 'sursalaire',
                 'basic kpi'                   => 'basic_kpi',
                 'kpi score'                   => 'kpi_score',
                 'kpi result'                  => 'kpi_result',
+                'kpi reslut'                  => 'kpi_result',
                 'commission'                  => 'commission',
                 'bonuses'                     => 'bonuses',
+                'paid overtime'               => 'bonuses',
+                'overtime'                    => 'bonuses',
+                'lunch allowance'             => 'other_special_bonus_subsidy_etc',
                 'communication allowance'     => 'communication_allowance',
+                'coomunication allowanc'      => 'communication_allowance',
                 'transport allowance'         => 'transport_allowance',
+                'transort allowance'          => 'transport_allowance',
                 'other special bonus'         => 'other_special_bonus_subsidy_etc',
+                'other special bonus/ subsidy etc' => 'other_special_bonus_subsidy_etc',
                 'gross salaries'              => 'gross_salaries',
+                'salaire brut'                => 'gross_salaries',
                 'deduction'                   => 'deduction',
                 'gross amount'                => 'gross_amount',
                 'remarque'                    => 'remarque',
                 'ps pension salarie'          => 'ps_pension_salarie',
+                'ps(pension salarie)'         => 'ps_pension_salarie',
+                'ps(pension salarié)'         => 'ps_pension_salarie',
                 'pac'                         => 'pac',
+                'arrondi'                     => 'pac_arrondi',
                 'pac arrondi'                 => 'pac_arrondi',
                 'its'                         => 'its',
                 'its2'                        => 'its2',
+                'deduction totale'            => 'its_deduction_totale',
+                'déduction totale'            => 'its_deduction_totale',
                 'its deduction totale'        => 'its_deduction_totale',
                 'net a payer'                 => 'net_a_payer',
+                'net payer'                   => 'net_a_payer',
                 'prestations familiales'      => 'prestations_familiales',
+                'prestations familiales pf (9%)' => 'prestations_familiales',
                 'pension employeur 65%'       => 'pension_employeur_pe_65_percent',
+                'pension employeur pe (6,5%)' => 'pension_employeur_pe_65_percent',
+                'pension employeur pe (6.5%)' => 'pension_employeur_pe_65_percent',
                 'risques professionnels 4%'   => 'risques_professionnels_rp_4_percent',
+                'risques professionnels rp (4%)' => 'risques_professionnels_rp_4_percent',
                 'vps versement 4%'            => 'vps_versement_patronal_sur_salaire_4_percent',
+                'vps (versement patronal sur salaire) 4%' => 'vps_versement_patronal_sur_salaire_4_percent',
                 'total part patronale'        => 'total_part_patronale',
                 'total ressources humaines'   => 'total_des_resources_humaines',
+                'total des resources humaines' => 'total_des_resources_humaines',
+                'total des ressources humaines' => 'total_des_resources_humaines',
                 'frais service ht'            => 'frais_de_service_percent_ht',
+                'frais de service (%) ht'     => 'frais_de_service_percent_ht',
                 'tva 18%'                     => 'tva_18_percent',
+                'tva (18%)'                   => 'tva_18_percent',
                 'cout total externalisation'  => 'cout_total_entreprise_externalisation',
+                'coût total de l\'entreprise d\'externalisation' => 'cout_total_entreprise_externalisation',
                 'cout total facture'          => 'cout_total_facture',
+                'coût total de facture'       => 'cout_total_facture',
             ];
 
             $colMap = [];
@@ -225,12 +338,12 @@ class BeninBungePayController extends Controller
 
             DB::table($tableName)->truncate();
 
-            $validRecords = [];
-            $errors       = [];
+            $validRecords  = [];
+            $errors        = [];
+            $autoIdCounter = 1;
+            $seenStaffIds  = [];
 
             foreach ($rows as $index => $row) {
-                $rowNum = $index + 2;
-
                 $allEmpty = true;
                 foreach ($row as $cell) {
                     if (trim((string) $cell) !== '') { $allEmpty = false; break; }
@@ -243,17 +356,59 @@ class BeninBungePayController extends Controller
                     if (in_array($dbCol, $this->stringCols)) {
                         $record[$dbCol] = trim((string) $val);
                     } elseif (in_array($dbCol, $this->intCols)) {
-                        $record[$dbCol] = is_numeric($val) ? (int) $val : 0;
+                        $clean = str_replace([',', ' '], '', trim((string)$val));
+                        $record[$dbCol] = is_numeric($clean) ? (int) $clean : 0;
                     } else {
-                        $record[$dbCol] = is_numeric($val) ? (float) $val : 0;
+                        $clean = str_replace([',', ' '], '', trim((string)$val));
+                        $record[$dbCol] = is_numeric($clean) ? (float) $clean : 0;
                     }
                 }
 
-                if (empty($record['staff_id'] ?? '')) {
-                    $errors[] = "Row {$rowNum}: Staff ID cannot be empty.";
+                $name      = trim((string)($record['names'] ?? ''));
+                $firstName = trim((string)($record['first_names'] ?? ''));
+                $fullName  = trim($name . ' ' . $firstName);
+                $staffId   = trim((string)($record['staff_id'] ?? ''));
+
+                // Must have a person name with at least 2 alphabet letters
+                if (empty($fullName)) {
+                    continue;
+                }
+                $lettersOnly = preg_replace('/[^a-zA-Z]/', '', $fullName);
+                if (strlen($lettersOnly) < 2) {
                     continue;
                 }
 
+                // Skip summary/footnote rows (e.g. overtime summaries, bank notes, totals)
+                $firstCellsText = strtoupper(implode(' ', array_slice($row, 0, 5)));
+                if (
+                    str_contains($firstCellsText, 'WEEKEND') ||
+                    str_contains($firstCellsText, 'SUNDAY') ||
+                    str_contains($firstCellsText, 'HOLIDAY') ||
+                    str_contains($firstCellsText, 'TOTAL') ||
+                    str_contains($firstCellsText, 'ECOC') ||
+                    str_contains($firstCellsText, 'ECOBANK') ||
+                    str_contains($firstCellsText, 'RATE') ||
+                    str_contains($firstCellsText, 'PAID') ||
+                    str_contains($firstCellsText, 'REMARQUE') ||
+                    preg_match('/^[A-Z]{2}[0-9]{10,}/', $name)
+                ) {
+                    continue;
+                }
+
+                // Auto-generate Staff ID if missing or blank
+                if (empty($staffId)) {
+                    $staffId = 'BEN-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
+                    while (in_array($staffId, $seenStaffIds)) {
+                        $staffId = 'BEN-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
+                    }
+                    $record['staff_id'] = $staffId;
+                }
+
+                if (in_array($record['staff_id'], $seenStaffIds)) {
+                    $record['staff_id'] .= '-' . ($index + 1);
+                }
+
+                $seenStaffIds[] = $record['staff_id'];
                 $validRecords[] = $record;
             }
 

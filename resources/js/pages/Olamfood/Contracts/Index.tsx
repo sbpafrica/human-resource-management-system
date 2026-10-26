@@ -53,6 +53,7 @@ interface OlamfoodContract {
   hremail: string | null;
   ghanacard: string | null;
   digiaddress: string | null;
+  insurance?: string | null;
   signature: string | null;
   activate: string;
   created_at: string;
@@ -132,6 +133,7 @@ export default function OlamfoodContracts({
     hremail: "",
     ghanacard: "",
     digiaddress: "",
+    insurance: "",
   });
 
   const bulkUploadForm = useForm({
@@ -210,6 +212,7 @@ export default function OlamfoodContracts({
       hremail: contract.hremail || "",
       ghanacard: contract.ghanacard || "",
       digiaddress: contract.digiaddress || "",
+      insurance: contract.insurance || "",
     });
 
     setIsOpen(true);
@@ -511,6 +514,17 @@ export default function OlamfoodContracts({
                         />
                         {errors.digiaddress && <p className="text-red-500 text-sm">{errors.digiaddress}</p>}
                       </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="insurance">Insurance (Optional)</Label>
+                        <Input
+                          id="insurance"
+                          value={data.insurance}
+                          onChange={(e) => setData("insurance", e.target.value)}
+                          placeholder="e.g. Medical & Life Insurance"
+                        />
+                        {errors.insurance && <p className="text-red-500 text-sm">{errors.insurance}</p>}
+                      </div>
                     </div>
 
                     <DialogFooter className="flex flex-col sm:flex-row sm:justify-end gap-2">
@@ -655,6 +669,7 @@ export default function OlamfoodContracts({
                       <TableHead>Start Date</TableHead>
                       <TableHead>End Date</TableHead>
                       <TableHead>Basic Salary</TableHead>
+                      <TableHead>Insurance</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -678,6 +693,7 @@ export default function OlamfoodContracts({
                         <TableCell>{contract.startdate?.substring(0, 10) || '—'}</TableCell>
                         <TableCell>{contract.enddate?.substring(0, 10) || '—'}</TableCell>
                         <TableCell>{contract.basic || '—'}</TableCell>
+                        <TableCell>{contract.insurance || '—'}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">
                             <Button variant="outline" size="sm" onClick={() => handleView(contract.id)}>

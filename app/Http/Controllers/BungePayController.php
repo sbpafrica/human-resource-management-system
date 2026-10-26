@@ -245,6 +245,7 @@ class BungePayController extends Controller
             $duplicateStaffIds = [];
             $validRecords = [];
             $errors = [];
+            $autoIdCounter = 1;
 
             $parseNum = function ($val, $default = 0.0) {
                 if (is_null($val) || $val === '') return (float)$default;
@@ -313,13 +314,19 @@ class BungePayController extends Controller
                 $SSNIT                        = trim((string)($row[29] ?? '')) ?: null;
                 $GH_CARD_NUMBER               = trim((string)($row[30] ?? '')) ?: null;
 
-                if (empty($STAFF_ID)) {
-                    $errors[] = "Row " . ($index + 2) . ": Staff ID cannot be empty.";
+                if (empty($STAFF_ID) && empty($NAME)) {
                     continue;
                 }
                 if (empty($NAME)) {
                     $errors[] = "Row " . ($index + 2) . ": Name cannot be empty.";
                     continue;
+                }
+                if (empty($STAFF_ID)) {
+                    $autoId = 'BUN-' . str_pad((string)($autoIdCounter++), 3, '0', STR_PAD_LEFT);
+                    while (in_array($autoId, $existingStaffIds) || in_array($autoId, $duplicateStaffIds)) {
+                        $autoId = 'BUN-' . str_pad((string)($autoIdCounter++), 3, '0', STR_PAD_LEFT);
+                    }
+                    $STAFF_ID = $autoId;
                 }
                 if (is_null($TAKE_HOME_PAY_GHC)) {
                     $errors[] = "Row " . ($index + 2) . ": Take Home Pay must be a valid number.";

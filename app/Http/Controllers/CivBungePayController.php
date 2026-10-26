@@ -7,6 +7,7 @@ use Inertia\Inertia;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\Reader\Xls as XlsReader;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -62,6 +63,7 @@ class CivBungePayController extends Controller
                 `importbrut` VARCHAR(255) DEFAULT NULL,
                 `ricf` VARCHAR(255) DEFAULT NULL,
                 `itsalaries` VARCHAR(255) DEFAULT NULL,
+                `itspatron` VARCHAR(255) DEFAULT NULL,
                 `cnpssalaries` VARCHAR(255) DEFAULT NULL,
                 `cnpspatron` VARCHAR(191) DEFAULT NULL,
                 `totaldeduction` VARCHAR(191) DEFAULT NULL,
@@ -70,6 +72,55 @@ class CivBungePayController extends Controller
                 PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
+
+        if (!Schema::hasColumn($tableName, 'itspatron')) {
+            try {
+                Schema::table($tableName, function ($table) {
+                    $table->string('itspatron', 255)->nullable()->after('itsalaries');
+                });
+            } catch (\Throwable $e) {
+                // Column might have been added concurrently
+            }
+        }
+    }
+
+    private function extractBankRowsFromSheet(array $sheetRows, array &$bankRows): void
+    {
+        $cleanStr = fn($s) => strtolower(trim(preg_replace('/\s+/', ' ', (string)$s)));
+        $nameCol = -1;
+        $bankCol = -1;
+        $branchCol = -1;
+        $accountCol = -1;
+
+        foreach ($sheetRows as $row) {
+            if ($nameCol === -1) {
+                foreach ($row as $cIdx => $cell) {
+                    $c = $cleanStr($cell);
+                    if (str_contains($c, 'beneficiaire') || (str_contains($c, 'nom') && (str_contains($c, 'benef') || str_contains($c, 'agent') || str_contains($c, 'employee')))) {
+                        $nameCol = $cIdx;
+                    } elseif ($c === 'banque' || $c === 'bank' || str_contains($c, 'nom banque') || str_contains($c, 'bank name')) {
+                        $bankCol = $cIdx;
+                    } elseif ($c === 'agence' || $c === 'branch' || str_contains($c, 'guichet')) {
+                        $branchCol = $cIdx;
+                    } elseif (str_contains($c, 'compte') || str_contains($c, 'account') || str_contains($c, 'numero')) {
+                        $accountCol = $cIdx;
+                    }
+                }
+                continue;
+            }
+
+            $nameVal = trim((string)($row[$nameCol] ?? ''));
+            if ($nameVal === '' || str_contains(strtoupper($nameVal), 'TOTAL') || str_contains(strtoupper($nameVal), 'BENEFICIAIRE')) {
+                continue;
+            }
+
+            $bankRows[] = [
+                'name'    => $nameVal,
+                'bank'    => $bankCol !== -1 ? trim((string)($row[$bankCol] ?? '')) : '',
+                'branch'  => $branchCol !== -1 ? trim((string)($row[$branchCol] ?? '')) : '',
+                'account' => $accountCol !== -1 ? trim((string)($row[$accountCol] ?? '')) : '',
+            ];
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -136,60 +187,212 @@ class CivBungePayController extends Controller
             }
 
             $spreadsheet = $reader->load($file->getRealPath());
-            $rows        = $spreadsheet->getActiveSheet()->toArray();
+
+            $cleanStr = fn($s) => strtolower(trim(preg_replace('/\s+/', ' ', (string)$s)));
+            $payrollKeywords = [
+                'id', 'id number', 'staff id', 'matricule', 'nom et prenoms', 'nom et prenom',
+                'fullname', 'full name', 'job title', 'salaire de base', 'basic', 'actual basic',
+                'basic fixed', 'net pay', 'salaire net', 'gross salary', 'salaire brute',
+                'salaire brut', '1st level department', '1st level', 'city', 'transport', 'fdfp', 'cnps'
+            ];
+
+            $bestPayrollSheet   = null;
+            $bestScore          = 0;
+            $bestHeaderRowIndex = 0;
+            $bankRows           = [];
+
+            // 1. Scan all sheets in the workbook
+            foreach ($spreadsheet->getAllSheets() as $sheet) {
+                $sheetTitle = strtolower(trim($sheet->getTitle()));
+                $sheetRows  = $sheet->toArray();
+                if (empty($sheetRows)) continue;
+
+                if (str_contains($sheetTitle, 'bank') || str_contains($sheetTitle, 'banque')) {
+                    $this->extractBankRowsFromSheet($sheetRows, $bankRows);
+                    continue;
+                }
+
+                $isInvoice = str_contains($sheetTitle, 'invoice') || str_contains($sheetTitle, 'facture');
+                foreach (array_slice($sheetRows, 0, 20) as $rIdx => $candidateRow) {
+                    $matches = 0;
+                    foreach ($candidateRow as $cell) {
+                        $c = $cleanStr($cell);
+                        if (in_array($c, $payrollKeywords)) {
+                            $matches++;
+                        }
+                    }
+                    if ($matches > $bestScore && !$isInvoice) {
+                        $bestScore          = $matches;
+                        $bestPayrollSheet   = $sheet;
+                        $bestHeaderRowIndex = $rIdx;
+                    }
+                }
+            }
+
+            // Fallback to active sheet if no candidate scored well
+            if ($bestPayrollSheet === null) {
+                $bestPayrollSheet   = $spreadsheet->getActiveSheet();
+                $rows               = $bestPayrollSheet->toArray();
+                $bestHeaderRowIndex = 0;
+                foreach (array_slice($rows, 0, 20) as $rIdx => $candidateRow) {
+                    $matches = 0;
+                    foreach ($candidateRow as $cell) {
+                        $c = $cleanStr($cell);
+                        if (in_array($c, $payrollKeywords)) {
+                            $matches++;
+                        }
+                    }
+                    if ($matches >= 2) {
+                        $bestHeaderRowIndex = $rIdx;
+                        break;
+                    }
+                }
+            } else {
+                $rows = $bestPayrollSheet->toArray();
+            }
 
             if (empty($rows)) {
                 return redirect()->route('civ-bunge.pay.index', ['month' => $selectedMonth])
                     ->with('error', 'The uploaded file is empty.');
             }
 
+            $headerRowIndex = $bestHeaderRowIndex;
+
             // Read and map headers
-            $headerRow = array_shift($rows);
+            $headerRow = $rows[$headerRowIndex];
+            // Merge previous row headers if present (e.g. FDFP, CNPS category titles)
+            if ($headerRowIndex > 0) {
+                $prevRow = $rows[$headerRowIndex - 1];
+                $maxLen  = max(count($headerRow), count($prevRow));
+                for ($ci = 0; $ci < $maxLen; $ci++) {
+                    $curr = trim((string)($headerRow[$ci] ?? ''));
+                    $prev = trim((string)($prevRow[$ci] ?? ''));
+                    if ($curr === '' && $prev !== '') {
+                        $headerRow[$ci] = $prev;
+                    }
+                }
+            }
+            $dataRows = array_slice($rows, $headerRowIndex + 1);
+
             $headerMap = [
-                'id'                => 'id',
-                '1st level'         => '1stlevel',
-                '2nd level'         => '2ndlevel',
-                'city'              => 'city',
-                'job title'         => 'jobtitle',
-                'full name'         => 'fullname',
-                'report line'       => 'reportline',
-                'outsourcing'       => 'outsourcing',
-                'entry date'        => 'entrydate',
-                'payroll start'     => 'payrollstart',
-                'payroll end'       => 'payrollend',
-                'salary month'      => 'salarymonth',
-                'legal work'        => 'legalwork',
-                'actual work'       => 'actualwork',
-                'basic fixed'       => 'basicfixed',
-                'basic'      => 'actualbasic',
-                'overtime'          => 'overtime',
-                'overtime allowance'=> 'overtimeallowance',
-                'transport'         => 'transport',
-                'call allowance'    => 'callallowance',
-                'basic kpi'         => 'basickpi',
-                'coefficient'       => 'coefficient',
-                'monthly kpi'       => 'monthlykpi',
-                'leave allowance'   => 'leaveallowance',
-                'gross salary 1'    => 'grosssalary1',
-                'other deductions'  => 'otherdeductions',
-                'gross salary'      => 'grosssalary',
-                'nombre'            => 'nombre',
-                'import brut'       => 'importbrut',
-                'ricf'              => 'ricf',
-                'its salaries'      => 'itsalaries',
-                'cnps salaries'     => 'cnpssalaries',
-                'cnps patron'       => 'cnpspatron',
-                'total deduction'   => 'totaldeduction',
-                'net pay'           => 'netpay',
-                'fdfp'              => 'fdfp',
+                'id'                            => 'id',
+                'id number'                     => 'id',
+                'staff id'                      => 'id',
+                'matricule'                     => 'id',
+                '1st level'                     => '1stlevel',
+                '1st level department'          => '1stlevel',
+                '2nd level'                     => '2ndlevel',
+                '2nd level department'          => '2ndlevel',
+                'city'                          => 'city',
+                'ville'                         => 'city',
+                'job title'                     => 'jobtitle',
+                'poste'                         => 'jobtitle',
+                'titre'                         => 'jobtitle',
+                'full name'                     => 'fullname',
+                'fullname'                      => 'fullname',
+                'nom et prenoms'                => 'fullname',
+                'nom et prenom'                 => 'fullname',
+                'noms et prenoms'               => 'fullname',
+                'nom'                           => 'fullname',
+                'report line'                   => 'reportline',
+                'rapport'                       => 'reportline',
+                'outsourcing'                   => 'outsourcing',
+                'entreprise'                    => 'outsourcing',
+                'societe'                       => 'outsourcing',
+                'entry date'                    => 'entrydate',
+                'date d\'entré en service'      => 'entrydate',
+                'date d\'entree en service'     => 'entrydate',
+                'date entree'                   => 'entrydate',
+                'payroll start'                 => 'payrollstart',
+                'debut des paiements'           => 'payrollstart',
+                'debut de paiement'             => 'payrollstart',
+                'payroll end'                   => 'payrollend',
+                'fin de paiement'               => 'payrollend',
+                'fin des paiements'             => 'payrollend',
+                'salary month'                  => 'salarymonth',
+                'mois de salaire'               => 'salarymonth',
+                'legal work'                    => 'legalwork',
+                'jours ouvrables legaux'        => 'legalwork',
+                'jours ouvrables légaux'        => 'legalwork',
+                'actual work'                   => 'actualwork',
+                'jours ouvrables réels pour le travail' => 'actualwork',
+                'jours ouvrables reels pour le travail' => 'actualwork',
+                'basic fixed'                   => 'basicfixed',
+                'actual basic'                  => 'basic',
+                'basic'                         => 'basic',
+                'indemnité de responsabilité'   => 'overtime',
+                'indemnite de responsabilite'   => 'overtime',
+                'overtime'                      => 'overtime',
+                'overtime allowance'            => 'overtimeallowance',
+                'transport'                     => 'transport',
+                'call allowance'                => 'callallowance',
+                'caburan ,internet'             => 'callallowance',
+                'caburan, internet'             => 'callallowance',
+                'basic kpi'                     => 'basickpi',
+                'basic kpi bonus'               => 'monthlykpi',
+                'coefficient'                   => 'coefficient',
+                'monthly kpi'                   => 'monthlykpi',
+                'leave allowance'               => 'leaveallowance',
+                'lunch allowance'               => 'lunchallowance',
+                'prime d\'ancieneté'            => 'leaveallowance',
+                'prime d\'anciennete'           => 'leaveallowance',
+                'gross salary 1'                => 'grosssalary1',
+                'salaire brute'                 => 'grosssalary1',
+                'salaire brut'                  => 'grosssalary1',
+                'other deductions'              => 'otherdeductions',
+                'the other deductions / refunds'=> 'otherdeductions',
+                'autres deductions'             => 'otherdeductions',
+                'gross salary'                  => 'grosssalary',
+                'salaire brute imposable'       => 'grosssalary',
+                'salaire brut imposable'        => 'grosssalary',
+                'nombre'                        => 'nombre',
+                'nombre de pars'                => 'nombre',
+                'nombre de parts'               => 'nombre',
+                'import brut'                   => 'importbrut',
+                'impôt brut'                    => 'importbrut',
+                'impot brut'                    => 'importbrut',
+                'ricf'                          => 'ricf',
+                'its salaries'                  => 'itsalaries',
+                'its salarié'                   => 'itsalaries',
+                'its salarie'                   => 'itsalaries',
+                'its patron'                    => 'itspatron',
+                'its patronale'                 => 'itspatron',
+                'cnps salaries'                 => 'cnpssalaries',
+                'cnps salarié'                  => 'cnpssalaries',
+                'cnps salarie'                  => 'cnpssalaries',
+                'cnps patron'                   => 'cnpspatron',
+                'cnps patronale'                => 'cnpspatron',
+                'total deduction'               => 'totaldeduction',
+                'total deductions'              => 'totaldeduction',
+                'total salaire deductions'      => 'totaldeduction',
+                'total salaire déductions'      => 'totaldeduction',
+                'net pay'                       => 'netpay',
+                'salaire net'                   => 'netpay',
+                'net a payer'                   => 'netpay',
+                'fdfp'                          => 'fdfp',
+                'ta'                            => 'fdfp',
             ];
 
             // Map column index → db column
             $colMap = [];
+            $seenCols = [];
             foreach ($headerRow as $idx => $hdr) {
-                $key = strtolower(trim((string) $hdr));
-                if (isset($headerMap[$key])) {
-                    $colMap[$idx] = $headerMap[$key];
+                $cleanHdr = $cleanStr($hdr);
+                if ($cleanHdr === 'salaire de base') {
+                    if (!isset($seenCols['basicfixed'])) {
+                        $colMap[$idx] = 'basicfixed';
+                        $seenCols['basicfixed'] = true;
+                        continue;
+                    } else {
+                        $colMap[$idx] = 'basic';
+                        $seenCols['basic'] = true;
+                        continue;
+                    }
+                }
+                if (isset($headerMap[$cleanHdr])) {
+                    $target = $headerMap[$cleanHdr];
+                    $colMap[$idx] = $target;
+                    $seenCols[$target] = true;
                 }
             }
 
@@ -201,12 +404,20 @@ class CivBungePayController extends Controller
             // Truncate then insert
             DB::table($tableName)->truncate();
 
-            $validRecords = [];
-            $errors       = [];
+            $validRecords  = [];
+            $inBankSection = false;
+            $errors        = [];
+            $autoIdCounter = 1;
+            $seenIds       = [];
 
-            foreach ($rows as $index => $row) {
-                $rowNum = $index + 2;
+            $numericCols = [
+                'legalwork', 'actualwork', 'basicfixed', 'basic', 'overtime', 'overtimeallowance',
+                'transport', 'callallowance', 'basickpi', 'coefficient', 'monthlykpi', 'leaveallowance',
+                'grosssalary1', 'otherdeductions', 'grosssalary', 'nombre', 'importbrut', 'ricf',
+                'itsalaries', 'itspatron', 'cnpssalaries', 'cnpspatron', 'totaldeduction', 'netpay', 'fdfp'
+            ];
 
+            foreach ($dataRows as $index => $row) {
                 // Skip completely empty rows
                 $allEmpty = true;
                 foreach ($row as $cell) {
@@ -214,16 +425,121 @@ class CivBungePayController extends Controller
                 }
                 if ($allEmpty) continue;
 
-                $record = [];
-                foreach ($colMap as $idx => $dbCol) {
-                    $record[$dbCol] = trim((string) ($row[$idx] ?? ''));
-                }
+                $firstCol  = trim((string)($row[0] ?? ''));
+                $secondCol = trim((string)($row[1] ?? ''));
 
-                if (empty($record['id'] ?? '')) {
-                    $errors[] = "Row {$rowNum}: ID cannot be empty.";
+                // Detect start of bank details section at bottom of file
+                if (str_contains(strtoupper($firstCol), 'NOM DU BENEFICIAIRE') || str_contains(strtoupper($secondCol), 'NOM DU BENEFICIAIRE')) {
+                    $inBankSection = true;
                     continue;
                 }
 
+                if ($inBankSection) {
+                    if (str_contains(strtoupper($firstCol), 'INVOICE') || str_contains(strtoupper($secondCol), 'INVOICE') || str_contains(strtoupper($firstCol), 'STRATEGIC')) {
+                        $inBankSection = false;
+                        continue;
+                    }
+                    if (count($row) >= 4 && !empty($firstCol)) {
+                        $bankRows[] = [
+                            'name'    => $firstCol,
+                            'bank'    => trim((string)($row[1] ?? '')),
+                            'branch'  => trim((string)($row[2] ?? '')),
+                            'account' => trim((string)($row[3] ?? '')),
+                        ];
+                    }
+                    continue;
+                }
+
+                $record = [];
+                foreach ($colMap as $idx => $dbCol) {
+                    $raw = trim((string)($row[$idx] ?? ''));
+                    if (in_array($dbCol, $numericCols)) {
+                        $clean = str_replace([',', ' ', "\xc2\xa0"], '', $raw);
+                        $record[$dbCol] = is_numeric($clean) ? $clean : $raw;
+                    } else {
+                        $record[$dbCol] = $raw;
+                    }
+                }
+
+                // Handle lunch allowance: merge into leaveallowance or monthlykpi if not already set
+                if (isset($record['lunchallowance'])) {
+                    $lunchVal = $record['lunchallowance'];
+                    if (!empty($lunchVal) && (float)$lunchVal > 0) {
+                        if (empty($record['leaveallowance']) || (float)$record['leaveallowance'] == 0) {
+                            $record['leaveallowance'] = $lunchVal;
+                        } elseif (empty($record['monthlykpi']) || (float)$record['monthlykpi'] == 0) {
+                            $record['monthlykpi'] = $lunchVal;
+                        }
+                    }
+                    unset($record['lunchallowance']);
+                }
+
+                $name = trim((string)($record['fullname'] ?? ''));
+                $id   = trim((string)($record['id'] ?? ''));
+
+                if (empty($name) && empty($id)) {
+                    continue;
+                }
+
+                $upperName = strtoupper($name);
+                if (
+                    str_contains($upperName, 'TOTAL') ||
+                    str_contains($upperName, 'BENEFICIAIRE') ||
+                    str_contains($upperName, 'INVOICE') ||
+                    str_contains($upperName, 'STRATEGIC') ||
+                    str_contains($upperName, 'BUNGE') ||
+                    str_contains($upperName, 'WEEKEND') ||
+                    str_contains($upperName, 'SUNDAY') ||
+                    str_contains($upperName, 'HOLIDAY') ||
+                    preg_match('/^[A-Z]{2}[0-9]{10,}/', $name)
+                ) {
+                    continue;
+                }
+
+                // A valid employee name must have at least 2 alphabet characters
+                $lettersOnly = preg_replace('/[^a-zA-Z]/', '', $name);
+                if (strlen($lettersOnly) < 2) {
+                    continue;
+                }
+
+                if (empty($id)) {
+                    // Try looking up employee in newemployeedata or previous CIV month tables
+                    $existingId = null;
+                    if (Schema::hasTable('newemployeedata')) {
+                        $existingId = DB::table('newemployeedata')
+                            ->where('employeename', 'LIKE', '%' . $name . '%')
+                            ->value('staffid');
+                    }
+                    if (!$existingId) {
+                        try {
+                            $prevMonth = Carbon::createFromFormat('Y-m', $selectedMonth)->subMonth();
+                            $prevTable = 'civ' . strtolower($prevMonth->format('F')) . $prevMonth->format('y');
+                            if (Schema::hasTable($prevTable)) {
+                                $existingId = DB::table($prevTable)
+                                    ->where('fullname', 'LIKE', '%' . $name . '%')
+                                    ->value('id');
+                            }
+                        } catch (\Throwable $te) {
+                            // ignore
+                        }
+                    }
+
+                    if ($existingId && !in_array($existingId, $seenIds)) {
+                        $id = $existingId;
+                    } else {
+                        $id = 'CIV-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
+                        while (in_array($id, $seenIds)) {
+                            $id = 'CIV-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
+                        }
+                    }
+                    $record['id'] = $id;
+                }
+
+                if (in_array($record['id'], $seenIds)) {
+                    $record['id'] .= '-' . ($index + 1);
+                }
+
+                $seenIds[]      = $record['id'];
                 $validRecords[] = $record;
             }
 
@@ -240,6 +556,38 @@ class CivBungePayController extends Controller
                     DB::table($tableName)->insert($chunk);
                 }
                 Log::info("CivBungePay upload: inserted " . count($validRecords) . " rows into {$tableName}");
+
+                // Update bank details if bank table was found in the file
+                if (!empty($bankRows) && Schema::hasTable('bankdetails')) {
+                    foreach ($bankRows as $bRow) {
+                        $bName = strtolower(preg_replace('/[^a-zA-Z]/', '', $bRow['name']));
+                        if (strlen($bName) < 3) continue;
+
+                        foreach ($validRecords as $vEmp) {
+                            $vName = strtolower(preg_replace('/[^a-zA-Z]/', '', $vEmp['fullname']));
+                            $bTokens = array_filter(explode(' ', strtolower(preg_replace('/[^a-zA-Z ]/', '', $bRow['name']))));
+                            $vTokens = array_filter(explode(' ', strtolower(preg_replace('/[^a-zA-Z ]/', '', $vEmp['fullname']))));
+                            $common  = array_intersect($bTokens, $vTokens);
+
+                            if ($bName === $vName || count($common) >= 2) {
+                                try {
+                                    DB::table('bankdetails')->updateOrInsert(
+                                        ['employid' => $vEmp['id']],
+                                        [
+                                            'bank'    => $bRow['bank'],
+                                            'branch'  => $bRow['branch'],
+                                            'account' => $bRow['account'],
+                                            'name'    => $vEmp['fullname'],
+                                        ]
+                                    );
+                                } catch (\Throwable $be) {
+                                    Log::warning("Could not update bankdetails for {$vEmp['id']}: " . $be->getMessage());
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
             }
 
             return redirect()->route('civ-bunge.pay.index', ['month' => $selectedMonth])
