@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Client;
 use App\Services\Payroll\DynamicIngestionService;
 use App\Services\Payroll\ColumnMatcher\HybridColumnMatcher;
 use App\Services\Payroll\Anomaly\HybridAnomalyDetector;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+use Inertia\Response as InertiaResponse;
 use Carbon\Carbon;
 use Throwable;
 
@@ -19,6 +22,41 @@ class PayrollAiController extends Controller
         protected HybridColumnMatcher $columnMatcher,
         protected HybridAnomalyDetector $anomalyDetector
     ) {}
+
+    /**
+     * Renders the Pre-Flight Ingestion & Anomaly Audit UI page.
+     */
+    public function index(Request $request): InertiaResponse
+    {
+        try {
+            $clients = Client::where('is_active', 1)
+                ->orderBy('display_order')
+                ->orderBy('client_name')
+                ->get(['client_name', 'slug']);
+        } catch (Throwable) {
+            $clients = collect([]);
+        }
+
+        if ($clients->isEmpty()) {
+            $clients = collect([
+                ['client_name' => 'Bunge Benin', 'slug' => 'beninbunge'],
+                ['client_name' => 'Bunge Togo', 'slug' => 'togobunge'],
+                ['client_name' => 'Bunge Côte d\'Ivoire (CIV)', 'slug' => 'civ'],
+                ['client_name' => 'Bunge Ghana', 'slug' => 'bunge'],
+                ['client_name' => 'Jay Kay Global', 'slug' => 'jaykay'],
+                ['client_name' => 'Melcom Distribution', 'slug' => 'melcom'],
+                ['client_name' => 'Twellium Industrial (Kumasi)', 'slug' => 'twellium'],
+                ['client_name' => 'Twellium Accra', 'slug' => 'twelliumaccra'],
+                ['client_name' => 'Transsion / Good Ease', 'slug' => 'transsion'],
+                ['client_name' => 'OFI Bean Warehouse', 'slug' => 'ofibwh'],
+            ]);
+        }
+
+        return Inertia::render('PayrollAi/Inspect', [
+            'clients' => $clients,
+            'defaultMonth' => Carbon::now()->format('Y-m'),
+        ]);
+    }
 
     /**
      * Pre-flight spreadsheet inspection:
