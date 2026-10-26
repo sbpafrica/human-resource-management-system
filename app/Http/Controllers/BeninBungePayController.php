@@ -7,6 +7,7 @@ use Inertia\Inertia;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\Reader\Xls as XlsReader;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -154,10 +155,20 @@ class BeninBungePayController extends Controller
 
             $spreadsheet = $reader->load($file->getRealPath());
 
-            $cleanStr = fn($s) => strtolower(trim(preg_replace('/\s+/', ' ', (string)$s)));
+            $norm = function($s) {
+                $t = trim(preg_replace('/\s+/', ' ', (string)$s));
+                $lower = mb_strtolower($t, 'UTF-8');
+                $unacc = str_replace(
+                    ['é', 'è', 'ê', 'ë', 'à', 'â', 'ä', 'î', 'ï', 'ô', 'ö', 'ù', 'û', 'ü', 'ç', '’', "\x27"],
+                    ['e', 'e', 'e', 'e', 'a', 'a', 'a', 'i', 'i', 'o', 'o', 'u', 'u', 'u', 'c', "'", "'"],
+                    $lower
+                );
+                return [$lower, $unacc];
+            };
+            $cleanStr = fn($s) => $norm($s)[0];
             $keywords = [
                 'staff id', 'names', 'first names', 'department', 'position',
-                'basic salary', 'net a payer', 'work place', 'bank name', 'no'
+                'basic salary', 'net a payer', 'work place', 'bank name', 'no', 'salaire de base'
             ];
 
             $bestSheet          = null;
@@ -173,8 +184,8 @@ class BeninBungePayController extends Controller
                 foreach (array_slice($sheetRows, 0, 15) as $rIdx => $candidateRow) {
                     $matches = 0;
                     foreach ($candidateRow as $cell) {
-                        $clean = $cleanStr($cell);
-                        if (in_array($clean, $keywords)) {
+                        [$cLower, $cUnacc] = $norm($cell);
+                        if (in_array($cLower, $keywords) || in_array($cUnacc, $keywords)) {
                             $matches++;
                         }
                     }
@@ -193,8 +204,8 @@ class BeninBungePayController extends Controller
                 foreach (array_slice($rows, 0, 15) as $rIdx => $candidateRow) {
                     $matches = 0;
                     foreach ($candidateRow as $cell) {
-                        $clean = $cleanStr($cell);
-                        if (in_array($clean, $keywords)) {
+                        [$cLower, $cUnacc] = $norm($cell);
+                        if (in_array($cLower, $keywords) || in_array($cUnacc, $keywords)) {
                             $matches++;
                         }
                     }
@@ -325,9 +336,11 @@ class BeninBungePayController extends Controller
 
             $colMap = [];
             foreach ($headerRow as $idx => $hdr) {
-                $key = strtolower(trim((string) $hdr));
-                if (isset($headerMap[$key])) {
-                    $colMap[$idx] = $headerMap[$key];
+                [$cleanHdr, $unaccHdr] = $norm($hdr);
+                if (isset($headerMap[$cleanHdr])) {
+                    $colMap[$idx] = $headerMap[$cleanHdr];
+                } elseif (isset($headerMap[$unaccHdr])) {
+                    $colMap[$idx] = $headerMap[$unaccHdr];
                 }
             }
 
@@ -448,13 +461,12 @@ class BeninBungePayController extends Controller
                     try {
                         if (Schema::hasTable('bankdetails')) {
                             DB::table('bankdetails')->updateOrInsert(
-                                ['staffid' => $record['staff_id']],
+                                ['employid' => $record['staff_id']],
                                 [
-                                    'name'       => $fullName,
-                                    'bankname'   => $record['bank_name'] ?: 'Ecobank, BJ',
-                                    'alcnum'     => $record['bank_account_number'],
-                                    'branch'     => 'Cotonou',
-                                    'updated_at' => now(),
+                                    'name'    => $fullName,
+                                    'bank'    => $record['bank_name'] ?: 'Ecobank, BJ',
+                                    'account' => $record['bank_account_number'],
+                                    'branch'  => 'Cotonou',
                                 ]
                             );
                         }

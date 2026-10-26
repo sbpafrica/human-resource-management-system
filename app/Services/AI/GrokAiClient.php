@@ -16,9 +16,20 @@ class GrokAiClient
     public function __construct()
     {
         $this->apiKey = config('ai.grok.api_key') ?: env('GROK_API_KEY');
-        $this->model = config('ai.grok.model', 'grok-2-latest');
-        $this->baseUrl = rtrim(config('ai.grok.base_url', 'https://api.x.ai/v1'), '/');
-        $this->timeout = (int) config('ai.timeout', 6);
+        $rawModel = config('ai.grok.model') ?: env('GROK_MODEL', 'openai/gpt-oss-120b');
+        $this->baseUrl = rtrim(config('ai.grok.base_url') ?: env('GROK_BASE_URL', 'https://api.groq.com/openai/v1'), '/');
+        $this->timeout = max((int) (config('ai.timeout') ?: env('AI_REQUEST_TIMEOUT_SECONDS', 15)), 15);
+
+        // Normalize model if on Groq to active endpoints
+        if (str_contains($this->baseUrl, 'groq.com')) {
+            if (empty($rawModel) || str_contains($rawModel, 'llama') || $rawModel === 'grok-2-latest') {
+                $this->model = 'openai/gpt-oss-120b';
+            } else {
+                $this->model = $rawModel;
+            }
+        } else {
+            $this->model = $rawModel;
+        }
     }
 
     /**
@@ -44,45 +55,57 @@ class GrokAiClient
             return null;
         }
 
-        try {
-            $response = Http::withToken($this->apiKey)
-                ->timeout($this->timeout)
-                ->acceptJson()
-                ->post("{$this->baseUrl}/chat/completions", [
-                    'model' => $this->model,
-                    'messages' => [
-                        ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user', 'content' => $userPrompt],
-                    ],
-                    'response_format' => ['type' => 'json_object'],
-                    'temperature' => $temperature,
-                ]);
+        $modelsToTry = array_unique([$this->model, 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b']);
 
-            if (!$response->successful()) {
-                Log::channel('payroll_ai')->error("Grok API error [{$response->status()}]: " . $response->body());
-                return null;
+        foreach ($modelsToTry as $currentModel) {
+            try {
+                $response = Http::withToken($this->apiKey)
+                    ->timeout($this->timeout)
+                    ->acceptJson()
+                    ->post("{$this->baseUrl}/chat/completions", [
+                        'model' => $currentModel,
+                        'messages' => [
+                            ['role' => 'system', 'content' => $systemPrompt],
+                            ['role' => 'user', 'content' => $userPrompt],
+                        ],
+                        'response_format' => ['type' => 'json_object'],
+                        'temperature' => $temperature,
+                    ]);
+
+                if (!$response->successful()) {
+                    Log::channel('payroll_ai')->error("Grok API error with {$currentModel} [{$response->status()}]: " . $response->body());
+                    // If model 404, try next model in list
+                    if ($response->status() === 404) {
+                        continue;
+                    }
+                    return null;
+                }
+
+                $rawContent = trim((string) $response->json('choices.0.message.content'));
+                if (empty($rawContent)) {
+                    Log::channel('payroll_ai')->warning('Grok API returned empty choice content.');
+                    continue;
+                }
+
+                // Strip markdown json fences if present
+                if (str_starts_with($rawContent, '```')) {
+                    $rawContent = preg_replace('/^```(?:json)?\s*/i', '', $rawContent);
+                    $rawContent = preg_replace('/\s*```$/', '', $rawContent);
+                }
+
+                $decoded = json_decode(trim($rawContent), true);
+                if (!is_array($decoded)) {
+                    Log::channel('payroll_ai')->warning('Grok response could not be JSON decoded: ' . $rawContent);
+                    continue;
+                }
+
+                return $decoded;
+            } catch (Throwable $e) {
+                Log::channel('payroll_ai')->error('GrokAiClient exception with ' . $currentModel . ': ' . $e->getMessage());
             }
-
-            $rawContent = $response->json('choices.0.message.content');
-            if (empty($rawContent)) {
-                Log::channel('payroll_ai')->warning('Grok API returned empty choice content.');
-                return null;
-            }
-
-            $decoded = json_decode($rawContent, true);
-            if (!is_array($decoded)) {
-                Log::channel('payroll_ai')->warning('Grok response could not be JSON decoded: ' . $rawContent);
-                return null;
-            }
-
-            return $decoded;
-        } catch (Throwable $e) {
-            Log::channel('payroll_ai')->error('GrokAiClient exception: ' . $e->getMessage(), [
-                'model' => $this->model,
-                'baseUrl' => $this->baseUrl,
-            ]);
-            return null;
         }
+
+        return null;
     }
 
     /**
@@ -99,30 +122,39 @@ class GrokAiClient
             return null;
         }
 
-        try {
-            $formattedMessages = array_merge([
-                ['role' => 'system', 'content' => $systemPrompt]
-            ], $messages);
+        $modelsToTry = array_unique([$this->model, 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b']);
+        $formattedMessages = array_merge([
+            ['role' => 'system', 'content' => $systemPrompt]
+        ], $messages);
 
-            $response = Http::withToken($this->apiKey)
-                ->timeout($this->timeout + 4)
-                ->acceptJson()
-                ->post("{$this->baseUrl}/chat/completions", [
-                    'model' => $this->model,
-                    'messages' => $formattedMessages,
-                    'temperature' => $temperature,
-                ]);
+        foreach ($modelsToTry as $currentModel) {
+            try {
+                $response = Http::withToken($this->apiKey)
+                    ->timeout($this->timeout)
+                    ->acceptJson()
+                    ->post("{$this->baseUrl}/chat/completions", [
+                        'model' => $currentModel,
+                        'messages' => $formattedMessages,
+                        'temperature' => $temperature,
+                    ]);
 
-            if (!$response->successful()) {
-                Log::channel('payroll_ai')->error("Grok chatText API error [{$response->status()}]: " . $response->body());
-                return null;
+                if (!$response->successful()) {
+                    if ($response->status() === 404) {
+                        continue;
+                    }
+                    return null;
+                }
+
+                $raw = trim((string) $response->json('choices.0.message.content'));
+                if (!empty($raw)) {
+                    return $raw;
+                }
+            } catch (Throwable $e) {
+                Log::channel('payroll_ai')->error('GrokAiClient chatText error: ' . $e->getMessage());
             }
-
-            return $response->json('choices.0.message.content');
-        } catch (Throwable $e) {
-            Log::channel('payroll_ai')->error('Grok chatText exception: ' . $e->getMessage());
-            return null;
         }
+
+        return null;
     }
 
     /**

@@ -7,6 +7,7 @@ use Inertia\Inertia;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\Reader\Xls as XlsReader;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -153,10 +154,20 @@ class TogoBungePayController extends Controller
 
             $spreadsheet = $reader->load($file->getRealPath());
 
-            $cleanStr = fn($s) => strtolower(trim(preg_replace('/\s+/', ' ', (string)$s)));
+            $norm = function($s) {
+                $t = trim(preg_replace('/\s+/', ' ', (string)$s));
+                $lower = mb_strtolower($t, 'UTF-8');
+                $unacc = str_replace(
+                    ['é', 'è', 'ê', 'ë', 'à', 'â', 'ä', 'î', 'ï', 'ô', 'ö', 'ù', 'û', 'ü', 'ç', '’', "\x27"],
+                    ['e', 'e', 'e', 'e', 'a', 'a', 'a', 'i', 'i', 'o', 'o', 'u', 'u', 'u', 'c', "'", "'"],
+                    $lower
+                );
+                return [$lower, $unacc];
+            };
+            $cleanStr = fn($s) => $norm($s)[0];
             $keywords = [
                 'staff id', 'staffid', 'nom', 'prenom', 'department', 'position',
-                'salary base', 'net payer', 'travail', 'banques'
+                'salary base', 'net payer', 'travail', 'banques', 'id du personnel', 'salaire de base', 'net a payer'
             ];
 
             $bestSheet          = null;
@@ -172,8 +183,8 @@ class TogoBungePayController extends Controller
                 foreach (array_slice($sheetRows, 0, 15) as $rIdx => $candidateRow) {
                     $matches = 0;
                     foreach ($candidateRow as $cell) {
-                        $clean = $cleanStr($cell);
-                        if (in_array($clean, $keywords)) {
+                        [$cLower, $cUnacc] = $norm($cell);
+                        if (in_array($cLower, $keywords) || in_array($cUnacc, $keywords)) {
                             $matches++;
                         }
                     }
@@ -192,8 +203,8 @@ class TogoBungePayController extends Controller
                 foreach (array_slice($rows, 0, 15) as $rIdx => $candidateRow) {
                     $matches = 0;
                     foreach ($candidateRow as $cell) {
-                        $clean = $cleanStr($cell);
-                        if (in_array($clean, $keywords)) {
+                        [$cLower, $cUnacc] = $norm($cell);
+                        if (in_array($cLower, $keywords) || in_array($cUnacc, $keywords)) {
                             $matches++;
                         }
                     }
@@ -323,9 +334,11 @@ class TogoBungePayController extends Controller
 
             $colMap = [];
             foreach ($headerRow as $idx => $hdr) {
-                $key = $cleanStr($hdr);
-                if (isset($headerMap[$key])) {
-                    $colMap[$idx] = $headerMap[$key];
+                [$cleanHdr, $unaccHdr] = $norm($hdr);
+                if (isset($headerMap[$cleanHdr])) {
+                    $colMap[$idx] = $headerMap[$cleanHdr];
+                } elseif (isset($headerMap[$unaccHdr])) {
+                    $colMap[$idx] = $headerMap[$unaccHdr];
                 }
             }
 
@@ -364,8 +377,10 @@ class TogoBungePayController extends Controller
 
                 if ($inBankSection) {
                     // Collect bank details: [NAME, ACCOUNT, AMOUNT, ...]
-                    $bankNameCell = trim((string)($row[1] ?? ($row[0] ?? '')));
-                    $bankAccCell  = trim((string)($row[2] ?? ($row[1] ?? '')));
+                    $nonEmpty = array_values(array_filter(array_map('trim', array_slice($row, 0, 5)), fn($x) => $x !== ''));
+                    $bankNameCell = $nonEmpty[0] ?? '';
+                    $bankAccCell  = $nonEmpty[1] ?? '';
+
                     if (!empty($bankNameCell) && !empty($bankAccCell) && !str_contains(strtoupper($bankNameCell), 'TOTAL')) {
                         $bankRows[] = [
                             'name'    => $bankNameCell,
@@ -448,19 +463,12 @@ class TogoBungePayController extends Controller
                 $bAcc       = $b['account'];
                 $bankName   = str_starts_with($bAcc, 'TG016') ? 'Orabank Togo' : 'Ecobank Togo';
 
-                foreach ($validRecords as &$rec) {
-                    $recNameUpper = strtoupper(trim(($rec['nom'] ?? '') . ' ' . ($rec['prenom'] ?? '')));
-                    $nomPart      = strtoupper(trim($rec['nom'] ?? ''));
-                    $prenomPart   = strtoupper(trim($rec['prenom'] ?? ''));
+                $bTokens = array_filter(explode(' ', strtoupper(preg_replace('/[^a-zA-Z ]/', '', $b['name']))));
 
-                    $matched = false;
-                    if (!empty($nomPart) && str_contains($bNameUpper, $nomPart)) {
-                        $matched = true;
-                    } elseif (!empty($prenomPart) && str_contains($bNameUpper, $prenomPart)) {
-                        $matched = true;
-                    } elseif ($recNameUpper !== '' && str_contains($bNameUpper, $recNameUpper)) {
-                        $matched = true;
-                    }
+                foreach ($validRecords as &$rec) {
+                    $eTokens = array_filter(explode(' ', strtoupper(preg_replace('/[^a-zA-Z ]/', '', ($rec['nom'] ?? '') . ' ' . ($rec['prenom'] ?? '')))));
+                    $common = array_intersect($bTokens, $eTokens);
+                    $matched = count($common) >= 1;
 
                     if ($matched) {
                         $rec['banques'] = $bankName;
@@ -470,13 +478,12 @@ class TogoBungePayController extends Controller
                         try {
                             if (Schema::hasTable('bankdetails')) {
                                 DB::table('bankdetails')->updateOrInsert(
-                                    ['staffid' => $rec['staffid']],
+                                    ['employid' => $rec['staffid']],
                                     [
-                                        'name'       => trim(($rec['nom'] ?? '') . ' ' . ($rec['prenom'] ?? '')),
-                                        'bankname'   => $bankName,
-                                        'alcnum'     => $bAcc,
-                                        'branch'     => 'Lomé',
-                                        'updated_at' => now(),
+                                        'name'    => trim(($rec['nom'] ?? '') . ' ' . ($rec['prenom'] ?? '')),
+                                        'bank'    => $bankName,
+                                        'account' => $bAcc,
+                                        'branch'  => 'Lomé',
                                     ]
                                 );
                             }

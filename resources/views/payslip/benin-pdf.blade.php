@@ -58,15 +58,19 @@
 
     $staffId = data_get($payslip, 'staff_id') ?: (data_get($payslip, 'staffid') ?: data_get($payslip, 'id', '-'));
 
-    $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
-        ? data_get($bank, 'bankname') 
-        : (data_get($payslip, 'bank_name') ?: data_get($payslip, 'bank', '-'));
+    $displayBankName = (!empty(data_get($bank, 'bank')) && data_get($bank, 'bank') !== '-') 
+        ? data_get($bank, 'bank') 
+        : ((!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
+            ? data_get($bank, 'bankname') 
+            : (data_get($payslip, 'bank_name') ?: data_get($payslip, 'bank', '-')));
     $displayAccountName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') 
         ? data_get($bank, 'name') 
         : $displayName;
-    $displayAccountNo = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
-        ? data_get($bank, 'alcnum') 
-        : (data_get($payslip, 'bank_account_number') ?: data_get($payslip, 'accountnumber', '-'));
+    $displayAccountNo = (!empty(data_get($bank, 'account')) && data_get($bank, 'account') !== '-') 
+        ? data_get($bank, 'account') 
+        : ((!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
+            ? data_get($bank, 'alcnum') 
+            : (data_get($payslip, 'bank_account_number') ?: data_get($payslip, 'accountnumber', '-')));
     $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') 
         ? data_get($bank, 'branch') 
         : (data_get($payslip, 'branch', '-'));

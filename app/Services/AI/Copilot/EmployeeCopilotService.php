@@ -448,7 +448,16 @@ class EmployeeCopilotService
         }
 
         // Check if message is inquiring about an individual's payslip, deductions, or profile
-        $isIndividualQuery = !empty($targetStaffId) ||
+        $isIndividualQuery = (!empty($targetStaffId) && (
+            str_contains($msgLower, 'payslip') ||
+            str_contains($msgLower, 'deduct') ||
+            str_contains($msgLower, 'salary') ||
+            str_contains($msgLower, 'pay') ||
+            str_contains($msgLower, 'details') ||
+            str_contains($msgLower, 'record') ||
+            str_contains($msgLower, 'profile') ||
+            str_contains($msgLower, 'leave')
+        )) ||
             str_contains($msgLower, 'my payslip') ||
             str_contains($msgLower, 'my latest payslip') ||
             str_contains($msgLower, 'why was money deducted') ||
@@ -607,11 +616,20 @@ class EmployeeCopilotService
 
         // 8. Employee Directory, Onboarding & PIN Codes
         if (
-            str_contains($msgLower, 'employee') ||
-            str_contains($msgLower, 'worker') ||
+            str_contains($msgLower, 'employee directory') ||
+            str_contains($msgLower, 'worker directory') ||
+            str_contains($msgLower, 'employee list') ||
+            str_contains($msgLower, 'staff list') ||
+            str_contains($msgLower, 'employee portal') ||
+            str_contains($msgLower, 'employee database') ||
+            str_contains($msgLower, 'staff database') ||
+            str_contains($msgLower, 'all employees') ||
+            str_contains($msgLower, 'all workers') ||
             str_contains($msgLower, 'onboarding') ||
-            str_contains($msgLower, 'pin') ||
-            str_contains($msgLower, 'pincode')
+            str_contains($msgLower, 'new hire') ||
+            str_contains($msgLower, 'pincode') ||
+            str_contains($msgLower, 'pin code') ||
+            str_contains($msgLower, 'reset pin')
         ) {
             $actions[] = ['type' => 'employee_portal', 'label' => 'Open Employee Database', 'url' => '/employeeportal'];
             $actions[] = ['type' => 'employee_contact', 'label' => 'Employee Contacts', 'url' => '/employeecontact'];
@@ -659,13 +677,12 @@ class EmployeeCopilotService
         $actions[] = ['label' => 'Employee Database', 'url' => '/employeeportal'];
         $actions[] = ['label' => 'Run Pre-Flight AI Audit', 'url' => '/payroll-ai/inspect'];
 
-        $reply = "I am your HRS Operations Copilot, ready to assist across all 31 clients and every system module:\n\n"
-            . "• Payslip Generation: 'Generate a payslip for Bunge Benin for October', 'Melcom payslips', 'Download payslip for JK001'\n"
-            . "• Payroll Uploads: 'Where do I upload Bunge payroll?', 'Download template for Jay Kay'\n"
-            . "• Statutory & Deduction Rules: 'How is SSNIT 0.5% and Petra Tier 2 calculated?', 'Absenteeism formula'\n"
-            . "• HR Audits: 'Open SSNIT Audit', 'Bank reconciliation', 'Petra Tier 2 audit'\n"
-            . "• Onboarding & Contracts: 'Open employee portal', 'Scan Ghana Card', 'Renew contracts'\n\n"
-            . "Select an action below or ask me any question about the platform.";
+        $reply = "I am your HRS Operations Copilot assisting across all 31 client partnerships.\n\n"
+            . "Regarding '{$cleanMessage}':\n"
+            . "• You can manage worker files, contracts, and profiles directly in the Employee Database.\n"
+            . "• For payroll calculations, upload files or run Pre-Flight AI Inspection to audit statutory deductions (SSNIT 0.5%, Petra Tier 2 5.0%).\n"
+            . "• To view or dispatch payslips, navigate to the Payslips Hub.\n\n"
+            . "Use the quick links below or ask for specific details like payslip generation, statutory formulas, or client audits.";
 
         return [
             'reply' => $this->cleanStars($reply),

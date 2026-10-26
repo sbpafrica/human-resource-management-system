@@ -60,8 +60,8 @@ class EmployeeCopilotController extends Controller
 
         $message = trim((string) $request->input('message'));
 
-        // Check if staff ID was passed, stored in session, or mentioned in the message text (e.g. JK001, OFI012, EMP123)
-        $staffId = $request->input('staff_id') ?: session('copilot_staff_id');
+        // Check if staff ID was explicitly passed or mentioned in the message text (e.g. JK001, OFI012, EMP123)
+        $staffId = $request->input('staff_id');
         if (empty($staffId)) {
             if (preg_match_all('/\b([a-zA-Z]{2,4}[-_ ]?\d{2,6})\b/i', $message, $matches)) {
                 foreach ($matches[1] as $raw) {
