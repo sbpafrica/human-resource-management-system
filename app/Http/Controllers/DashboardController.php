@@ -58,14 +58,59 @@ class DashboardController extends Controller
         $allClientHeadcount = $this->getAllClientHeadcount($allowedClients, $isSuperAdmin);
 
         // ====================================================================
-        // CONTRACT REPORTS & RENEWAL REPORTS (TRANSSION / TECNO GROUP)
+        // CONTRACT REPORTS & RENEWAL REPORTS (ALL CLIENTS & REPOSITORIES)
+        // Scans contract and renewal tables matching the user's allowed clients:
+        // Melcom (contractmelcomemp / contractmelcomemprenew),
+        // Transsion/Tecno (transsioncon / contracttranssionemprenew),
+        // Xiaomi (xiaomicon), Olam (olamfoodcon2), GMoney (gmoneycon), etc.
         // ====================================================================
-        $hasContractAccess = $allowedClients->contains(function ($client) {
-            $name = strtoupper($client->client_name ?? '');
-            return str_contains($name, 'TRANSSION') || str_contains($name, 'TECNO');
-        });
+        $clientNamesUpper = $allowedClients->map(fn($c) => strtoupper($c->client_name ?? ''))->toArray();
 
-        $renewedIdsArray   = [0];
+        $contractConfigs = [
+            [
+                'table'           => 'contractmelcomemp',
+                'renew_table'     => 'contractmelcomemprenew',
+                'client_keywords' => ['MELCOM'],
+                'default_company' => 'MELCOM LIMITED',
+                'has_enddate'     => true,
+            ],
+            [
+                'table'           => 'transsioncon',
+                'renew_table'     => 'contracttranssionemprenew',
+                'client_keywords' => ['TRANSSION', 'TECNO'],
+                'default_company' => 'TRANSSION TECHNOLOGY GH LIMITED',
+                'has_enddate'     => true,
+            ],
+            [
+                'table'           => 'xiaomicon',
+                'renew_table'     => null,
+                'client_keywords' => ['XIAOMI'],
+                'default_company' => 'XIAOMI GHANA',
+                'has_enddate'     => true,
+            ],
+            [
+                'table'           => 'olamfoodcon2',
+                'renew_table'     => null,
+                'client_keywords' => ['OLAM', 'OFI'],
+                'default_company' => 'OLAM FOOD INGREDIENTS',
+                'has_enddate'     => true,
+            ],
+            [
+                'table'           => 'gmoneycon',
+                'renew_table'     => null,
+                'client_keywords' => ['GMONEY', 'G-MONEY'],
+                'default_company' => 'G-MONEY FINANCIAL SERVICES',
+                'has_enddate'     => false,
+            ],
+            [
+                'table'           => 'shefercon',
+                'renew_table'     => null,
+                'client_keywords' => ['SHEFER'],
+                'default_company' => 'SHEFER PLASTICS LTD',
+                'has_enddate'     => false,
+            ],
+        ];
+
         $expiringContracts = collect();
         $expiredContracts  = collect();
         $unsignedContracts = collect();
@@ -73,57 +118,115 @@ class DashboardController extends Controller
         $renewalExpired    = collect();
         $renewalUnsigned   = collect();
 
-        if ($hasContractAccess) {
-            $renewedIds      = TranssionContractRenewal::distinct()->pluck('id');
-            $renewedIdsArray = $renewedIds->isNotEmpty() ? $renewedIds->toArray() : [0];
+        $now       = now();
+        $twoMonths = now()->addMonths(2);
 
-            $expiringContracts = TranssionContract::query()
-                ->where('activate', 1)
-                ->whereDate('enddate', '>=', now())
-                ->whereDate('enddate', '<=', now()->addMonths(2))
-                ->whereNotIn('id', $renewedIdsArray)
-                ->orderBy('enddate', 'asc')
-                ->select('id as staffid', 'employeename', 'client as company', 'startdate', 'enddate')
-                ->get();
+        foreach ($contractConfigs as $cfg) {
+            $hasAccess = $isSuperAdmin || collect($clientNamesUpper)->contains(function ($name) use ($cfg) {
+                foreach ($cfg['client_keywords'] as $kw) {
+                    if (str_contains($name, $kw)) return true;
+                }
+                return false;
+            });
 
-            $expiredContracts = TranssionContract::query()
-                ->where('activate', 1)
-                ->whereDate('enddate', '<', now())
-                ->whereNotIn('id', $renewedIdsArray)
-                ->orderBy('enddate', 'desc')
-                ->select('id as staffid', 'employeename', 'client as company', 'startdate', 'enddate')
-                ->get();
+            if (!$hasAccess) {
+                continue;
+            }
 
-            $unsignedContracts = TranssionContract::query()
-                ->where('activate', 0)
-                ->select('id as staffid', 'employeename', 'client as company', 'startdate', 'enddate')
-                ->get();
+            $renewedIds = [];
+            if ($cfg['renew_table'] && Schema::hasTable($cfg['renew_table'])) {
+                $renewedIds = DB::table($cfg['renew_table'])
+                    ->distinct()
+                    ->pluck('id')
+                    ->filter()
+                    ->toArray();
+            }
 
-            $baseRenewal = TranssionContractRenewal::leftJoin('transsioncon as original', 'contracttranssionemprenew.id', '=', 'original.id')
-                ->select(
-                    'contracttranssionemprenew.id as staffid',
-                    'contracttranssionemprenew.employeename',
-                    DB::raw('COALESCE(original.client, "TRANSSION TECHNOLOGY GH LIMITED.") as company'),
-                    'contracttranssionemprenew.startdate',
-                    'contracttranssionemprenew.enddate'
-                );
+            if (Schema::hasTable($cfg['table'])) {
+                if ($cfg['has_enddate']) {
+                    $exp = DB::table($cfg['table'])
+                        ->where('activate', 1)
+                        ->whereDate('enddate', '>=', $now)
+                        ->whereDate('enddate', '<=', $twoMonths)
+                        ->when(!empty($renewedIds), fn($q) => $q->whereNotIn('id', $renewedIds))
+                        ->select(
+                            'id as staffid',
+                            'employeename',
+                            DB::raw("COALESCE(NULLIF(client, ''), '" . $cfg['default_company'] . "') as company"),
+                            'startdate',
+                            'enddate'
+                        )
+                        ->get();
+                    $expiringContracts = $expiringContracts->concat($exp);
 
-            $renewalExpiring = $baseRenewal->clone()
-                ->where('contracttranssionemprenew.activate', 1)
-                ->whereDate('contracttranssionemprenew.enddate', '>=', now())
-                ->whereDate('contracttranssionemprenew.enddate', '<=', now()->addMonths(2))
-                ->orderBy('contracttranssionemprenew.enddate', 'asc')
-                ->get();
+                    $expd = DB::table($cfg['table'])
+                        ->where('activate', 1)
+                        ->whereDate('enddate', '<', $now)
+                        ->when(!empty($renewedIds), fn($q) => $q->whereNotIn('id', $renewedIds))
+                        ->select(
+                            'id as staffid',
+                            'employeename',
+                            DB::raw("COALESCE(NULLIF(client, ''), '" . $cfg['default_company'] . "') as company"),
+                            'startdate',
+                            'enddate'
+                        )
+                        ->get();
+                    $expiredContracts = $expiredContracts->concat($expd);
+                }
 
-            $renewalExpired = $baseRenewal->clone()
-                ->where('contracttranssionemprenew.activate', 1)
-                ->whereDate('contracttranssionemprenew.enddate', '<', now())
-                ->orderBy('contracttranssionemprenew.enddate', 'desc')
-                ->get();
+                $uns = DB::table($cfg['table'])
+                    ->where(fn($q) => $q->where('activate', 0)->orWhereNull('activate'))
+                    ->select(
+                        'id as staffid',
+                        'employeename',
+                        DB::raw("COALESCE(NULLIF(client, ''), '" . $cfg['default_company'] . "') as company"),
+                        'startdate',
+                        DB::raw($cfg['has_enddate'] ? 'enddate' : 'NULL as enddate')
+                    )
+                    ->get();
+                $unsignedContracts = $unsignedContracts->concat($uns);
+            }
 
-            $renewalUnsigned = $baseRenewal->clone()
-                ->where('contracttranssionemprenew.activate', 0)
-                ->get();
+            if ($cfg['renew_table'] && Schema::hasTable($cfg['renew_table'])) {
+                $rExp = DB::table($cfg['renew_table'])
+                    ->where('activate', 1)
+                    ->whereDate('enddate', '>=', $now)
+                    ->whereDate('enddate', '<=', $twoMonths)
+                    ->select(
+                        'id as staffid',
+                        'employeename',
+                        DB::raw("'" . $cfg['default_company'] . " (Renewal)' as company"),
+                        'startdate',
+                        'enddate'
+                    )
+                    ->get();
+                $renewalExpiring = $renewalExpiring->concat($rExp);
+
+                $rExpd = DB::table($cfg['renew_table'])
+                    ->where('activate', 1)
+                    ->whereDate('enddate', '<', $now)
+                    ->select(
+                        'id as staffid',
+                        'employeename',
+                        DB::raw("'" . $cfg['default_company'] . " (Renewal)' as company"),
+                        'startdate',
+                        'enddate'
+                    )
+                    ->get();
+                $renewalExpired = $renewalExpired->concat($rExpd);
+
+                $rUns = DB::table($cfg['renew_table'])
+                    ->where(fn($q) => $q->where('activate', 0)->orWhereNull('activate'))
+                    ->select(
+                        'id as staffid',
+                        'employeename',
+                        DB::raw("'" . $cfg['default_company'] . " (Renewal)' as company"),
+                        'startdate',
+                        'enddate'
+                    )
+                    ->get();
+                $renewalUnsigned = $renewalUnsigned->concat($rUns);
+            }
         }
 
         // ====================================================================
@@ -416,9 +519,18 @@ class DashboardController extends Controller
             'withoutGhanaCard'   => ['count' => count($withoutGhanaCardList),  'list' => $withoutGhanaCardList],
             'incompleteProfiles' => ['count' => count($notOnboardedList),      'list' => $notOnboardedList],
             'pendingDocuments'   => ['count' => 0, 'list' => collect()],
-            'upcomingBirthdays'  => ['count' => 0, 'list' => collect()],
-            'employeesOnLeave'   => ['count' => 0, 'list' => collect()],
-            'pendingLeaveRequests' => ['count' => 0, 'list' => collect()],
+            'upcomingBirthdays'  => [
+                'count' => \App\Models\Employee::whereNotNull('dateofbirth')->whereRaw("SUBSTR(dateofbirth, 6, 2) = ?", [now()->format('m')])->count(),
+                'list'  => \App\Models\Employee::whereNotNull('dateofbirth')->whereRaw("SUBSTR(dateofbirth, 6, 2) = ?", [now()->format('m')])->get(['staffid', 'employeename', 'company'])->map(fn($e) => ['staffid' => $e->staffid, 'employeename' => $e->employeename ?? 'Unknown', 'company' => $e->company ?? 'N/A'])->values(),
+            ],
+            'employeesOnLeave'   => [
+                'count' => \Illuminate\Support\Facades\DB::table('leaveapplications')->where('status', 'approved')->whereDate('start_date', '<=', now()->toDateString())->whereDate('end_date', '>=', now()->toDateString())->count(),
+                'list'  => \Illuminate\Support\Facades\DB::table('leaveapplications')->leftJoin('newemployeedata', 'leaveapplications.staffid', '=', 'newemployeedata.staffid')->where('leaveapplications.status', 'approved')->whereDate('leaveapplications.start_date', '<=', now()->toDateString())->whereDate('leaveapplications.end_date', '>=', now()->toDateString())->select('leaveapplications.staffid', \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.employeename, "Staff") as employeename'), \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.company, "N/A") as company'))->get(),
+            ],
+            'pendingLeaveRequests' => [
+                'count' => \Illuminate\Support\Facades\DB::table('leaveapplications')->where('status', 'pending')->count(),
+                'list'  => \Illuminate\Support\Facades\DB::table('leaveapplications')->leftJoin('newemployeedata', 'leaveapplications.staffid', '=', 'newemployeedata.staffid')->where('leaveapplications.status', 'pending')->select('leaveapplications.staffid', \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.employeename, "Staff") as employeename'), \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.company, "N/A") as company'))->get(),
+            ],
             'trend' => $trendData,
         ];
 
