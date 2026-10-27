@@ -211,7 +211,7 @@ public function export(Request $request)
    public function upload(Request $request, HybridColumnMatcher $columnMatcher, HybridAnomalyDetector $anomalyDetector)
  {
  $request->validate([
- 'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:2048'],
+ 'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
  'month' => ['required', 'date_format:Y-m'],
  ]);
 

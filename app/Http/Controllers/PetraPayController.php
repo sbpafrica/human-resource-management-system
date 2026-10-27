@@ -1,6 +1,8 @@
 <?php
 namespace App\Http\Controllers;
 
+use App\Services\Export\SpreadsheetExporter;
+
 use App\Models\Petra;
 use App\Models\TranssionPay;
 use Illuminate\Http\Request;
@@ -191,7 +193,8 @@ class PetraPayController extends Controller
 
             Log::info("PetraPay Export: Retrieved records", ['count' => count($records), 'sample' => $records->first()]);
 
-            return response()->json($records);
+            $filename = "PetraPay_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportPetra($records, $filename);
         } catch (\Exception $e) {
             Log::error("PetraPay Export failed", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Failed to export data: ' . $e->getMessage()], 500);

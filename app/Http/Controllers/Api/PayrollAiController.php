@@ -66,7 +66,7 @@ class PayrollAiController extends Controller
     public function inspectSpreadsheet(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:5120'],
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:5120'],
             'client_slug' => ['required', 'string'],
             'month' => ['required', 'date_format:Y-m'],
         ]);

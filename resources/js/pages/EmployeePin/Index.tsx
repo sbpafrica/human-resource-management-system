@@ -577,7 +577,7 @@ export default function EmployeePinIndex({
                 <Input
                   id="fileUpload"
                   type="file"
-                  accept=".xlsx, .xls, .csv"
+                  accept=".xlsx,.xls,.csv,.ods"
                   onChange={(e) => bulkUploadForm.setData("file", e.target.files ? e.target.files[0] : null)}
                   required
                 />

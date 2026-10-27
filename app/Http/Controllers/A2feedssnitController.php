@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Export\SpreadsheetExporter;
+
 use App\Models\A2feedpay;
 use App\Models\Ssnit;
 use Illuminate\Http\Request;
@@ -164,7 +166,8 @@ class A2feedssnitController extends Controller
                 ];
             });
 
-            return response()->json($records);
+            $filename = "A2feedssnit_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportSsnit($records, $filename);
         } catch (\Exception $e) {
             Log::error("A2feedssnitPay Export failed", ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Failed to export data: ' . $e->getMessage()], 500);

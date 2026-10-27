@@ -225,7 +225,7 @@ const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
                                         <div className="grid gap-4 py-4">
                                             <div className="grid gap-2">
                                                 <Label htmlFor="file">Excel File</Label>
-                                                <Input id="file" type="file" accept=".xlsx,.xls" onChange={(e) => e.target.files?.[0] && setData("file", e.target.files[0])} />
+                                                <Input id="file" type="file" accept=".xlsx,.xls,.csv,.ods" onChange={(e) => e.target.files?.[0] && setData("file", e.target.files[0])} />
                                                 {errors.file && <p className="text-red-500 text-sm">{errors.file}</p>}
                                             </div>
                                         </div>

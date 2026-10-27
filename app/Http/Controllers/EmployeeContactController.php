@@ -321,7 +321,7 @@ class EmployeeContactController extends Controller
     public function bulkUpload(Request $request)
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:2048'],
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
         ]);
 
         set_time_limit(300);

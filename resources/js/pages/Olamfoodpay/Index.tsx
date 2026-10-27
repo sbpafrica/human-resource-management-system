@@ -244,7 +244,7 @@ export default function OlamfoodPay({ records, selectedMonth, formattedMonth, to
                           <Input
                             id="file"
                             type="file"
-                            accept=".xlsx,.xls"
+                            accept=".xlsx,.xls,.csv,.ods"
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) setData("file", file);

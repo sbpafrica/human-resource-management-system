@@ -9,6 +9,7 @@ use Inertia\Inertia;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\Export\SpreadsheetExporter;
 
 class PzssnitController extends Controller
 {
@@ -192,7 +193,8 @@ class PzssnitController extends Controller
 
             Log::info("PzssnitPay Export: Retrieved records", ['count' => count($records), 'sample' => $records->first()]);
 
-            return response()->json($records);
+            $filename = "Pzssnit_{$month}.xlsx";
+            return SpreadsheetExporter::exportSsnit($records, $filename, 'staffid', 'basic');
         } catch (\Exception $e) {
             Log::error("PzssnitPay Export failed", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Failed to export data: ' . $e->getMessage()], 500);

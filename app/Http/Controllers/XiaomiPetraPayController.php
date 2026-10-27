@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Export\SpreadsheetExporter;
+
 use App\Models\Xiaomipay;
 use App\Models\Petra;
 use Illuminate\Http\Request;
@@ -164,7 +166,8 @@ class XiaomiPetraPayController extends Controller
                 'petra_amount' => $r->petra_amount !== null ? (float) $r->petra_amount : null,
             ]);
 
-            return response()->json($records);
+            $filename = "XiaomiPetraPay_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportPetra($records, $filename);
 
         } catch (\Exception $e) {
             Log::error("XiaomiPetraPay Export failed", ['error' => $e->getMessage()]);

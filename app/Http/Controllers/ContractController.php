@@ -201,7 +201,7 @@ class ContractController extends Controller
     public function bulkUpload(Request $request)
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:10240'], // 10MB max
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:10240'], // 10MB max
         ]);
 
         try {

@@ -638,7 +638,7 @@ export default function TranssionContractRenewalsIndex({
                 <Input
                   id="file"
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".xlsx,.xls,.csv,.ods"
                   onChange={(e) => bulkForm.setData("file", e.target.files?.[0] ?? null)}
                 />
               </div>

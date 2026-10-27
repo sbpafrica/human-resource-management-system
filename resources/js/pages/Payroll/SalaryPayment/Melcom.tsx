@@ -220,7 +220,7 @@ export default function MelcomSalaryPayment({
                   <DialogHeader><DialogTitle>Upload Melcom Salary Data</DialogTitle></DialogHeader>
                   <form onSubmit={(e) => { e.preventDefault(); if (data.file) post(route("salary-payment.melcom.upload"), { forceFormData: true, onSuccess: () => { setIsBulkUploadOpen(false); reset("file"); } }); }}>
                     <div className="grid gap-4 py-4">
-                      <Input type="file" accept=".xlsx,.xls" onChange={(e) => e.target.files?.[0] && setData("file", e.target.files[0])} />
+                      <Input type="file" accept=".xlsx,.xls,.csv,.ods" onChange={(e) => e.target.files?.[0] && setData("file", e.target.files[0])} />
                       {errors.file && <p className="text-red-500 text-sm">{errors.file}</p>}
                     </div>
                     <DialogFooter>

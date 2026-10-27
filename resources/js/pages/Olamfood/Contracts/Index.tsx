@@ -568,7 +568,7 @@ export default function OlamfoodContracts({
                         <Input
                           id="file"
                           type="file"
-                          accept=".xlsx,.xls"
+                          accept=".xlsx,.xls,.csv,.ods"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) bulkUploadForm.setData("file", file);

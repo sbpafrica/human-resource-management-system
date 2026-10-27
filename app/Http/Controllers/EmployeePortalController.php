@@ -570,7 +570,7 @@ public function bulkArchive(Request $request)
     public function bulkUpload(Request $request)
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:10240'],
         ]);
 
         set_time_limit(300);

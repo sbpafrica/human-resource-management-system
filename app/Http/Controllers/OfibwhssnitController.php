@@ -1,6 +1,8 @@
 <?php
 
 namespace App\Http\Controllers;
+
+use App\Services\Export\SpreadsheetExporter;
 use App\Models\Ofibwhpay;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -174,7 +176,8 @@ class OfibwhssnitController extends Controller
                     ];
                 });
 
-            return response()->json($records);
+            $filename = "Ofibwhssnit_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportSsnit($records, $filename);
 
         } catch (\Exception $e) {
             Log::error("Ofibwhssnit Export Error: " . $e->getMessage());

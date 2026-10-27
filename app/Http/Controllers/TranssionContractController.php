@@ -222,7 +222,7 @@ class TranssionContractController extends Controller
     public function bulkUpload(Request $request)
 {
     $request->validate([
-        'file' => 'required|mimes:xlsx,xls|max:10240', // 10MB max
+        'file' => 'required|extensions:xlsx,xls,csv,ods|max:10240', // 10MB max
     ]);
 
     try {

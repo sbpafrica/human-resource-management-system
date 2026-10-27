@@ -231,7 +231,7 @@ export default function Inspect({ clients, defaultMonth }: InspectProps) {
                                 <Input
                                     id="file"
                                     type="file"
-                                    accept=".xlsx,.xls,.csv"
+                                    accept=".xlsx,.xls,.csv,.ods"
                                     onChange={handleFileChange}
                                     className="mt-1 cursor-pointer"
                                     required

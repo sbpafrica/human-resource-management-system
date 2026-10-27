@@ -719,7 +719,7 @@ placeholder={data.bank ? "Enter account" : "Select bank"}
                     <div className="grid gap-4 py-4">
                       <Input
                         type="file"
-                        accept=".xlsx,.xls"
+                        accept=".xlsx,.xls,.csv,.ods"
                         onChange={e => e.target.files?.[0] && bulkUploadForm.setData("file", e.target.files[0])}
                       />
                     </div>

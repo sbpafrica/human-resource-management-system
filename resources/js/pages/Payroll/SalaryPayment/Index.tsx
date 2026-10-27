@@ -319,7 +319,7 @@ export default function SalaryPaymentIndex({
                           <Input
                             id="uc-file"
                             type="file"
-                            accept=".xlsx,.xls"
+                            accept=".xlsx,.xls,.csv,.ods"
                             onChange={(e) => e.target.files?.[0] && setData("file", e.target.files[0])}
                           />
                           {errors.file && <p className="text-red-500 text-sm">{errors.file}</p>}

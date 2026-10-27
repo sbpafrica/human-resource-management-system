@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Export\SpreadsheetExporter;
+
 use App\Models\Olamfoodpay;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -163,7 +165,8 @@ class OlamfoodssnitController extends Controller
                 'ssnit_amount'   => $r->ssnit_amount !== null ? (float) $r->ssnit_amount : null,
             ]);
 
-            return response()->json($records);
+            $filename = "Olamfoodssnit_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportSsnit($records, $filename);
 
         } catch (\Exception $e) {
             Log::error("OlamfoodSsnitPay Export failed", ['error' => $e->getMessage()]);

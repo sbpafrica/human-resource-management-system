@@ -312,7 +312,7 @@ export default function TranssionSalaryPayment({
                   <DialogHeader><DialogTitle>Upload Good Ease Data</DialogTitle></DialogHeader>
                   <form onSubmit={handleBulkUpload}>
                     <div className="grid gap-4 py-4">
-                      <Input type="file" accept=".xlsx,.xls" onChange={(e) => e.target.files?.[0] && setData("file", e.target.files[0])} />
+                      <Input type="file" accept=".xlsx,.xls,.csv,.ods" onChange={(e) => e.target.files?.[0] && setData("file", e.target.files[0])} />
                       {errors.file && <p className="text-red-500 text-sm">{errors.file}</p>}
                     </div>
                     <DialogFooter>

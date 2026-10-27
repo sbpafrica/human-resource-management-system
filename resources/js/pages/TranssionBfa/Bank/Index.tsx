@@ -274,7 +274,7 @@ export default function TranssionBfaBankIndex({
                       <Input
                         id="bulk-file"
                         type="file"
-                        accept=".xlsx,.xls"
+                        accept=".xlsx,.xls,.csv,.ods"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) bulkForm.setData("file", file);

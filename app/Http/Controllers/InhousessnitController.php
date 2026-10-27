@@ -1,6 +1,8 @@
 <?php
 
 namespace App\Http\Controllers;
+
+use App\Services\Export\SpreadsheetExporter;
 use App\Models\Inhousepay;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -163,7 +165,8 @@ class InhousessnitController extends Controller
                     ];
                 });
 
-            return response()->json($records);
+            $filename = "Inhousessnit_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportSsnit($records, $filename);
 
         } catch (\Exception $e) {
             Log::error("Inhousessnit Export Error: " . $e->getMessage());

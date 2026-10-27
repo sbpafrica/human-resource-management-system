@@ -171,7 +171,7 @@ class MelcomSalaryPaymentController extends Controller
     public function upload(Request $request)
     {
         $request->validate([
-            'file'  => 'required|file|mimes:xlsx,xls|max:51200',
+            'file'  => 'required|file|extensions:xlsx,xls,csv,ods|max:51200',
             'month' => 'required|date_format:Y-m',
         ]);
 

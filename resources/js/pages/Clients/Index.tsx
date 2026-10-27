@@ -379,7 +379,7 @@ export default function Clients({ clients, filters, totalRecords, searchCount, f
                 <DialogContent>
                   <DialogHeader><DialogTitle>Bulk Upload</DialogTitle></DialogHeader>
                   <form onSubmit={handleBulkUpload}>
-                    <Input type="file" accept=".xlsx,.xls" onChange={e => e.target.files?.[0] && bulkUploadForm.setData("file", e.target.files[0])} />
+                    <Input type="file" accept=".xlsx,.xls,.csv,.ods" onChange={e => e.target.files?.[0] && bulkUploadForm.setData("file", e.target.files[0])} />
                     <DialogFooter className="mt-4">
                       <Button type="submit" disabled={!bulkUploadForm.data.file}>Upload</Button>
                     </DialogFooter>
