@@ -53,6 +53,14 @@ The standard internal fields are:
 - "saturday_rate": Saturday pay rate
 - "saturday_amount": Total earnings for Saturday work
 - "total_days_amount": Total base earnings from days worked
+- "weekday_hours": Normal weekday overtime hours worked
+- "weekday_overtime_amt": Normal weekday overtime pay amount
+- "saturday_hours": Saturday overtime hours worked
+- "saturday_overtime_amt": Saturday overtime pay amount
+- "num_sundays_holidays": Sunday or public holiday overtime hours/days count
+- "sunday_holiday_overtime_amt": Sunday and holiday overtime pay amount
+- "overtimerefund": Overtime adjustment or refund amount
+- "total_overtime_amt": Total cumulative overtime pay amount
 - "overtime_hours": Overtime hours worked
 - "overtime_rate": Hourly overtime rate
 - "overtime_amount": Total overtime pay
