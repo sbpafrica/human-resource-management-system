@@ -687,26 +687,83 @@ class PayslipController extends Controller
 
         $payslip->work_location         = $getP('work_location') ?? $getP('worklocation') ?? $getP('location') ?? $payslip->department;
         $payslip->start_date            = $getP('start_date') ?? $getP('startdate') ?? $getP('date_joined') ?? null;
-        $payslip->description           = $getP('description') ?? $getP('descriptions') ?? null;
-        $payslip->deduction_description = $getP('deduction_description') ?? $getP('deduction_desc') ?? null;
+        $payslip->description           = $getP('description') 
+            ?? $getP('descriptions') 
+            ?? $getP('desc') 
+            ?? $getP('remarks') 
+            ?? $getP('remark') 
+            ?? $getP('notes') 
+            ?? $getP('note') 
+            ?? null;
+        $payslip->deduction_description = $getP('deduction_description') 
+            ?? $getP('deduction_desc') 
+            ?? $getP('ded_desc') 
+            ?? $getP('loan_desc') 
+            ?? $getP('loan_description') 
+            ?? null;
+        $payslip->loan_description      = $getP('loan_description') 
+            ?? $getP('loan_desc') 
+            ?? $payslip->deduction_description 
+            ?? null;
+        $payslip->overtime_description  = $getP('overtime_description') 
+            ?? $getP('ot_description') 
+            ?? $getP('ot_desc') 
+            ?? null;
     
         // ---------- BASIC & WORK DAYS ----------
+        $legalWorkDays = $getP('legal_work_days')
+            ?? $getP('legalworkdays')
+            ?? $getP('legalwork')
+            ?? $getP('expected_work_days')
+            ?? $getP('expected_days')
+            ?? $getP('expecteddays')
+            ?? $getP('lwork')
+            ?? null;
+        $payslip->legal_work_days    = is_numeric($legalWorkDays) ? (float)$legalWorkDays : $legalWorkDays;
+        $payslip->expected_work_days = $payslip->legal_work_days;
+
         $daysWorked = $getP('days_worked')
             ?? $getP('daysworked')
+            ?? $getP('number_of_days_worked')
+            ?? $getP('numberofdaysworked')
             ?? $getP('noofdayspresent')
-            ?? $getP('workdays') 
-            ?? $getP('numberofdaysworked') 
-            ?? $getP('actualdays') 
+            ?? $getP('actual_days')
+            ?? $getP('actualdays')
+            ?? $getP('actualwork')
+            ?? $getP('work_days')
+            ?? $getP('workdays')
+            ?? $getP('total_hours_worked')
             ?? $getP('week')
-            ?? $getP('noofdays') 
+            ?? $getP('noofdays')
             ?? $getP('total1')
-            ?? $getP('actualwork') 
-            ?? $getP('total_weekdays') 
-            ?? $getP('legalworkdays') 
+            ?? $getP('total_weekdays')
             ?? 0;
-        $payslip->workdays   = is_numeric($daysWorked) ? (float)$daysWorked : $daysWorked;
-        $payslip->actualdays = $payslip->workdays;
-        $payslip->week       = $getP('week') ?? $payslip->workdays;
+        $payslip->days_worked = is_numeric($daysWorked) ? (float)$daysWorked : $daysWorked;
+        $payslip->workdays    = $payslip->days_worked;
+        $payslip->actualdays  = $payslip->days_worked;
+        $payslip->week        = $getP('week') ?? $payslip->days_worked;
+
+        $absentDays = $getP('absent_days')
+            ?? $getP('absentee_days')
+            ?? $getP('absentdays')
+            ?? $getP('no_of_absent_days')
+            ?? $getP('absent')
+            ?? 0;
+        $payslip->absent_days     = is_numeric($absentDays) ? (float)$absentDays : $absentDays;
+        $payslip->absentee_days   = $payslip->absent_days;
+
+        $absentDeduction = (float)(
+            $getP('absent_deduction')
+            ?? $getP('absent_deductions')
+            ?? $getP('absentamt')
+            ?? $getP('absentdeductions')
+            ?? $getP('absent_days_deductions')
+            ?? $getP('absent_days_deduction')
+            ?? $getP('absentwithoutpay')
+            ?? 0
+        );
+        $payslip->absent_deduction  = $absentDeduction;
+        $payslip->absent_deductions = $absentDeduction;
 
         $rate = (float)(
             $getP('daily_rate') 

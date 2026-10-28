@@ -87,13 +87,15 @@
     <tr>
         <td class="header">Basic Salary</td>
         <td>{{ number_format((float)($payslip->basic_salary ?? 0), 2) }}</td>
-        <td colspan="3"></td>
+        <td></td>
+        <td class="header">Legal Work Days</td>
+        <td>{{ (float)($payslip->legal_work_days ?? 0) > 0 ? (int)$payslip->legal_work_days : '-' }}</td>
     </tr>
 
     <!-- Table Header -->
     <tr>
         <th colspan="2" class="header" style="text-align: center;">Item</th>
-        <th class="header" style="text-align: center;">Description/Days</th>
+        <th class="header" style="text-align: center;">Description/Days/Hours</th>
         <th class="header" style="text-align: center;">Earnings</th>
         <th class="header" style="text-align: center;">Deductions</th>
     </tr>
@@ -101,13 +103,13 @@
     <!-- Earnings & Deductions Rows -->
     <tr>
         <td colspan="2">Basic Earned</td>
-        <td style="text-align: right;">{{ $payslip->days_worked ?? 0 }}</td>
+        <td style="text-align: right;">{{ !empty($payslip->description) ? $payslip->description : ((float)($payslip->days_worked ?? ($payslip->workdays ?? 0)) > 0 ? ($payslip->days_worked ?? $payslip->workdays) : '') }}</td>
         <td style="text-align: center;">{{ number_format((float)($payslip->basic_earned ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Absent Deduction</td>
-        <td style="text-align: right;">{{ $payslip->absent_days ?? 0 }}</td>
+        <td style="text-align: right;">{{ (float)($payslip->absent_days ?? 0) > 0 ? $payslip->absent_days : (!empty($payslip->deduction_description) ? $payslip->deduction_description : '') }}</td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->absent_deduction ?? 0), 2) }}</td>
     </tr>
@@ -133,7 +135,7 @@
     @endif
     <tr>
         <td colspan="2">Loan</td>
-        <td></td>
+        <td style="text-align: right;">{{ !empty($payslip->loan_description) ? $payslip->loan_description : '' }}</td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->deductions ?? 0), 2) }}</td>
     </tr>
@@ -158,19 +160,19 @@
     @if($hasDetailedOt || $totalOvertime <= 0)
     <tr>
         <td colspan="2">Weekday Overtime</td>
-        <td style="text-align: right;">{{ $weekdayHrs }}</td>
+        <td style="text-align: right;">{{ (float)($weekdayHrs ?? 0) > 0 ? $weekdayHrs : (!empty($payslip->weekday_ot_description) ? $payslip->weekday_ot_description : '') }}</td>
         <td style="text-align: center;">{{ number_format($weekdayAmt, 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Saturday Overtime</td>
-        <td style="text-align: right;">{{ $saturdayHrs }}</td>
+        <td style="text-align: right;">{{ (float)($saturdayHrs ?? 0) > 0 ? $saturdayHrs : (!empty($payslip->saturday_ot_description) ? $payslip->saturday_ot_description : '') }}</td>
         <td style="text-align: center;">{{ number_format($saturdayAmt, 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Sunday/Holiday Overtime</td>
-        <td style="text-align: right;">{{ $sundayHrs }}</td>
+        <td style="text-align: right;">{{ (float)($sundayHrs ?? 0) > 0 ? $sundayHrs : (!empty($payslip->sunday_ot_description) ? $payslip->sunday_ot_description : '') }}</td>
         <td style="text-align: center;">{{ number_format($sundayAmt, 2) }}</td>
         <td></td>
     </tr>
@@ -183,7 +185,7 @@
     @else
     <tr>
         <td colspan="2">Total Overtime</td>
-        <td style="text-align: right;">{{ $payslip->overtime_hours ?? $payslip->total_hours_worked ?? '-' }}</td>
+        <td style="text-align: right;">{{ (float)($payslip->overtime_hours ?? ($payslip->total_hours_worked ?? 0)) > 0 ? ($payslip->overtime_hours ?? $payslip->total_hours_worked) : (!empty($payslip->overtime_description) ? $payslip->overtime_description : '') }}</td>
         <td style="text-align: center;">{{ number_format($totalOvertime, 2) }}</td>
         <td></td>
     </tr>

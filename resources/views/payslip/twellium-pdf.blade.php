@@ -102,7 +102,9 @@
     <tr>
         <td class="header">Basic Salary</td>
         <td>{{ number_format((float)($payslip->basic ?? 0), 2) }}</td>
-        <td colspan="3"></td>
+        <td></td>
+        <td class="header">Expected Work Days</td>
+        <td>{{ (float)($payslip->expected_work_days ?? ($payslip->legal_work_days ?? 0)) > 0 ? (int)($payslip->expected_work_days ?? $payslip->legal_work_days) : '-' }}</td>
     </tr>
     <tr>
         <th colspan="2" class="header" style="text-align: center;">Item</th>
@@ -114,7 +116,7 @@
     <!-- Earnings -->
     <tr>
         <td colspan="2">Basic Earned</td>
-        <td style="text-align: right;">{{ $payslip->total_hours_worked ?? 0 }}</td>
+        <td style="text-align: right;">{{ !empty($payslip->description) ? $payslip->description : ((float)($payslip->total_hours_worked ?? ($payslip->days_worked ?? ($payslip->workdays ?? 0))) > 0 ? ($payslip->total_hours_worked ?? ($payslip->days_worked ?? $payslip->workdays)) : '') }}</td>
         <td style="text-align: center;">{{ number_format((float)($payslip->basic_earned ?? 0), 2) }}</td>
         <td></td>
     </tr>
@@ -133,26 +135,26 @@
     @if($hasBreakdown || $totalOvertime <= 0)
     <tr>
         <td colspan="2">Weekday Overtime</td>
-        <td style="text-align: right;">{{ $weekdayHrs }}</td>
+        <td style="text-align: right;">{{ (float)($weekdayHrs ?? 0) > 0 ? $weekdayHrs : (!empty($payslip->weekday_ot_description) ? $payslip->weekday_ot_description : '') }}</td>
         <td style="text-align: center;">{{ number_format($weekdayAmt, 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Offday/Holiday Overtime</td>
-        <td style="text-align: right;">{{ $offdayHrs }}</td>
+        <td style="text-align: right;">{{ (float)($offdayHrs ?? 0) > 0 ? $offdayHrs : (!empty($payslip->offday_ot_description) ? $payslip->offday_ot_description : '') }}</td>
         <td style="text-align: center;">{{ number_format($offdayAmt, 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Special Day Overtime</td>
-        <td style="text-align: right;">{{ $specialHrs }}</td>
+        <td style="text-align: right;">{{ (float)($specialHrs ?? 0) > 0 ? $specialHrs : (!empty($payslip->special_ot_description) ? $payslip->special_ot_description : '') }}</td>
         <td style="text-align: center;">{{ number_format($specialAmt, 2) }}</td>
         <td></td>
     </tr>
     @else
     <tr>
         <td colspan="2">Total Overtime</td>
-        <td style="text-align: right;">{{ $payslip->overtime_hours ?? $payslip->total_hours_worked ?? '-' }}</td>
+        <td style="text-align: right;">{{ (float)($payslip->overtime_hours ?? ($payslip->total_hours_worked ?? 0)) > 0 ? ($payslip->overtime_hours ?? $payslip->total_hours_worked) : (!empty($payslip->overtime_description) ? $payslip->overtime_description : '') }}</td>
         <td style="text-align: center;">{{ number_format($totalOvertime, 2) }}</td>
         <td></td>
     </tr>

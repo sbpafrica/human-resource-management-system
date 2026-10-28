@@ -1438,13 +1438,13 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         </tr>
         <tr>
             <th colSpan={2} className="p-2 header" style={{ textAlign: 'center' }}>Item</th>
-            <th className="p-2 header" style={{ textAlign: 'center' }}>Description/Days</th>
+            <th className="p-2 header" style={{ textAlign: 'center' }}>Description/Days/Hours</th>
             <th className="p-2 header" style={{ textAlign: 'center' }}>Earnings</th>
             <th className="p-2 header" style={{ textAlign: 'center' }}>Deductions</th>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Basic Salary</td>
-            <td className="p-2 text-center">-</td>
+            <td className="p-2 text-center">{payslip.description || (Number(payslip.days_worked ?? 0) > 0 ? payslip.days_worked : '')}</td>
             <td className="p-2 text-center">{(payslip.basic ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
@@ -1562,7 +1562,9 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         <tr>
             <td className="p-2">Basic Salary</td>
             <td className="p-2">{(payslip.basic ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
-            <td colSpan={3}></td>
+            <td className="p-2"></td>
+            <td className="p-2">Expected Work Days</td>
+            <td className="p-2">{Number(payslip.expected_work_days ?? payslip.legal_work_days ?? 0) > 0 ? (payslip.expected_work_days ?? payslip.legal_work_days) : '-'}</td>
         </tr>
         <tr>
             <th colSpan={2} className="text-white text-center">Item</th>
@@ -1572,25 +1574,25 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Basic Earned</td>
-            <td className="p-2 text-right">{payslip.total_hours_worked ?? 0}</td>
+            <td className="p-2 text-right">{payslip.description || (Number(payslip.total_hours_worked ?? payslip.days_worked ?? 0) > 0 ? (payslip.total_hours_worked ?? payslip.days_worked) : '')}</td>
             <td className="p-2 text-center">{(payslip.basic_earned ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Weekday Overtime</td>
-            <td className="p-2 text-right">{payslip.weekday_overtime_hours ?? 0}</td>
+            <td className="p-2 text-right">{Number(payslip.weekday_overtime_hours ?? 0) > 0 ? payslip.weekday_overtime_hours : ''}</td>
             <td className="p-2 text-center">{(payslip.weekday_overtime_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Offday/Holiday Overtime</td>
-            <td className="p-2 text-right">{payslip.offday_holiday_overtime_hours ?? 0}</td>
+            <td className="p-2 text-right">{Number(payslip.offday_holiday_overtime_hours ?? 0) > 0 ? payslip.offday_holiday_overtime_hours : ''}</td>
             <td className="p-2 text-center">{(payslip.offday_holiday_overtime_total ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Special Day Overtime</td>
-            <td className="p-2 text-right">{payslip.special_day_overtime_hours ?? 0}</td>
+            <td className="p-2 text-right">{Number(payslip.special_day_overtime_hours ?? 0) > 0 ? payslip.special_day_overtime_hours : ''}</td>
             <td className="p-2 text-center">{(payslip.special_day_overtime_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
@@ -1719,11 +1721,13 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td className="p-2">
                 {Number(payslip.basic_salary ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
-            <td colSpan={3}></td>
+            <td className="p-2"></td>
+            <td className="p-2">Legal Work Days</td>
+            <td className="p-2">{Number(payslip.legal_work_days ?? 0) > 0 ? payslip.legal_work_days : '-'}</td>
         </tr>
         <tr>
             <th colSpan={2} className="text-white text-center">Item</th>
-            <th className="text-white text-center">Description/Days</th>
+            <th className="text-white text-center">Description/Days/Hours</th>
             <th className="text-white text-center">Earnings</th>
             <th className="text-white text-center">Deductions</th>
         </tr>
@@ -1731,7 +1735,9 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         {/* Basic Earned */}
         <tr>
             <td colSpan={2} className="p-2">Basic Earned</td>
-            <td className="p-2 text-right">{payslip.days_worked ?? 0}</td>
+            <td className="p-2 text-right">
+                {payslip.description || (Number(payslip.days_worked ?? 0) > 0 ? payslip.days_worked : '')}
+            </td>
             <td className="p-2 text-center">
                 {Number(payslip.basic_earned ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
@@ -1741,7 +1747,9 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         {/* Absent Deduction */}
         <tr>
             <td colSpan={2} className="p-2">Absent Deduction</td>
-            <td className="p-2 text-right">{payslip.absent_days ?? 0}</td>
+            <td className="p-2 text-right">
+                {Number(payslip.absent_days ?? 0) > 0 ? payslip.absent_days : (payslip.deduction_description || '')}
+            </td>
             <td></td>
             <td className="p-2 text-center">
                 {Number(payslip.absent_deduction ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1779,7 +1787,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         )}
         <tr>
             <td colSpan={2} className="p-2">Loan</td>
-            <td></td>
+            <td className="p-2 text-right">{payslip.loan_description || ''}</td>
             <td></td>
             <td className="p-2 text-center">
                 {Number(payslip.deductions ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1797,11 +1805,11 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         {/* Overtime Items */}
         {(() => {
             const weekdayAmt = Number(payslip.weekday_overtime_amt ?? payslip.weekdays_overtime ?? payslip.normalovertime ?? 0);
-            const weekdayHrs = payslip.weekday_hours ?? payslip.weekdaysOT ?? 0;
+            const weekdayHrs = payslip.weekday_hours ?? payslip.weekdaysOT ?? '';
             const saturdayAmt = Number(payslip.saturday_overtime_amt ?? payslip.saturdays_overtime ?? payslip.saturdayovertime ?? 0);
-            const saturdayHrs = payslip.saturday_hours ?? payslip.num_saturdays ?? payslip.weekendOT ?? payslip.sat ?? 0;
+            const saturdayHrs = payslip.saturday_hours ?? payslip.num_saturdays ?? payslip.weekendOT ?? payslip.sat ?? '';
             const sundayAmt = Number(payslip.sunday_holiday_overtime_amt ?? payslip.sundays_holidays_overtime ?? payslip.holidayotamt ?? 0);
-            const sundayHrs = payslip.num_sundays_holidays ?? payslip.sundays_holiday_overtime ?? payslip.holiday ?? 0;
+            const sundayHrs = payslip.num_sundays_holidays ?? payslip.sundays_holiday_overtime ?? payslip.holiday ?? '';
             const otRefund = Number(payslip.overtimerefund ?? payslip.overtime_refund ?? 0);
             const totalOt = Number(payslip.total_overtime_amt ?? payslip.total_overtime ?? payslip.overtime ?? (weekdayAmt + saturdayAmt + sundayAmt));
             const hasDetailed = (weekdayAmt > 0 || saturdayAmt > 0 || sundayAmt > 0 || Number(weekdayHrs) > 0 || Number(saturdayHrs) > 0 || Number(sundayHrs) > 0 || otRefund > 0);
@@ -1811,7 +1819,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                     <>
                         <tr>
                             <td colSpan={2} className="p-2">Weekday Overtime</td>
-                            <td className="p-2 text-right">{weekdayHrs}</td>
+                            <td className="p-2 text-right">{Number(weekdayHrs) > 0 ? weekdayHrs : (payslip.weekday_ot_description || '')}</td>
                             <td className="p-2 text-center">
                                 {weekdayAmt.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
@@ -1819,7 +1827,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                         </tr>
                         <tr>
                             <td colSpan={2} className="p-2">Saturday Overtime</td>
-                            <td className="p-2 text-right">{saturdayHrs}</td>
+                            <td className="p-2 text-right">{Number(saturdayHrs) > 0 ? saturdayHrs : (payslip.saturday_ot_description || '')}</td>
                             <td className="p-2 text-center">
                                 {saturdayAmt.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
@@ -1827,7 +1835,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                         </tr>
                         <tr>
                             <td colSpan={2} className="p-2">Sunday/Holiday Overtime</td>
-                            <td className="p-2 text-right">{sundayHrs}</td>
+                            <td className="p-2 text-right">{Number(sundayHrs) > 0 ? sundayHrs : (payslip.sunday_ot_description || '')}</td>
                             <td className="p-2 text-center">
                                 {sundayAmt.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
@@ -1849,7 +1857,11 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                 <>
                     <tr>
                         <td colSpan={2} className="p-2">Total Overtime</td>
-                        <td className="p-2 text-right">{payslip.overtime_hours ?? payslip.total_hours_worked ?? '-'}</td>
+                        <td className="p-2 text-right">
+                            {Number(payslip.overtime_hours ?? payslip.total_hours_worked ?? 0) > 0 
+                                ? (payslip.overtime_hours ?? payslip.total_hours_worked) 
+                                : (payslip.overtime_description || '')}
+                        </td>
                         <td className="p-2 text-center">
                             {totalOt.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>

@@ -89,13 +89,13 @@
     </tr>
     <tr>
         <th colspan="2" class="header" style="text-align: center;">Item</th>
-        <th class="header" style="text-align: center;">Description/Days</th>
+        <th class="header" style="text-align: center;">Description/Days/Hours</th>
         <th class="header" style="text-align: center;">Earnings</th>
         <th class="header" style="text-align: center;">Deductions</th>
     </tr>
     <tr>
         <td colspan="2">Basic Salary</td>
-        <td class="text-center">-</td>
+        <td class="text-center">{{ !empty($payslip->description) ? $payslip->description : ((float)($payslip->days_worked ?? ($payslip->workdays ?? 0)) > 0 ? ($payslip->days_worked ?? $payslip->workdays) : '') }}</td>
         <td class="text-center">{{ number_format((float)($payslip->basic ?? 0), 2) }}</td>
         <td></td>
     </tr>
