@@ -62,26 +62,19 @@ class SendBirthdayMessages extends Command
             $raw = trim((string) $emp->dateofbirth);
             if (empty($raw)) return false;
 
-            // Normalise known tricky formats before parsing
-            // "8th March 1997" → "8 March 1997"
-            $cleaned = preg_replace('/\b(\d+)(st|nd|rd|th)\b/i', '$1', $raw);
-            // "2-Nov-06" → "2-Nov-2006" (expand 2-digit year)
-            $cleaned = preg_replace_callback(
-                '/^(\d{1,2})-([A-Za-z]{3})-(\d{2})$/',
-                fn($m) => $m[1] . '-' . $m[2] . '-20' . $m[3],
-                $cleaned
-            );
-
-            try {
-                $carbon = \Carbon\Carbon::parse($cleaned);
+            $carbon = $this->parseFlexibleBirthday($raw);
+            if ($carbon) {
                 return $carbon->day === $todayDay && $carbon->month === $todayMonth;
-            } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning(
-                    "Birthday parse failed for {$emp->staffid}",
-                    ['raw' => $raw, 'error' => $e->getMessage()]
-                );
-                return false;
             }
+
+            // Only log debug notice if it had digits and wasn't obvious non-date data (e.g. emails, GHA card)
+            if (preg_match('/\d/', $raw) && !str_contains($raw, '@') && !str_starts_with($raw, 'GHA-')) {
+                \Illuminate\Support\Facades\Log::debug(
+                    "Birthday parse skipped for {$emp->staffid}",
+                    ['raw' => $raw]
+                );
+            }
+            return false;
         });
 
         if ($employees->isEmpty()) {
@@ -238,5 +231,85 @@ class SendBirthdayMessages extends Command
         Log::info("Birthday SMS complete", compact('sentCount', 'failedCount', 'skippedCount', 'today'));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Flexibly parses diverse user birthday string formats into a Carbon instance.
+     * Supports:
+     * - DD/MM/YYYY, DD/MM/YY, DD-MM-YYYY, DD_MM_YYYY
+     * - 8-digit numeric strings: 19101990 (DDMMYYYY)
+     * - Excel serial dates (e.g. 34842)
+     * - DD/MonthName/YYYY (e.g. 5/July/1997)
+     * - Ordinal dates (e.g. 8th March 1997)
+     * - 2-digit year expansions (e.g. 2-Nov-06 -> 2-Nov-2006)
+     */
+    private function parseFlexibleBirthday(string $raw): ?\Carbon\Carbon
+    {
+        $cleaned = trim($raw);
+        if (empty($cleaned)) {
+            return null;
+        }
+
+        // Normalise ordinal days: '8th March 1997' -> '8 March 1997'
+        $cleaned = preg_replace('/\b(\d+)(st|nd|rd|th)\b/i', '$1', $cleaned);
+
+        // Replace underscores or multiple spaces
+        $cleaned = str_replace('_', '/', $cleaned);
+        $cleaned = preg_replace('/[ ]+/', ' ', $cleaned);
+
+        // Excel serial dates: e.g. 34842 (numeric between 10000 and 60000)
+        if (is_numeric($cleaned) && (int)$cleaned >= 10000 && (int)$cleaned <= 60000) {
+            return \Carbon\Carbon::createFromTimestamp(((int)$cleaned - 25569) * 86400);
+        }
+
+        // 8-digit numeric string: e.g. 19101990 -> DDMMYYYY
+        if (preg_match('/^(\d{2})(\d{2})(\d{4})$/', $cleaned, $m)) {
+            $d = (int)$m[1]; $mo = (int)$m[2]; $y = (int)$m[3];
+            if ($mo >= 1 && $mo <= 12 && $d >= 1 && $d <= 31) {
+                return \Carbon\Carbon::createFromDate($y, $mo, $d);
+            }
+        }
+
+        // Space separated: e.g. '02 01 2002'
+        if (preg_match('/^(\d{1,2})\s+(\d{1,2})\s+(\d{2,4})$/', $cleaned, $m)) {
+            $cleaned = $m[1] . '/' . $m[2] . '/' . $m[3];
+        }
+
+        // d/m/Y or d/m/y or d-m-Y: e.g. 22/06/1997, 28/6/1995, 26/11/93
+        if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/', $cleaned, $m)) {
+            $d = (int)$m[1];
+            $mo = (int)$m[2];
+            $y = (int)$m[3];
+            if ($mo > 12 && $d <= 12) {
+                $temp = $d; $d = $mo; $mo = $temp;
+            }
+            if ($y < 100) {
+                $y = ($y > 35) ? (1900 + $y) : (2000 + $y);
+            }
+            if ($mo >= 1 && $mo <= 12 && $d >= 1 && $d <= 31) {
+                return \Carbon\Carbon::createFromDate($y, $mo, $d);
+            }
+        }
+
+        // Fix common spelling typo: e.g. '0ct' instead of 'Oct'
+        $cleaned = str_ireplace('0ct', 'Oct', $cleaned);
+
+        // d/MonthName/Y: e.g. 5/July/1997
+        if (preg_match('/^(\d{1,2})[\/\-]([A-Za-z]+)[\/\-](\d{2,4})$/', $cleaned, $m)) {
+            $cleaned = $m[1] . ' ' . $m[2] . ' ' . $m[3];
+        }
+
+        // 2-Nov-06 -> 2-Nov-2006
+        $cleaned = preg_replace_callback(
+            '/^(\d{1,2})-([A-Za-z]{3})-(\d{2})$/',
+            fn($m) => $m[1] . '-' . $m[2] . '-20' . $m[3],
+            $cleaned
+        );
+
+        try {
+            return \Carbon\Carbon::parse($cleaned);
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 }
