@@ -540,7 +540,7 @@ export default function TwelliumAccra2Index({
                   <Input
                     id="basic-file"
                     type="file"
-                    accept=".xlsx,.xls,.csv"
+                    accept=".xlsx,.xls,.csv,.ods"
                     onChange={(e) => uploadForm.setData("basic_file", e.target.files?.[0] || null)}
                     required
                     className="mt-1"
@@ -563,7 +563,7 @@ export default function TwelliumAccra2Index({
                   <Input
                     id="overtime-file"
                     type="file"
-                    accept=".xlsx,.xls,.csv"
+                    accept=".xlsx,.xls,.csv,.ods"
                     onChange={(e) => uploadForm.setData("overtime_file", e.target.files?.[0] || null)}
                     required
                     className="mt-1"

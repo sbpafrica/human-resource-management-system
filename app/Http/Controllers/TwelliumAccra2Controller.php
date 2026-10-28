@@ -228,8 +228,8 @@ class TwelliumAccra2Controller extends Controller
     {
         $request->validate([
             'month'         => ['required', 'date_format:Y-m'],
-            'basic_file'    => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:20480'],
-            'overtime_file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:20480'],
+            'basic_file'    => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:20480'],
+            'overtime_file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:20480'],
         ]);
 
         $month = $request->input('month');

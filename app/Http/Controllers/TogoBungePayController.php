@@ -7,6 +7,7 @@ use Inertia\Inertia;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\Reader\Xls as XlsReader;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -136,7 +137,7 @@ class TogoBungePayController extends Controller
     public function upload(Request $request)
     {
         $request->validate([
-            'file'  => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
+            'file'  => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:10240'],
             'month' => ['required', 'date_format:Y-m'],
         ]);
 
@@ -153,10 +154,20 @@ class TogoBungePayController extends Controller
 
             $spreadsheet = $reader->load($file->getRealPath());
 
-            $cleanStr = fn($s) => strtolower(trim(preg_replace('/\s+/', ' ', (string)$s)));
+            $norm = function($s) {
+                $t = trim(preg_replace('/\s+/', ' ', (string)$s));
+                $lower = mb_strtolower($t, 'UTF-8');
+                $unacc = str_replace(
+                    ['é', 'è', 'ê', 'ë', 'à', 'â', 'ä', 'î', 'ï', 'ô', 'ö', 'ù', 'û', 'ü', 'ç', '’', "\x27"],
+                    ['e', 'e', 'e', 'e', 'a', 'a', 'a', 'i', 'i', 'o', 'o', 'u', 'u', 'u', 'c', "'", "'"],
+                    $lower
+                );
+                return [$lower, $unacc];
+            };
+            $cleanStr = fn($s) => $norm($s)[0];
             $keywords = [
                 'staff id', 'staffid', 'nom', 'prenom', 'department', 'position',
-                'salary base', 'net payer', 'travail', 'banques'
+                'salary base', 'net payer', 'travail', 'banques', 'id du personnel', 'salaire de base', 'net a payer'
             ];
 
             $bestSheet          = null;
@@ -172,8 +183,8 @@ class TogoBungePayController extends Controller
                 foreach (array_slice($sheetRows, 0, 15) as $rIdx => $candidateRow) {
                     $matches = 0;
                     foreach ($candidateRow as $cell) {
-                        $clean = $cleanStr($cell);
-                        if (in_array($clean, $keywords)) {
+                        [$cLower, $cUnacc] = $norm($cell);
+                        if (in_array($cLower, $keywords) || in_array($cUnacc, $keywords)) {
                             $matches++;
                         }
                     }
@@ -192,8 +203,8 @@ class TogoBungePayController extends Controller
                 foreach (array_slice($rows, 0, 15) as $rIdx => $candidateRow) {
                     $matches = 0;
                     foreach ($candidateRow as $cell) {
-                        $clean = $cleanStr($cell);
-                        if (in_array($clean, $keywords)) {
+                        [$cLower, $cUnacc] = $norm($cell);
+                        if (in_array($cLower, $keywords) || in_array($cUnacc, $keywords)) {
                             $matches++;
                         }
                     }
@@ -229,65 +240,105 @@ class TogoBungePayController extends Controller
             $rows = array_slice($rows, $headerRowIndex + 1);
 
             $headerMap = [
-                'staff id'        => 'staffid',
-                'matricule'       => 'staffid',
-                'id'              => 'staffid',
-                'nom'             => 'nom',
-                'names'           => 'nom',
-                'prenom'          => 'prenom',
-                'first names'     => 'prenom',
-                'department'      => 'department',
-                'join date'       => 'joindate',
-                'contract start'  => 'constart',
-                'contract end'    => 'conend',
-                'position'        => 'position',
-                'grade'           => 'grade',
-                'travail'         => 'travail',
-                'banques'         => 'banques',
-                'numero'          => 'numero',
-                'ssnit no'        => 'ssnitno',
-                'legale'          => 'legale',
-                'reelle'          => 'reelle',
-                'salary base'     => 'salarybase',
-                'sursalaire'      => 'sursalaire',
-                'perform stand'   => 'performstand',
-                'coefficient'     => 'coefficient',
-                'perform primes'  => 'performprimes',
-                'commission'      => 'commission',
-                'ind. conges'     => 'indconges',
-                'ind. com'        => 'indcom',
-                'ind. transport'  => 'indtransport',
-                'autres bonus'    => 'autressbonus',
-                'salaire brut'    => 'salairebrut',
-                'deduction'       => 'deduction',
-                'brut global'     => 'brutglobal',
-                'remark'          => 'remark',
-                'cnss'            => 'cnss',
-                'amu'             => 'amu',
-                'r1 cnss'         => 'r1cnss',
-                'abt28'           => 'abt28',
-                'pac'             => 'pac',
-                'net impo'        => 'netimpo',
-                'arrondi'         => 'arrondi',
-                'irpp rch'        => 'irpprch',
-                'irpp du'         => 'irppdu',
-                'irpp'            => 'irpp',
-                'total deduction' => 'totaldeduction',
-                'net payer'       => 'netpayer',
-                'net a payer'     => 'netpayer',
-                'prestation'      => 'prestation',
-                'pension'         => 'pension',
-                'risques'         => 'risques',
-                'amu tax'         => 'amutax',
-                'total cnss'      => 'totalcnss',
-                'client'          => 'client',
+                'staff id'                  => 'staffid',
+                'id du personnel'           => 'staffid',
+                'matricule'                 => 'staffid',
+                'id'                        => 'staffid',
+                'nom'                       => 'nom',
+                'names'                     => 'nom',
+                'prenoms'                   => 'prenom',
+                'prenom'                    => 'prenom',
+                'first names'               => 'prenom',
+                'département'               => 'department',
+                'departement'               => 'department',
+                'join date'                 => 'joindate',
+                'date de debut'             => 'joindate',
+                'date de début de paie'     => 'joindate',
+                'contract start'            => 'constart',
+                'contract end'              => 'conend',
+                'date de fin du contrat'    => 'conend',
+                'position'                  => 'position',
+                'grade'                     => 'grade',
+                'grade d\'emploi'           => 'grade',
+                'travail'                   => 'travail',
+                'lieu de travail'           => 'travail',
+                'banques'                   => 'banques',
+                'nom de banque'             => 'banques',
+                'numero'                    => 'numero',
+                'numéro de compte'          => 'numero',
+                'numero de compte'          => 'numero',
+                'ssnit no'                  => 'ssnitno',
+                'cnss no'                   => 'ssnitno',
+                'legale'                    => 'legale',
+                'journée de travail légale' => 'legale',
+                'journee de travail legale' => 'legale',
+                'reelle'                    => 'reelle',
+                'journée de travail réelle' => 'reelle',
+                'journee de travail reelle' => 'reelle',
+                'salary base'               => 'salarybase',
+                'salaire de base'           => 'salarybase',
+                'salaire base'              => 'salarybase',
+                'sursalaire'                => 'sursalaire',
+                'rappel de salaire'         => 'sursalaire',
+                'perform stand'             => 'performstand',
+                'coefficient'               => 'coefficient',
+                'perform primes'            => 'performprimes',
+                'performance primes'        => 'performprimes',
+                'commission'                => 'commission',
+                'ind. conges'               => 'indconges',
+                'ind conges'                => 'indconges',
+                'lunch subsidy'             => 'indconges',
+                'ind. com'                  => 'indcom',
+                'ind com'                   => 'indcom',
+                'communication'             => 'indcom',
+                'ind. transport'            => 'indtransport',
+                'ind transport'             => 'indtransport',
+                'autres bonus'              => 'autressbonus',
+                'autres bonus/ allocations' => 'autressbonus',
+                'autres bonus / allocations'=> 'autressbonus',
+                'salaire brut'              => 'salairebrut',
+                'deduction'                 => 'deduction',
+                'déduction'                 => 'deduction',
+                'brut global'               => 'brutglobal',
+                'salaire brut final'        => 'brutglobal',
+                'remark'                    => 'remark',
+                'cnss'                      => 'cnss',
+                'amu'                       => 'amu',
+                'amu (5%)'                  => 'amu',
+                'r1 cnss'                   => 'r1cnss',
+                'r1cnss'                    => 'r1cnss',
+                'abt28'                     => 'abt28',
+                'pac'                       => 'pac',
+                'net impo'                  => 'netimpo',
+                'arrondi'                   => 'arrondi',
+                'irpp rch'                  => 'irpprch',
+                'irpp du'                   => 'irppdu',
+                'irpp'                      => 'irpp',
+                'total deduction'           => 'totaldeduction',
+                'déduction totale'          => 'totaldeduction',
+                'deduction totale'          => 'totaldeduction',
+                'net payer'                 => 'netpayer',
+                'net a payer'               => 'netpayer',
+                'prestation'                => 'prestation',
+                'prestations familiales'    => 'prestation',
+                'pension'                   => 'pension',
+                'pension vieillesse'        => 'pension',
+                'risques'                   => 'risques',
+                'risques professionnels'    => 'risques',
+                'amu tax'                   => 'amutax',
+                'amu patronat'              => 'amutax',
+                'total cnss'                => 'totalcnss',
+                'total cnss part patronale' => 'totalcnss',
+                'client'                    => 'client',
             ];
 
             $colMap = [];
             foreach ($headerRow as $idx => $hdr) {
-                $key = strtolower(trim((string) $hdr));
-                if (isset($headerMap[$key])) {
-                    $colMap[$idx] = $headerMap[$key];
+                [$cleanHdr, $unaccHdr] = $norm($hdr);
+                if (isset($headerMap[$cleanHdr])) {
+                    $colMap[$idx] = $headerMap[$cleanHdr];
+                } elseif (isset($headerMap[$unaccHdr])) {
+                    $colMap[$idx] = $headerMap[$unaccHdr];
                 }
             }
 
@@ -303,12 +354,50 @@ class TogoBungePayController extends Controller
             $autoIdCounter = 1;
             $seenStaffIds  = [];
 
+            // Scan rows for employee lines (stop before totals/bank metadata)
+            $bankRows = [];
+            $inBankSection = false;
+
             foreach ($rows as $index => $row) {
                 $allEmpty = true;
                 foreach ($row as $cell) {
                     if (trim((string) $cell) !== '') { $allEmpty = false; break; }
                 }
-                if ($allEmpty) continue;
+                if ($allEmpty) {
+                    continue;
+                }
+
+                $firstCellsText = strtoupper(implode(' ', array_slice($row, 0, 5)));
+
+                // Check if we reached the Bank details block at the bottom
+                if (str_contains($firstCellsText, 'NAME') && str_contains($firstCellsText, 'ACCOUNT')) {
+                    $inBankSection = true;
+                    continue;
+                }
+
+                if ($inBankSection) {
+                    // Collect bank details: [NAME, ACCOUNT, AMOUNT, ...]
+                    $nonEmpty = array_values(array_filter(array_map('trim', array_slice($row, 0, 5)), fn($x) => $x !== ''));
+                    $bankNameCell = $nonEmpty[0] ?? '';
+                    $bankAccCell  = $nonEmpty[1] ?? '';
+
+                    if (!empty($bankNameCell) && !empty($bankAccCell) && !str_contains(strtoupper($bankNameCell), 'TOTAL')) {
+                        $bankRows[] = [
+                            'name'    => $bankNameCell,
+                            'account' => $bankAccCell,
+                        ];
+                    }
+                    continue;
+                }
+
+                if (
+                    str_contains($firstCellsText, 'TOTAL') ||
+                    str_contains($firstCellsText, 'INVOICE') ||
+                    str_contains($firstCellsText, 'STRATEGIC') ||
+                    str_contains($firstCellsText, 'BAREME')
+                ) {
+                    continue;
+                }
 
                 $record = [];
                 foreach ($colMap as $idx => $dbCol) {
@@ -316,10 +405,10 @@ class TogoBungePayController extends Controller
                     if (in_array($dbCol, $this->stringCols)) {
                         $record[$dbCol] = trim((string) $val);
                     } elseif (in_array($dbCol, $this->intCols)) {
-                        $clean = str_replace([',', ' '], '', trim((string)$val));
+                        $clean = str_replace([',', ' ', "\xc2\xa0"], '', trim((string)$val));
                         $record[$dbCol] = is_numeric($clean) ? (int) $clean : 0;
                     } else {
-                        $clean = str_replace([',', ' '], '', trim((string)$val));
+                        $clean = str_replace([',', ' ', "\xc2\xa0"], '', trim((string)$val));
                         $record[$dbCol] = is_numeric($clean) ? (float) $clean : 0;
                     }
                 }
@@ -351,26 +440,6 @@ class TogoBungePayController extends Controller
                     continue;
                 }
 
-                $firstCellsText = strtoupper(implode(' ', array_slice($row, 0, 5)));
-                if (
-                    str_contains($firstCellsText, 'TOTAL') ||
-                    str_contains($firstCellsText, 'WEEKEND') ||
-                    str_contains($firstCellsText, 'SUNDAY') ||
-                    str_contains($firstCellsText, 'HOLIDAY') ||
-                    str_contains($firstCellsText, 'RATE') ||
-                    str_contains($firstCellsText, 'PAID') ||
-                    str_contains($firstCellsText, 'ACCOUNT') ||
-                    str_contains($firstCellsText, 'COMPTE') ||
-                    str_contains($firstCellsText, 'BANK') ||
-                    str_contains($firstCellsText, 'BANQUE') ||
-                    str_contains($firstCellsText, 'BENEFICIAIRE') ||
-                    str_contains($firstCellsText, 'INVOICE') ||
-                    str_contains($firstCellsText, 'STRATEGIC') ||
-                    preg_match('/^[A-Z]{2}[0-9]{10,}/', $nom)
-                ) {
-                    continue;
-                }
-
                 if (empty($staffId)) {
                     $staffId = 'TG-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
                     while (in_array($staffId, $seenStaffIds)) {
@@ -383,8 +452,47 @@ class TogoBungePayController extends Controller
                     $record['staffid'] .= '-' . ($index + 1);
                 }
 
+                $record['client'] = 'BUNGE';
                 $seenStaffIds[] = $record['staffid'];
                 $validRecords[] = $record;
+            }
+
+            // Sync bank details if found in bank block
+            foreach ($bankRows as $b) {
+                $bNameUpper = strtoupper($b['name']);
+                $bAcc       = $b['account'];
+                $bankName   = str_starts_with($bAcc, 'TG016') ? 'Orabank Togo' : 'Ecobank Togo';
+
+                $bTokens = array_filter(explode(' ', strtoupper(preg_replace('/[^a-zA-Z ]/', '', $b['name']))));
+
+                foreach ($validRecords as &$rec) {
+                    $eTokens = array_filter(explode(' ', strtoupper(preg_replace('/[^a-zA-Z ]/', '', ($rec['nom'] ?? '') . ' ' . ($rec['prenom'] ?? '')))));
+                    $common = array_intersect($bTokens, $eTokens);
+                    $matched = count($common) >= 1;
+
+                    if ($matched) {
+                        $rec['banques'] = $bankName;
+                        $rec['numero']  = $bAcc;
+
+                        // Also save into bankdetails table for permanence
+                        try {
+                            if (Schema::hasTable('bankdetails')) {
+                                DB::table('bankdetails')->updateOrInsert(
+                                    ['employid' => $rec['staffid']],
+                                    [
+                                        'name'    => trim(($rec['nom'] ?? '') . ' ' . ($rec['prenom'] ?? '')),
+                                        'bank'    => $bankName,
+                                        'account' => $bAcc,
+                                        'branch'  => 'Lomé',
+                                    ]
+                                );
+                            }
+                        } catch (\Throwable $ex) {
+                            Log::warning("Could not sync Togo bank detail: " . $ex->getMessage());
+                        }
+                    }
+                }
+                unset($rec);
             }
 
             if (!empty($errors)) {

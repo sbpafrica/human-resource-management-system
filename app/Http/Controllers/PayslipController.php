@@ -314,6 +314,12 @@ class PayslipController extends Controller
         if (str_contains($dbName, 'civ') || str_contains($slug, 'civ')) {
             return 'payslip.civ-pdf';
         }
+        if (str_contains($dbName, 'togo') || str_contains($slug, 'togo')) {
+            return 'payslip.togo-pdf';
+        }
+        if (str_contains($dbName, 'benin') || str_contains($slug, 'benin')) {
+            return 'payslip.benin-pdf';
+        }
         if (str_contains($dbName, 'ofiexternal') || str_contains($slug, 'ofi-hygiene-external') || str_contains($slug, 'ofiexternal') || str_contains($shortName, 'hygiene external') || str_contains($dbName, 'hygieneexternal')) {
             return 'payslip.ofiexternal-pdf';
         }
@@ -350,6 +356,15 @@ class PayslipController extends Controller
         }
         if (str_contains($dbName, 'nyonkopa') || str_contains($slug, 'nyonkopa') || str_contains($shortName, 'nyonkopa')) {
             return 'payslip.nyonkopa-bulk-pdf';
+        }
+        if (str_contains($dbName, 'civ') || str_contains($slug, 'civ')) {
+            return 'payslip.civ-bulk-pdf';
+        }
+        if (str_contains($dbName, 'togo') || str_contains($slug, 'togo')) {
+            return 'payslip.togo-bulk-pdf';
+        }
+        if (str_contains($dbName, 'benin') || str_contains($slug, 'benin')) {
+            return 'payslip.benin-bulk-pdf';
         }
         if (str_contains($dbName, 'transburkina') || str_contains($slug, 'transburkina') || str_contains($slug, 'transsion-bfa') || str_contains($dbName, 'transsionbfa') || str_contains($shortName, 'burkina')) {
             return 'payslip.transburkina-bulk-pdf';

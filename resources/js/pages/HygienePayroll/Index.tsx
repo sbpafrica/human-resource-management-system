@@ -396,7 +396,7 @@ export default function HygienePayrollIndex({ payrolls, filters, formattedMonth,
                         <Input
                           id="upload-file"
                           type="file"
-                          accept=".xlsx,.xls"
+                          accept=".xlsx,.xls,.csv,.ods"
                           onChange={handleFileChange}
                         />
                         {errors.file && <p className="text-red-500 text-sm">{errors.file}</p>}

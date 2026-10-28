@@ -276,7 +276,7 @@ public function update(Request $request, Client $client)  // ← Keep model bind
     {
         try {
             $request->validate([
-                'file' => 'required|file|mimes:xlsx,xls|max:5120'
+                'file' => 'required|file|extensions:xlsx,xls,csv,ods|max:5120'
             ]);
 
             $file = $request->file('file');

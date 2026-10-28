@@ -86,7 +86,10 @@ class CivBungePayController extends Controller
 
     private function extractBankRowsFromSheet(array $sheetRows, array &$bankRows): void
     {
-        $cleanStr = fn($s) => strtolower(trim(preg_replace('/\s+/', ' ', (string)$s)));
+        $cleanStr = function($s) {
+            $t = trim(preg_replace('/\s+/', ' ', (string)$s));
+            return mb_strtolower($t, 'UTF-8');
+        };
         $nameCol = -1;
         $bankCol = -1;
         $branchCol = -1;
@@ -167,7 +170,7 @@ class CivBungePayController extends Controller
     public function upload(Request $request)
     {
         $request->validate([
-            'file'  => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
+            'file'  => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:10240'],
             'month' => ['required', 'date_format:Y-m'],
         ]);
 
@@ -188,7 +191,17 @@ class CivBungePayController extends Controller
 
             $spreadsheet = $reader->load($file->getRealPath());
 
-            $cleanStr = fn($s) => strtolower(trim(preg_replace('/\s+/', ' ', (string)$s)));
+            $norm = function($s) {
+                $t = trim(preg_replace('/\s+/', ' ', (string)$s));
+                $lower = mb_strtolower($t, 'UTF-8');
+                $unacc = str_replace(
+                    ['é', 'è', 'ê', 'ë', 'à', 'â', 'ä', 'î', 'ï', 'ô', 'ö', 'ù', 'û', 'ü', 'ç', '’', "\x27"],
+                    ['e', 'e', 'e', 'e', 'a', 'a', 'a', 'i', 'i', 'o', 'o', 'u', 'u', 'u', 'c', "'", "'"],
+                    $lower
+                );
+                return [$lower, $unacc];
+            };
+            $cleanStr = fn($s) => $norm($s)[0];
             $payrollKeywords = [
                 'id', 'id number', 'staff id', 'matricule', 'nom et prenoms', 'nom et prenom',
                 'fullname', 'full name', 'job title', 'salaire de base', 'basic', 'actual basic',
@@ -216,8 +229,8 @@ class CivBungePayController extends Controller
                 foreach (array_slice($sheetRows, 0, 20) as $rIdx => $candidateRow) {
                     $matches = 0;
                     foreach ($candidateRow as $cell) {
-                        $c = $cleanStr($cell);
-                        if (in_array($c, $payrollKeywords)) {
+                        [$cLower, $cUnacc] = $norm($cell);
+                        if (in_array($cLower, $payrollKeywords) || in_array($cUnacc, $payrollKeywords)) {
                             $matches++;
                         }
                     }
@@ -237,8 +250,8 @@ class CivBungePayController extends Controller
                 foreach (array_slice($rows, 0, 20) as $rIdx => $candidateRow) {
                     $matches = 0;
                     foreach ($candidateRow as $cell) {
-                        $c = $cleanStr($cell);
-                        if (in_array($c, $payrollKeywords)) {
+                        [$cLower, $cUnacc] = $norm($cell);
+                        if (in_array($cLower, $payrollKeywords) || in_array($cUnacc, $payrollKeywords)) {
                             $matches++;
                         }
                     }
@@ -356,6 +369,7 @@ class CivBungePayController extends Controller
                 'its salarié'                   => 'itsalaries',
                 'its salarie'                   => 'itsalaries',
                 'its patron'                    => 'itspatron',
+                'its patronal'                  => 'itspatron',
                 'its patronale'                 => 'itspatron',
                 'cnps salaries'                 => 'cnpssalaries',
                 'cnps salarié'                  => 'cnpssalaries',
@@ -377,8 +391,8 @@ class CivBungePayController extends Controller
             $colMap = [];
             $seenCols = [];
             foreach ($headerRow as $idx => $hdr) {
-                $cleanHdr = $cleanStr($hdr);
-                if ($cleanHdr === 'salaire de base') {
+                [$cleanHdr, $unaccHdr] = $norm($hdr);
+                if ($cleanHdr === 'salaire de base' || $unaccHdr === 'salaire de base') {
                     if (!isset($seenCols['basicfixed'])) {
                         $colMap[$idx] = 'basicfixed';
                         $seenCols['basicfixed'] = true;
@@ -391,6 +405,10 @@ class CivBungePayController extends Controller
                 }
                 if (isset($headerMap[$cleanHdr])) {
                     $target = $headerMap[$cleanHdr];
+                    $colMap[$idx] = $target;
+                    $seenCols[$target] = true;
+                } elseif (isset($headerMap[$unaccHdr])) {
+                    $target = $headerMap[$unaccHdr];
                     $colMap[$idx] = $target;
                     $seenCols[$target] = true;
                 }
@@ -512,12 +530,16 @@ class CivBungePayController extends Controller
                     }
                     if (!$existingId) {
                         try {
-                            $prevMonth = Carbon::createFromFormat('Y-m', $selectedMonth)->subMonth();
-                            $prevTable = 'civ' . strtolower($prevMonth->format('F')) . $prevMonth->format('y');
-                            if (Schema::hasTable($prevTable)) {
-                                $existingId = DB::table($prevTable)
-                                    ->where('fullname', 'LIKE', '%' . $name . '%')
-                                    ->value('id');
+                            $allCivTables = DB::select("SHOW TABLES LIKE 'civ%'");
+                            foreach (array_reverse($allCivTables) as $t) {
+                                $tbl = array_values((array)$t)[0];
+                                if (Schema::hasColumn($tbl, 'fullname') && Schema::hasColumn($tbl, 'id')) {
+                                    $found = DB::table($tbl)->where('fullname', 'LIKE', '%' . $name . '%')->value('id');
+                                    if ($found && !in_array($found, $seenIds)) {
+                                        $existingId = $found;
+                                        break;
+                                    }
+                                }
                             }
                         } catch (\Throwable $te) {
                             // ignore
@@ -563,27 +585,41 @@ class CivBungePayController extends Controller
                         $bName = strtolower(preg_replace('/[^a-zA-Z]/', '', $bRow['name']));
                         if (strlen($bName) < 3) continue;
 
+                        $bestEmp = null;
+                        $bestScore = 0;
+
                         foreach ($validRecords as $vEmp) {
                             $vName = strtolower(preg_replace('/[^a-zA-Z]/', '', $vEmp['fullname']));
-                            $bTokens = array_filter(explode(' ', strtolower(preg_replace('/[^a-zA-Z ]/', '', $bRow['name']))));
-                            $vTokens = array_filter(explode(' ', strtolower(preg_replace('/[^a-zA-Z ]/', '', $vEmp['fullname']))));
-                            $common  = array_intersect($bTokens, $vTokens);
-
-                            if ($bName === $vName || count($common) >= 2) {
-                                try {
-                                    DB::table('bankdetails')->updateOrInsert(
-                                        ['employid' => $vEmp['id']],
-                                        [
-                                            'bank'    => $bRow['bank'],
-                                            'branch'  => $bRow['branch'],
-                                            'account' => $bRow['account'],
-                                            'name'    => $vEmp['fullname'],
-                                        ]
-                                    );
-                                } catch (\Throwable $be) {
-                                    Log::warning("Could not update bankdetails for {$vEmp['id']}: " . $be->getMessage());
-                                }
+                            if ($bName === $vName) {
+                                $bestEmp = $vEmp;
+                                $bestScore = 999;
                                 break;
+                            }
+
+                            $bTokens = array_unique(array_filter(explode(' ', strtolower(preg_replace('/[^a-zA-Z ]/', '', $bRow['name'])))));
+                            $vTokens = array_unique(array_filter(explode(' ', strtolower(preg_replace('/[^a-zA-Z ]/', '', $vEmp['fullname'])))));
+                            $common  = array_intersect($bTokens, $vTokens);
+                            $score = count($common);
+
+                            if ($score > $bestScore && $score >= 2) {
+                                $bestScore = $score;
+                                $bestEmp = $vEmp;
+                            }
+                        }
+
+                        if ($bestEmp) {
+                            try {
+                                DB::table('bankdetails')->updateOrInsert(
+                                    ['employid' => $bestEmp['id']],
+                                    [
+                                        'bank'    => $bRow['bank'],
+                                        'branch'  => $bRow['branch'],
+                                        'account' => $bRow['account'],
+                                        'name'    => $bestEmp['fullname'],
+                                    ]
+                                );
+                            } catch (\Throwable $be) {
+                                Log::warning("Could not update bankdetails for {$bestEmp['id']}: " . $be->getMessage());
                             }
                         }
                     }

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Export\SpreadsheetExporter;
+
 use App\Models\MonthlySalary;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -188,7 +190,8 @@ class SsnitPaymentController extends Controller
                 ];
             });
 
-            return response()->json($records);
+            $filename = "SsnitPayment_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportSsnit($records, $filename);
 
         } catch (\Exception $e) {
             Log::error('SSNIT Export failed', ['error' => $e->getMessage()]);

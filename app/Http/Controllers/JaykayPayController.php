@@ -13,6 +13,8 @@ use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use App\Services\Payroll\ColumnMatcher\HybridColumnMatcher;
+use App\Services\Payroll\Anomaly\HybridAnomalyDetector;
 
 class JaykayPayController extends Controller
 {
@@ -206,10 +208,10 @@ public function export(Request $request)
 /**
      * Upload Excel file
      */
-   public function upload(Request $request)
+   public function upload(Request $request, HybridColumnMatcher $columnMatcher, HybridAnomalyDetector $anomalyDetector)
  {
  $request->validate([
- 'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:2048'],
+ 'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
  'month' => ['required', 'date_format:Y-m'],
  ]);
 
@@ -227,7 +229,47 @@ public function export(Request $request)
  $spreadsheet = $reader->load($file->getRealPath());
  $sheet = $spreadsheet->getActiveSheet();
  $rows = $sheet->toArray();
- array_shift($rows); // Remove header row
+ $rawHeaders = array_shift($rows); // Remove header row
+
+ // 3-Tier Dynamic Column Matcher (Grok AI -> PHP Rules -> Legacy Positions)
+ $matchResult = $columnMatcher->match($rawHeaders, 'jaykay', array_slice($rows, 0, 3));
+ $cols = $matchResult['mapping'];
+
+ $cStaffId     = $cols['staff_id'] ?? 0;
+ $cName        = $cols['name'] ?? 1;
+ $cPos         = $cols['position'] ?? 2;
+ $cJoinDate    = $cols['join_date'] ?? 3;
+ $cBasic       = $cols['basic_salary'] ?? 4;
+ $cWorkdays    = $cols['legalworkdays'] ?? 5;
+ $cDailyRate   = $cols['daily_rate'] ?? 6;
+ $cDaysWorked  = $cols['days_worked'] ?? 7;
+ $cAbsentDays  = $cols['absentee_days'] ?? 8;
+ $cAbsentDed   = $cols['absent_deductions'] ?? 9;
+ $cEarnedBasic = $cols['earned_basic_salary'] ?? 10;
+ $cSatWorked   = $cols['saturdays_worked'] ?? 11;
+ $cSatRate     = $cols['saturday_rate'] ?? 12;
+ $cSatAmount   = $cols['saturday_amount'] ?? 13;
+ $cTotalDays   = $cols['total_days_amount'] ?? 14;
+ $cOtHours     = $cols['overtime_hours'] ?? 15;
+ $cOtRate      = $cols['overtime_rate'] ?? 16;
+ $cOtAmount    = $cols['overtime_amount'] ?? 17;
+ $cNightAllow  = $cols['night_allowance'] ?? 18;
+ $cTotalOt     = $cols['totalovertime'] ?? 19;
+ $cGross       = $cols['gross_salary'] ?? 20;
+ $cMgmtFee     = $cols['management_fee'] ?? 21;
+ $cGetfund     = $cols['getfund'] ?? 22;
+ $cNhil        = $cols['nhil'] ?? 23;
+ $cVat         = $cols['vat'] ?? 24;
+ $cSsf         = $cols['ssf'] ?? 25;
+ $cCostToJkay  = $cols['cost_to_jkay'] ?? 26;
+ $cSsnitEe     = $cols['ssnit_ee'] ?? 27;
+ $cPetra       = $cols['petra'] ?? 28;
+ $cTaxableInc  = $cols['taxable_income'] ?? 29;
+ $cPaye        = $cols['paye'] ?? 30;
+ $cOtTax       = $cols['overtime_tax'] ?? 31;
+ $cSurcharge   = $cols['surcharge_or_student_loan'] ?? 32;
+ $cTotalDed    = $cols['total_deductions'] ?? 33;
+ $cTakeHome    = $cols['net_pay'] ?? 34;
 
  // Check for existing staff IDs
  $existingStaffIds = DB::table($tableName)->pluck('staff_id')->toArray();
@@ -236,58 +278,60 @@ public function export(Request $request)
  $errors = [];
 
  foreach ($rows as $index => $row) {
-    if (count($row) < 35) {
-        $errors[] = "Row " . ($index + 2) . ": Expected 35 columns, found " . count($row);
+    // Basic row check: must have at least staff ID or name
+    $staff_id = trim($row[$cStaffId] ?? '') ?: null;
+    $name     = trim($row[$cName] ?? '') ?: null;
+
+    if (empty($staff_id) && empty($name)) {
         continue;
     }
 
-// === MAPPED TO YOUR NEW DATABASE STRUCTURE (35 COLUMNS) ===
-$staff_id                = trim($row[0] ?? '') ?: null;
-$name                    = trim($row[1] ?? '') ?: null;
-$position                = trim($row[2] ?? '') ?: null;
-$join_date               = trim($row[3] ?? '') ?: null;
+// === MAPPED SAFELY VIA 3-TIER RESOLVER ===
+$position                = trim($row[$cPos] ?? '') ?: null;
+$join_date               = trim($row[$cJoinDate] ?? '') ?: null;
 
-$basic_salary            = is_numeric($row[4] ?? '') ? (float)$row[4] : null;
-$legalworkdays           = is_numeric($row[5] ?? '') ? (int)$row[5] : null;
-$daily_rate              = is_numeric($row[6] ?? '') ? (float)$row[6] : null;
-$days_worked             = is_numeric($row[7] ?? '') ? (float)$row[7] : null;
-$absentee_days           = is_numeric($row[8] ?? '') ? (float)$row[8] : null;
-$absent_deductions       = is_numeric($row[9] ?? '') ? (float)$row[9] : null;
-$earned_basic_salary     = is_numeric($row[10] ?? '') ? (float)$row[10] : null;
+$basic_salary            = is_numeric($row[$cBasic] ?? '') ? (float)$row[$cBasic] : null;
+$legalworkdays           = is_numeric($row[$cWorkdays] ?? '') ? (int)$row[$cWorkdays] : null;
+$daily_rate              = is_numeric($row[$cDailyRate] ?? '') ? (float)$row[$cDailyRate] : null;
+$days_worked             = is_numeric($row[$cDaysWorked] ?? '') ? (float)$row[$cDaysWorked] : null;
+$absentee_days           = is_numeric($row[$cAbsentDays] ?? '') ? (float)$row[$cAbsentDays] : null;
+$absent_deductions       = is_numeric($row[$cAbsentDed] ?? '') ? (float)$row[$cAbsentDed] : null;
+$earned_basic_salary     = is_numeric($row[$cEarnedBasic] ?? '') ? (float)$row[$cEarnedBasic] : null;
 
-$saturdays_worked        = is_numeric($row[11] ?? '') ? (float)$row[11] : null;
-$saturday_rate           = is_numeric($row[12] ?? '') ? (float)$row[12] : null;
-$saturday_amount         = is_numeric($row[13] ?? '') ? (float)$row[13] : null;
-$total_days_amount       = is_numeric($row[14] ?? '') ? (float)$row[14] : null;
+$saturdays_worked        = is_numeric($row[$cSatWorked] ?? '') ? (float)$row[$cSatWorked] : null;
+$saturday_rate           = is_numeric($row[$cSatRate] ?? '') ? (float)$row[$cSatRate] : null;
+$saturday_amount         = is_numeric($row[$cSatAmount] ?? '') ? (float)$row[$cSatAmount] : null;
+$total_days_amount       = is_numeric($row[$cTotalDays] ?? '') ? (float)$row[$cTotalDays] : null;
 
-$overtime_hours          = is_numeric($row[15] ?? '') ? (float)$row[15] : null;
-$overtime_rate           = is_numeric($row[16] ?? '') ? (float)$row[16] : null;
-$overtime_amount         = is_numeric($row[17] ?? '') ? (float)$row[17] : null;
-$night_allowance         = is_numeric($row[18] ?? '') ? (float)$row[18] : null;
-$totalovertime           = is_numeric($row[19] ?? '') ? (float)$row[19] : null;
+$overtime_hours          = is_numeric($row[$cOtHours] ?? '') ? (float)$row[$cOtHours] : null;
+$overtime_rate           = is_numeric($row[$cOtRate] ?? '') ? (float)$row[$cOtRate] : null;
+$overtime_amount         = is_numeric($row[$cOtAmount] ?? '') ? (float)$row[$cOtAmount] : null;
+$night_allowance         = is_numeric($row[$cNightAllow] ?? '') ? (float)$row[$cNightAllow] : null;
+$totalovertime           = is_numeric($row[$cTotalOt] ?? '') ? (float)$row[$cTotalOt] : null;
 
-$gross_salary            = is_numeric($row[20] ?? '') ? (float)$row[20] : null;
+$gross_salary            = is_numeric($row[$cGross] ?? '') ? (float)$row[$cGross] : null;
 
-$management_fee          = is_numeric($row[21] ?? '') ? (float)$row[21] : null;
-$getfund                 = is_numeric($row[22] ?? '') ? (float)$row[22] : null;
-$nhil                    = is_numeric($row[23] ?? '') ? (float)$row[23] : null;
+$management_fee          = is_numeric($row[$cMgmtFee] ?? '') ? (float)$row[$cMgmtFee] : null;
+$getfund                 = is_numeric($row[$cGetfund] ?? '') ? (float)$row[$cGetfund] : null;
+$nhil                    = is_numeric($row[$cNhil] ?? '') ? (float)$row[$cNhil] : null;
 
-$vat                     = is_numeric($row[24] ?? '') ? (float)$row[24] : null;
-$ssf                     = is_numeric($row[25] ?? '') ? (float)$row[25] : null;
-$cost_to_jkay            = is_numeric($row[26] ?? '') ? (float)$row[26] : null;
+$vat                     = is_numeric($row[$cVat] ?? '') ? (float)$row[$cVat] : null;
+$ssf                     = is_numeric($row[$cSsf] ?? '') ? (float)$row[$cSsf] : null;
+$cost_to_jkay            = is_numeric($row[$cCostToJkay] ?? '') ? (float)$row[$cCostToJkay] : null;
 
-$ssnit_ee                = is_numeric($row[27] ?? '') ? (float)$row[27] : null;
-$petra                = is_numeric($row[28] ?? '') ? (float)$row[28] : null;
-$taxable_income          = is_numeric($row[29] ?? '') ? (float)$row[29] : null;
-$paye                    = is_numeric($row[30] ?? '') ? (float)$row[30] : null;
-$overtime_tax            = is_numeric($row[31] ?? '') ? (float)$row[31] : null;
-$surcharge_or_student_loan = is_numeric($row[32] ?? '') ? (float)$row[32] : null;
-$total_deductions        = is_numeric($row[33] ?? '') ? (float)$row[33] : null;
+$ssnit_ee                = is_numeric($row[$cSsnitEe] ?? '') ? (float)$row[$cSsnitEe] : null;
+$petra                   = is_numeric($row[$cPetra] ?? '') ? (float)$row[$cPetra] : null;
+$taxable_income          = is_numeric($row[$cTaxableInc] ?? '') ? (float)$row[$cTaxableInc] : null;
+$paye                    = is_numeric($row[$cPaye] ?? '') ? (float)$row[$cPaye] : null;
+$overtime_tax            = is_numeric($row[$cOtTax] ?? '') ? (float)$row[$cOtTax] : null;
+$surcharge_or_student_loan = is_numeric($row[$cSurcharge] ?? '') ? (float)$row[$cSurcharge] : null;
+$total_deductions        = is_numeric($row[$cTotalDed] ?? '') ? (float)$row[$cTotalDed] : null;
 
-// Take Home Pay – cleaned like bank transfer (final column)
-$rawTakeHome             = trim($row[34] ?? '');
+// Take Home Pay – cleaned like bank transfer
+$rawTakeHome             = trim($row[$cTakeHome] ?? '');
 $cleanTakeHome           = preg_replace('/[^0-9.-]/', '', $rawTakeHome);
 $take_home_pay           = is_numeric($cleanTakeHome) ? (float)$cleanTakeHome : null;
+
     // === VALIDATION ===
     if (empty($staff_id)) {
         $errors[] = "Row " . ($index + 2) . ": Staff ID is required.";
@@ -299,13 +343,13 @@ $take_home_pay           = is_numeric($cleanTakeHome) ? (float)$cleanTakeHome : 
         continue;
     }
 
-    if (is_null($basic_salary ) || is_null($gross_salary)) {
+    if (is_null($basic_salary) || is_null($gross_salary)) {
         $errors[] = "Row " . ($index + 2) . ": Basic and Gross Pay are required.";
         continue;
     }
 
     if (is_null($take_home_pay)) {
-        $errors[] = "Row " . ($index + 2) . ": Bank Transfer (Net Pay) must be a valid number. Found: '$rawBankTransfer'";
+        $errors[] = "Row " . ($index + 2) . ": Bank Transfer (Net Pay) must be a valid number. Found: '$rawTakeHome'";
         continue;
     }
 
@@ -315,7 +359,7 @@ $take_home_pay           = is_numeric($cleanTakeHome) ? (float)$cleanTakeHome : 
         continue;
     }
 
-    // === FINAL DATA ARRAY - MATCHING THE SECOND FORMAT ===
+    // === FINAL DATA ARRAY ===
 $data = [
     'staff_id'                  => $staff_id,
     'name'                      => $name,
@@ -346,7 +390,7 @@ $data = [
     'ssf'                       => $ssf,
     'cost_to_jkay'              => $cost_to_jkay,
     'ssnit_ee'                  => $ssnit_ee,
-    'petra'                  => $petra,
+    'petra'                     => $petra,
     'taxable_income'            => $taxable_income,
     'paye'                      => $paye,
     'overtime_tax'              => $overtime_tax,
@@ -374,6 +418,9 @@ $data = [
  ->with('error', 'Duplicate Staff IDs found: ' . implode(', ', array_unique($duplicateStaffIds)));
  }
 
+ // Run Pre-Flight Anomaly & Fraud Audit
+ $auditReport = $anomalyDetector->detect($validRecords, 'jaykay', $selectedMonth);
+
  if (!empty($validRecords)) {
  DB::table($tableName)->insert($validRecords);
  Log::info("Upload: Inserted " . count($validRecords) . " records into {$tableName}");
@@ -381,8 +428,17 @@ $data = [
  Log::warning("Upload: No valid records to insert into {$tableName}");
  }
 
+ $auditNotice = '';
+ if (!empty($auditReport['anomalies'])) {
+     $crit = $auditReport['summary']['critical_count'];
+     $warn = $auditReport['summary']['warning_count'];
+     $auditNotice = " [Audit Score: {$auditReport['audit_score']}/100 — {$crit} critical, {$warn} warnings]";
+ }
+
+ $tierLabel = strtoupper($matchResult['tier'] ?? 'LEGACY');
  return redirect()->route('jaykaypay.index', ['month' => $selectedMonth])
- ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
+ ->with('success', 'Successfully uploaded ' . count($validRecords) . " record(s) via {$tierLabel} matcher.{$auditNotice}")
+ ->with('audit_report', $auditReport);
  } catch (\Exception $e) {
  Log::error('File upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
  return redirect()->route('jaykaypay.index', ['month' => $selectedMonth])

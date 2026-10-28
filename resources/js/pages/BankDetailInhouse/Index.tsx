@@ -680,7 +680,7 @@ export default function BankDetailInhouseIndex({ bankDetails, bankCodes, filters
                         <Input
                           id="file"
                           type="file"
-                          accept=".xlsx,.xls"
+                          accept=".xlsx,.xls,.csv,.ods"
                           onChange={(e) => uploadForm.setData("file", e.target.files?.[0] || null)}
                           className="w-full"
                         />

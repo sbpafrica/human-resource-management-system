@@ -3,6 +3,7 @@ import { AppContent } from '@/components/app-content';
 import { AppShell } from '@/components/app-shell';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AppSidebarHeader } from '@/components/app-sidebar-header';
+import EmployeeChatbotModal from '@/components/EmployeeChatbotModal';
 import { type BreadcrumbItem } from '@/types';
 import { type PropsWithChildren } from 'react';
 
@@ -19,6 +20,9 @@ export default function AppSidebarLayout({
         <AppSidebarHeader breadcrumbs={breadcrumbs} />
         {children}
       </AppContent>
+
+      {/* Floating HRS Employee Copilot */}
+      <EmployeeChatbotModal />
     </AppShell>
   );
 }

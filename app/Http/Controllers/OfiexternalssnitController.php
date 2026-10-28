@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Export\SpreadsheetExporter;
+
 use App\Models\Ofiexternalpay;
 use App\Models\Ssnit;
 use Illuminate\Http\Request;
@@ -192,7 +194,8 @@ class OfiexternalssnitController extends Controller
 
             Log::info("OfiexternalssnitPay Export: Retrieved records", ['count' => count($records), 'sample' => $records->first()]);
 
-            return response()->json($records);
+            $filename = "Ofiexternalssnit_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportSsnit($records, $filename);
         } catch (\Exception $e) {
             Log::error("OfioexternalssnitPay Export failed", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Failed to export data: ' . $e->getMessage()], 500);

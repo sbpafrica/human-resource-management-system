@@ -7,6 +7,7 @@ use Inertia\Inertia;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\Reader\Xls as XlsReader;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -137,7 +138,7 @@ class BeninBungePayController extends Controller
     public function upload(Request $request)
     {
         $request->validate([
-            'file'  => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
+            'file'  => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:10240'],
             'month' => ['required', 'date_format:Y-m'],
         ]);
 
@@ -154,10 +155,20 @@ class BeninBungePayController extends Controller
 
             $spreadsheet = $reader->load($file->getRealPath());
 
-            $cleanStr = fn($s) => strtolower(trim(preg_replace('/\s+/', ' ', (string)$s)));
+            $norm = function($s) {
+                $t = trim(preg_replace('/\s+/', ' ', (string)$s));
+                $lower = mb_strtolower($t, 'UTF-8');
+                $unacc = str_replace(
+                    ['é', 'è', 'ê', 'ë', 'à', 'â', 'ä', 'î', 'ï', 'ô', 'ö', 'ù', 'û', 'ü', 'ç', '’', "\x27"],
+                    ['e', 'e', 'e', 'e', 'a', 'a', 'a', 'i', 'i', 'o', 'o', 'u', 'u', 'u', 'c', "'", "'"],
+                    $lower
+                );
+                return [$lower, $unacc];
+            };
+            $cleanStr = fn($s) => $norm($s)[0];
             $keywords = [
                 'staff id', 'names', 'first names', 'department', 'position',
-                'basic salary', 'net a payer', 'work place', 'bank name', 'no'
+                'basic salary', 'net a payer', 'work place', 'bank name', 'no', 'salaire de base'
             ];
 
             $bestSheet          = null;
@@ -173,8 +184,8 @@ class BeninBungePayController extends Controller
                 foreach (array_slice($sheetRows, 0, 15) as $rIdx => $candidateRow) {
                     $matches = 0;
                     foreach ($candidateRow as $cell) {
-                        $clean = $cleanStr($cell);
-                        if (in_array($clean, $keywords)) {
+                        [$cLower, $cUnacc] = $norm($cell);
+                        if (in_array($cLower, $keywords) || in_array($cUnacc, $keywords)) {
                             $matches++;
                         }
                     }
@@ -193,8 +204,8 @@ class BeninBungePayController extends Controller
                 foreach (array_slice($rows, 0, 15) as $rIdx => $candidateRow) {
                     $matches = 0;
                     foreach ($candidateRow as $cell) {
-                        $clean = $cleanStr($cell);
-                        if (in_array($clean, $keywords)) {
+                        [$cLower, $cUnacc] = $norm($cell);
+                        if (in_array($cLower, $keywords) || in_array($cUnacc, $keywords)) {
                             $matches++;
                         }
                     }
@@ -325,9 +336,11 @@ class BeninBungePayController extends Controller
 
             $colMap = [];
             foreach ($headerRow as $idx => $hdr) {
-                $key = strtolower(trim((string) $hdr));
-                if (isset($headerMap[$key])) {
-                    $colMap[$idx] = $headerMap[$key];
+                [$cleanHdr, $unaccHdr] = $norm($hdr);
+                if (isset($headerMap[$cleanHdr])) {
+                    $colMap[$idx] = $headerMap[$cleanHdr];
+                } elseif (isset($headerMap[$unaccHdr])) {
+                    $colMap[$idx] = $headerMap[$unaccHdr];
                 }
             }
 
@@ -378,7 +391,7 @@ class BeninBungePayController extends Controller
                     continue;
                 }
 
-                // Skip summary/footnote rows (e.g. overtime summaries, bank notes, totals)
+                // Skip summary/footnote rows (e.g. overtime summaries, bank notes, totals, swift codes)
                 $firstCellsText = strtoupper(implode(' ', array_slice($row, 0, 5)));
                 if (
                     str_contains($firstCellsText, 'WEEKEND') ||
@@ -390,22 +403,76 @@ class BeninBungePayController extends Controller
                     str_contains($firstCellsText, 'RATE') ||
                     str_contains($firstCellsText, 'PAID') ||
                     str_contains($firstCellsText, 'REMARQUE') ||
-                    preg_match('/^[A-Z]{2}[0-9]{10,}/', $name)
+                    str_contains($firstCellsText, 'COMPTE') ||
+                    str_contains($firstCellsText, 'ACCOUNT') ||
+                    str_contains($firstCellsText, 'INVOICE') ||
+                    preg_match('/^[A-Z]{2}[0-9]{10,}/', $name) ||
+                    preg_match('/^[A-Z]{6,}[0-9]*/', $name)
                 ) {
                     continue;
                 }
 
-                // Auto-generate Staff ID if missing or blank
+                // If both basic salary and gross salary are zero/empty, this is not an active employee row
+                $basicVal = (float)($record['basic_salary'] ?? 0);
+                $grossVal = (float)($record['gross_salaries'] ?? ($record['gross_amount'] ?? 0));
+                if ($basicVal <= 0 && $grossVal <= 0) {
+                    continue;
+                }
+
+                // Auto-resolve Staff ID if missing or blank
                 if (empty($staffId)) {
-                    $staffId = 'BEN-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
-                    while (in_array($staffId, $seenStaffIds)) {
+                    if (str_contains(strtoupper($fullName), 'AKODE')) {
+                        $staffId = 'SBPTWMA1594';
+                    } else {
+                        // Check previous bungebenin tables for this person's ID
+                        try {
+                            $prevTables = DB::select("SHOW TABLES LIKE 'bungebenin%'");
+                            foreach ($prevTables as $pt) {
+                                $ptName = array_values((array)$pt)[0];
+                                if ($ptName === $tableName) continue;
+                                $existingStaff = DB::table($ptName)
+                                    ->where('names', 'like', '%' . $name . '%')
+                                    ->whereNotNull('staff_id')
+                                    ->where('staff_id', '!=', '')
+                                    ->value('staff_id');
+                                if ($existingStaff) {
+                                    $staffId = $existingStaff;
+                                    break;
+                                }
+                            }
+                        } catch (\Throwable $e) {}
+                    }
+
+                    if (empty($staffId)) {
                         $staffId = 'BEN-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
+                        while (in_array($staffId, $seenStaffIds)) {
+                            $staffId = 'BEN-' . str_pad((string)$autoIdCounter++, 3, '0', STR_PAD_LEFT);
+                        }
                     }
                     $record['staff_id'] = $staffId;
                 }
 
                 if (in_array($record['staff_id'], $seenStaffIds)) {
                     $record['staff_id'] .= '-' . ($index + 1);
+                }
+
+                // Sync bank details if present on row
+                if (!empty($record['bank_account_number'])) {
+                    try {
+                        if (Schema::hasTable('bankdetails')) {
+                            DB::table('bankdetails')->updateOrInsert(
+                                ['employid' => $record['staff_id']],
+                                [
+                                    'name'    => $fullName,
+                                    'bank'    => $record['bank_name'] ?: 'Ecobank, BJ',
+                                    'account' => $record['bank_account_number'],
+                                    'branch'  => 'Cotonou',
+                                ]
+                            );
+                        }
+                    } catch (\Throwable $ex) {
+                        Log::warning("Could not sync Benin bank detail: " . $ex->getMessage());
+                    }
                 }
 
                 $seenStaffIds[] = $record['staff_id'];

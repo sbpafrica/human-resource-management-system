@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Export\SpreadsheetExporter;
+
 use App\Models\Olamfoodpay;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -163,7 +165,8 @@ class OlamfoodPetraPayController extends Controller
                 'petra_amount' => $r->petra_amount !== null ? (float) $r->petra_amount : null,
             ]);
 
-            return response()->json($records);
+            $filename = "OlamfoodPetraPay_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportPetra($records, $filename);
 
         } catch (\Exception $e) {
             Log::error("OlamfoodPetraPay Export failed", ['error' => $e->getMessage()]);

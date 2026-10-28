@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Export\SpreadsheetExporter;
+
 use App\Models\MonthlySalary;
 use App\Models\Client;
 use Illuminate\Http\Request;
@@ -129,7 +131,8 @@ class SalaryPaymentController extends Controller
                 'netpay'   => $r->netpay ? (float)$r->netpay : null,
             ]);
 
-            return response()->json($records);
+            $filename = "SalaryPayment_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportSalaryPayment($records, $filename);
         } catch (\Exception $e) {
             Log::error("Export failed", ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Export failed'], 500);
@@ -140,7 +143,7 @@ class SalaryPaymentController extends Controller
     public function upload(Request $request, $client_dbname)
     {
         $request->validate([
-            'file'  => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
+            'file'  => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:10240'],
             'month' => ['required', 'date_format:Y-m'],
         ]);
 

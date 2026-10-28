@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Export\SpreadsheetExporter;
+
 use App\Models\Twelliumpay;
 use App\Models\Ssnit;
 use Illuminate\Http\Request;
@@ -190,7 +192,8 @@ class TwelliumssnitController extends Controller
 
             Log::info("TwelliumssnitPay Export: Retrieved records", ['count' => count($records), 'sample' => $records->first()]);
 
-            return response()->json($records);
+            $filename = "Twelliumssnit_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportSsnit($records, $filename);
         } catch (\Exception $e) {
             Log::error("TwelliumssnitPay Export failed", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Failed to export data: ' . $e->getMessage()], 500);

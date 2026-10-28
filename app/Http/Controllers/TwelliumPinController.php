@@ -328,7 +328,7 @@ class TwelliumPinController extends Controller
     public function bulkUpload(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:10240'],
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:10240'],
         ]);
 
         if ($validator->fails()) {

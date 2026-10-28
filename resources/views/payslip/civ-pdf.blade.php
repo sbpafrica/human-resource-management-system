@@ -52,20 +52,39 @@
     $basicAmount = $num(data_get($payslip, 'basic') ?: data_get($payslip, 'basicfixed', 0));
     $grossAmount = $num(data_get($payslip, 'grosssalary') ?: data_get($payslip, 'grosssalary1', 0));
 
-    $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
-        ? data_get($bank, 'bankname') 
-        : (data_get($payslip, 'bank') ?: data_get($payslip, 'bankname', '-'));
+    $displayBankName = (!empty(data_get($bank, 'bank')) && data_get($bank, 'bank') !== '-') 
+        ? data_get($bank, 'bank') 
+        : ((!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
+            ? data_get($bank, 'bankname') 
+            : (data_get($payslip, 'bank') ?: data_get($payslip, 'bankname', '-')));
     $displayAccountName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') 
         ? data_get($bank, 'name') 
         : (data_get($payslip, 'fullname') ?: data_get($payslip, 'name', '-'));
-    $displayAccountNo = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
-        ? data_get($bank, 'alcnum') 
-        : (data_get($payslip, 'accountnumber') ?: data_get($payslip, 'alcnum', '-'));
+    $displayAccountNo = (!empty(data_get($bank, 'account')) && data_get($bank, 'account') !== '-') 
+        ? data_get($bank, 'account') 
+        : ((!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
+            ? data_get($bank, 'alcnum') 
+            : (data_get($payslip, 'accountnumber') ?: data_get($payslip, 'alcnum', '-')));
     $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') 
         ? data_get($bank, 'branch') 
         : (data_get($payslip, 'branch', '-'));
 
     $logoData = $logoData ?? (file_exists(public_path('images/sbpafricalogo.png')) ? 'data:image/png;base64,' . base64_encode(file_get_contents(public_path('images/sbpafricalogo.png'))) : null);
+
+    // French month translation
+    $frMonths = [
+        'January' => 'Janvier', 'February' => 'Février', 'March' => 'Mars',
+        'April' => 'Avril', 'May' => 'Mai', 'June' => 'Juin',
+        'July' => 'Juillet', 'August' => 'Août', 'September' => 'Septembre',
+        'October' => 'Octobre', 'November' => 'Novembre', 'December' => 'Décembre'
+    ];
+    $displayMonth = $formattedMonth;
+    foreach ($frMonths as $en => $fr) {
+        if (stripos($displayMonth, $en) !== false) {
+            $displayMonth = str_ireplace($en, $fr, $displayMonth);
+            break;
+        }
+    }
 @endphp
 
 <table>
@@ -90,7 +109,7 @@
     <tr>
         <td colspan="2"></td>
         <td style="text-align: center; font-weight: bold;">
-            {{ $formattedMonth }}
+            {{ $displayMonth }}
         </td>
         <td colspan="2"></td>
     </tr>

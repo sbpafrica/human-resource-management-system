@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Export\SpreadsheetExporter;
+
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -177,7 +179,8 @@ class TranssionBfaPetraPayController extends Controller
                 ];
             });
 
-            return response()->json($records);
+            $filename = "TranssionBfaPetraPay_" . ($month ?? 'export') . ".xlsx";
+            return SpreadsheetExporter::exportPetra($records, $filename);
         } catch (\Exception $e) {
             Log::error("TranssionBfaPetraPay Export failed: " . $e->getMessage());
             return response()->json(['error' => 'Failed to export data: ' . $e->getMessage()], 500);
