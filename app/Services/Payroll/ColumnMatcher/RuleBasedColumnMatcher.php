@@ -87,6 +87,57 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^total\s*days\s*amount$/i',
             '/^basic\s*days$/i',
         ],
+        'weekday_hours' => [
+            '/^(weekday|week\s*day|normal)\s*(ot\s*)?hours?$/i',
+            '/^weekday\s*hrs?$/i',
+            '/^normal\s*ot\s*hrs?$/i',
+            '/^normal\s*ot\s*hours?$/i',
+            '/^weekday\s*overtime\s*hours?$/i',
+        ],
+        'weekday_overtime_amt' => [
+            '/^(weekday|week\s*day|normal)\s*(ot|overtime)\s*(amt|amount|total|pay)?$/i',
+            '/^weekday(s)?\s*overtime$/i',
+            '/^normal\s*overtime$/i',
+            '/^normal\s*ot\s*(amt|amount)?$/i',
+            '/^weekday\s*overtime\s*amount$/i',
+        ],
+        'saturday_hours' => [
+            '/^sat(urday)?\s*(ot\s*)?hours?$/i',
+            '/^sat(urday)?\s*hrs?$/i',
+            '/^num(ber)?\s*(of\s*)?saturdays?$/i',
+            '/^saturday(s)?\s*worked$/i',
+        ],
+        'saturday_overtime_amt' => [
+            '/^sat(urday)?\s*(ot|overtime)\s*(amt|amount|total|pay)?$/i',
+            '/^saturday(s)?\s*overtime$/i',
+            '/^weekend\s*overtime(\s*amount)?$/i',
+        ],
+        'num_sundays_holidays' => [
+            '/^num(ber)?\s*(of\s*)?(sundays?|holidays?)(\s*(and|\/)?\s*holidays?)?$/i',
+            '/^(sunday|holiday|offday)\s*(ot\s*)?hours?$/i',
+            '/^sunday\s*holiday\s*hours?$/i',
+            '/^sundays?\s*holiday\s*overtime$/i',
+            '/^offday\s*holiday\s*overtime\s*hours?$/i',
+            '/^special\s*day\s*overtime\s*hours?$/i',
+        ],
+        'sunday_holiday_overtime_amt' => [
+            '/^(sunday(s)?(\s*(and|\/)?\s*holiday(s)?)?|holiday|offday)\s*(ot|overtime)\s*(amt|amount|total|pay)?$/i',
+            '/^sunday(s)?\s*holiday(s)?\s*overtime(\s*(amt|amount|total|pay))?$/i',
+            '/^sundays?\s*(and|\/)\s*holidays?\s*overtime(\s*(amt|amount|total|pay))?$/i',
+            '/^offday\s*holiday\s*overtime\s*(total|amount)?$/i',
+            '/^special\s*day\s*overtime(\s*amount)?$/i',
+        ],
+        'overtimerefund' => [
+            '/^overtime\s*refund$/i',
+            '/^ot\s*refund$/i',
+            '/^overtimerefund$/i',
+        ],
+        'total_overtime_amt' => [
+            '/^total\s*(overtime|ot)\s*(amt|amount)?$/i',
+            '/^totalovertimeamt$/i',
+            '/^total_overtime_amt$/i',
+            '/^total\s*overtime\s*amount$/i',
+        ],
         'overtime_hours' => [
             '/^o(\.)?t(\.)?\s*hours?$/i',
             '/^overtime\s*hours?$/i',
@@ -101,6 +152,7 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^overtime\s*(amount|pay)$/i',
             '/^total\s*overtime$/i',
             '/^totalovertime$/i',
+            '/^overtime$/i',
         ],
         'night_allowance' => [
             '/^night\s*(allowance|shift)$/i',
@@ -193,6 +245,13 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             } else {
                 $unmatched[] = $headerStr;
             }
+        }
+
+        // Keep overtime_amount and total_overtime_amt in sync for downstream consumers
+        if (isset($mapping['total_overtime_amt']) && !isset($mapping['overtime_amount'])) {
+            $mapping['overtime_amount'] = $mapping['total_overtime_amt'];
+        } elseif (isset($mapping['overtime_amount']) && !isset($mapping['total_overtime_amt'])) {
+            $mapping['total_overtime_amt'] = $mapping['overtime_amount'];
         }
 
         // Calculate confidence score based on essential payroll field matches

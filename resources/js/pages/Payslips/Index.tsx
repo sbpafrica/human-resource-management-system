@@ -1748,12 +1748,12 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             </td>
         </tr>
 
-        {/* Gross Salary (shows only basic_earned) */}
+        {/* Gross Salary */}
         <tr>
             <td colSpan={2} className="p-2 font-bold">Gross Salary</td>
             <td></td>
             <td className="p-2 text-center font-bold">
-                {Number(payslip.basic_earned ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {Number(payslip.gross_salary ?? payslip.basic_earned ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
             <td></td>
         </tr>
@@ -1794,39 +1794,80 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             </td>
         </tr>
 
-        {/* Overtime Items - AFTER deductions */}
-        <tr>
-            <td colSpan={2} className="p-2">Weekday Overtime</td>
-            <td className="p-2 text-right">{payslip.weekday_hours ?? 0}</td>
-            <td className="p-2 text-center">
-                {Number(payslip.weekday_overtime_amt ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </td>
-            <td></td>
-        </tr>
-        <tr>
-            <td colSpan={2} className="p-2">Saturday Overtime</td>
-            <td className="p-2 text-right">{payslip.saturday_hours ?? 0}</td>
-            <td className="p-2 text-center">
-                {Number(payslip.saturday_overtime_amt ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </td>
-            <td></td>
-        </tr>
-        <tr>
-            <td colSpan={2} className="p-2">Sunday/Holiday Overtime</td>
-            <td className="p-2 text-right">{payslip.num_sundays_holidays ?? 0}</td>
-            <td className="p-2 text-center">
-                {Number(payslip.sunday_holiday_overtime_amt ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </td>
-            <td></td>
-        </tr>
-        <tr>
-            <td colSpan={2} className="p-2">Overtime Refund</td>
-            <td></td>
-            <td className="p-2 text-center">
-                {Number(payslip.overtimerefund ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </td>
-            <td></td>
-        </tr>
+        {/* Overtime Items */}
+        {(() => {
+            const weekdayAmt = Number(payslip.weekday_overtime_amt ?? payslip.weekdays_overtime ?? payslip.normalovertime ?? 0);
+            const weekdayHrs = payslip.weekday_hours ?? payslip.weekdaysOT ?? 0;
+            const saturdayAmt = Number(payslip.saturday_overtime_amt ?? payslip.saturdays_overtime ?? payslip.saturdayovertime ?? 0);
+            const saturdayHrs = payslip.saturday_hours ?? payslip.num_saturdays ?? payslip.weekendOT ?? payslip.sat ?? 0;
+            const sundayAmt = Number(payslip.sunday_holiday_overtime_amt ?? payslip.sundays_holidays_overtime ?? payslip.holidayotamt ?? 0);
+            const sundayHrs = payslip.num_sundays_holidays ?? payslip.sundays_holiday_overtime ?? payslip.holiday ?? 0;
+            const otRefund = Number(payslip.overtimerefund ?? payslip.overtime_refund ?? 0);
+            const totalOt = Number(payslip.total_overtime_amt ?? payslip.total_overtime ?? payslip.overtime ?? (weekdayAmt + saturdayAmt + sundayAmt));
+            const hasDetailed = (weekdayAmt > 0 || saturdayAmt > 0 || sundayAmt > 0 || Number(weekdayHrs) > 0 || Number(saturdayHrs) > 0 || Number(sundayHrs) > 0 || otRefund > 0);
+
+            if (hasDetailed || totalOt <= 0) {
+                return (
+                    <>
+                        <tr>
+                            <td colSpan={2} className="p-2">Weekday Overtime</td>
+                            <td className="p-2 text-right">{weekdayHrs}</td>
+                            <td className="p-2 text-center">
+                                {weekdayAmt.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td></td>
+                        </tr>
+                        <tr>
+                            <td colSpan={2} className="p-2">Saturday Overtime</td>
+                            <td className="p-2 text-right">{saturdayHrs}</td>
+                            <td className="p-2 text-center">
+                                {saturdayAmt.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td></td>
+                        </tr>
+                        <tr>
+                            <td colSpan={2} className="p-2">Sunday/Holiday Overtime</td>
+                            <td className="p-2 text-right">{sundayHrs}</td>
+                            <td className="p-2 text-center">
+                                {sundayAmt.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td></td>
+                        </tr>
+                        <tr>
+                            <td colSpan={2} className="p-2">Overtime Refund</td>
+                            <td></td>
+                            <td className="p-2 text-center">
+                                {otRefund.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td></td>
+                        </tr>
+                    </>
+                );
+            }
+
+            return (
+                <>
+                    <tr>
+                        <td colSpan={2} className="p-2">Total Overtime</td>
+                        <td className="p-2 text-right">{payslip.overtime_hours ?? payslip.total_hours_worked ?? '-'}</td>
+                        <td className="p-2 text-center">
+                            {totalOt.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td></td>
+                    </tr>
+                    {otRefund > 0 && (
+                        <tr>
+                            <td colSpan={2} className="p-2">Overtime Refund</td>
+                            <td></td>
+                            <td className="p-2 text-center">
+                                {otRefund.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td></td>
+                        </tr>
+                    )}
+                </>
+            );
+        })()}
 
         {/* Total Row */}
         <tr style={{ backgroundColor: '#3498db', color: 'white' }}>
@@ -1835,7 +1876,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td className="p-2 text-center font-bold">
                 {(
                     Number(payslip.basic_earned ?? 0) +
-                    Number(payslip.total_overtime_amt ?? 0)
+                    Number(payslip.total_overtime_amt ?? payslip.total_overtime ?? payslip.overtime ?? 0)
                 ).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
             <td className="p-2 text-center font-bold">

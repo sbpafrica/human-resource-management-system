@@ -114,7 +114,7 @@
     <tr>
         <td colspan="2" class="total">Gross Salary</td>
         <td></td>
-        <td style="text-align: center;" class="total">{{ number_format((float)($payslip->basic_earned ?? 0), 2) }}</td>
+        <td style="text-align: center;" class="total">{{ number_format((float)($payslip->gross_salary ?? $payslip->basic_earned ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
@@ -143,37 +143,66 @@
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->paye ?? 0), 2) }}</td>
     </tr>
+    @php
+        $weekdayAmt = (float)($payslip->weekday_overtime_amt ?? $payslip->weekdays_overtime ?? $payslip->normalovertime ?? 0);
+        $weekdayHrs = $payslip->weekday_hours ?? $payslip->weekdaysOT ?? 0;
+        $saturdayAmt = (float)($payslip->saturday_overtime_amt ?? $payslip->saturdays_overtime ?? $payslip->saturdayovertime ?? 0);
+        $saturdayHrs = $payslip->saturday_hours ?? $payslip->num_saturdays ?? $payslip->weekendOT ?? $payslip->sat ?? 0;
+        $sundayAmt = (float)($payslip->sunday_holiday_overtime_amt ?? $payslip->sundays_holidays_overtime ?? $payslip->holidayotamt ?? 0);
+        $sundayHrs = $payslip->num_sundays_holidays ?? $payslip->sundays_holiday_overtime ?? $payslip->holiday ?? 0;
+        $otRefund = (float)($payslip->overtimerefund ?? $payslip->overtime_refund ?? 0);
+        $totalOvertime = (float)($payslip->total_overtime_amt ?? $payslip->total_overtime ?? $payslip->overtime ?? ($weekdayAmt + $saturdayAmt + $sundayAmt));
+        $hasDetailedOt = ($weekdayAmt > 0 || $saturdayAmt > 0 || $sundayAmt > 0 || (float)$weekdayHrs > 0 || (float)$saturdayHrs > 0 || (float)$sundayHrs > 0 || $otRefund > 0);
+    @endphp
+
+    @if($hasDetailedOt || $totalOvertime <= 0)
     <tr>
         <td colspan="2">Weekday Overtime</td>
-        <td style="text-align: right;">{{ $payslip->weekday_hours ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->weekday_overtime_amt ?? 0), 2) }}</td>
+        <td style="text-align: right;">{{ $weekdayHrs }}</td>
+        <td style="text-align: center;">{{ number_format($weekdayAmt, 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Saturday Overtime</td>
-        <td style="text-align: right;">{{ $payslip->saturday_hours ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->saturday_overtime_amt ?? 0), 2) }}</td>
+        <td style="text-align: right;">{{ $saturdayHrs }}</td>
+        <td style="text-align: center;">{{ number_format($saturdayAmt, 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Sunday/Holiday Overtime</td>
-        <td style="text-align: right;">{{ $payslip->num_sundays_holidays ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->sunday_holiday_overtime_amt ?? 0), 2) }}</td>
+        <td style="text-align: right;">{{ $sundayHrs }}</td>
+        <td style="text-align: center;">{{ number_format($sundayAmt, 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Overtime Refund</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->overtimerefund ?? 0), 2) }}</td>
+        <td style="text-align: center;">{{ number_format($otRefund, 2) }}</td>
         <td></td>
     </tr>
+    @else
+    <tr>
+        <td colspan="2">Total Overtime</td>
+        <td style="text-align: right;">{{ $payslip->overtime_hours ?? $payslip->total_hours_worked ?? '-' }}</td>
+        <td style="text-align: center;">{{ number_format($totalOvertime, 2) }}</td>
+        <td></td>
+    </tr>
+    @if($otRefund > 0)
+    <tr>
+        <td colspan="2">Overtime Refund</td>
+        <td></td>
+        <td style="text-align: center;">{{ number_format($otRefund, 2) }}</td>
+        <td></td>
+    </tr>
+    @endif
+    @endif
 
     <!-- Total Row -->
     <tr>
         <td colspan="2" class="total">Total</td>
         <td></td>
         <td style="text-align: center;" class="total">
-            {{ number_format((float)($payslip->basic_earned ?? 0) + (float)($payslip->total_overtime_amt ?? 0), 2) }}
+            {{ number_format((float)($payslip->basic_earned ?? 0) + $totalOvertime, 2) }}
         </td>
         <td style="text-align: center;" class="total">
             {{ number_format((float)($payslip->total_deductions ?? 0), 2) }}
