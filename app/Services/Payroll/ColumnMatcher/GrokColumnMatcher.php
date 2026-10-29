@@ -46,21 +46,21 @@ The standard internal fields are:
 - "legalworkdays": Standard or statutory work days in the month
 - "daily_rate": Daily pay rate or daily tonnage rate
 - "days_worked": Actual days worked in the month (e.g. Total1, Actual Days, Days)
-- "absentee_days": Number of days absent
-- "absent_deductions": Deduction amount for unexcused absence
+- "absentee_days": Number of days absent (e.g. Absent Days)
+- "absent_deductions": Deduction amount for unexcused absence (e.g. Absent Without Pay)
 - "earned_basic_salary": Basic salary earned based on actual days worked
 - "saturdays_worked": Days or count of Saturday work
-- "saturday_rate": Saturday pay rate
+- "saturday_rate": Saturday pay rate or multiplier (e.g. Saturday OT = 1.0 or 1.5), DISTINCT from Saturday Overtime amount or Weekend OT hours
 - "saturday_amount": Total earnings for Saturday work
 - "total_days_amount": Total base earnings from days worked
-- "weekday_hours": Normal weekday overtime hours worked
-- "weekday_overtime_amt": Normal weekday overtime pay amount
-- "saturday_hours": Saturday overtime hours worked
-- "saturday_overtime_amt": Saturday overtime pay amount
-- "num_sundays_holidays": Sunday or public holiday overtime hours/days count
-- "sunday_holiday_overtime_amt": Sunday and holiday overtime pay amount
+- "weekday_hours": Normal weekday overtime hours worked (e.g. Weekdays OT, Normal OT Hrs)
+- "weekday_overtime_amt": Normal weekday overtime pay amount (e.g. Normal Overtime, Weekday Overtime Amt)
+- "saturday_hours": Saturday or weekend overtime hours worked (e.g. Weekend OT, Saturday OT Hrs)
+- "saturday_overtime_amt": Saturday or weekend overtime pay amount (e.g. Saturday Overtime, Weekend Overtime Amt)
+- "num_sundays_holidays": Sunday or public holiday overtime hours worked (e.g. Holiday OT), DISTINCT from Sun Off Days
+- "sunday_holiday_overtime_amt": Sunday and holiday overtime pay amount (e.g. Holiday OT Amt, Sunday Holiday Overtime)
 - "overtimerefund": Overtime adjustment or refund amount
-- "total_overtime_amt": Total cumulative overtime pay amount
+- "total_overtime_amt": Total cumulative overtime pay amount (e.g. Total Overtime)
 - "overtime_hours": Overtime hours worked
 - "overtime_rate": Hourly overtime rate
 - "overtime_amount": Total overtime pay
@@ -69,9 +69,10 @@ The standard internal fields are:
 - "gross_salary": Gross earnings before statutory deductions (Total Gross, Gross Salary, Total Earn)
 - "ssnit_ee": Social Security Tier 1 Employee 5.5% deduction (SSNIT EE, SSF EE)
 - "petra": Petra Tier 2 Employee 5.0% provident fund / pension deduction
+- "trust": Shop trust or welfare recovery deduction (Trust), DISTINCT from Petra
 - "taxable_income": Net taxable earnings for GRA PAYE calculation
 - "paye": GRA Personal Income Tax (P.A.Y.E.)
-- "overtime_tax": Tax withheld specifically on overtime earnings
+- "overtime_tax": Tax withheld specifically on overtime earnings (e.g. Overtime Tax)
 - "total_deductions": Sum of all statutory and non-statutory deductions
 - "net_pay": Final take-home pay transferred to employee bank account / MoMo
 - "bank": Bank name

@@ -275,6 +275,74 @@ class PayslipController extends Controller
         return [$staffIdCol, $nameCol];
     }
 
+    private function resolveOvertimeTable(string $tableName): ?string
+    {
+        if (str_starts_with($tableName, 'twelliumaccrabasic')) {
+            $suffix = substr($tableName, strlen('twelliumaccrabasic'));
+            foreach (["twelliumaccraovertime{$suffix}", "twelliumaccraover{$suffix}"] as $cand) {
+                if (Schema::hasTable($cand)) return $cand;
+            }
+        }
+
+        if (str_starts_with($tableName, 'twelliumbasic')) {
+            $suffix = substr($tableName, strlen('twelliumbasic'));
+            foreach (["twelliumovertime{$suffix}", "twelliumover{$suffix}"] as $cand) {
+                if (Schema::hasTable($cand)) return $cand;
+            }
+        }
+
+        if (str_starts_with($tableName, 'twelliumaccra')) {
+            $suffix = substr($tableName, strlen('twelliumaccra'));
+            foreach (["twelliumaccraovertime{$suffix}", "twelliumaccraover{$suffix}"] as $cand) {
+                if (Schema::hasTable($cand)) return $cand;
+            }
+        }
+
+        if (str_starts_with($tableName, 'twellium')) {
+            $suffix = substr($tableName, strlen('twellium'));
+            foreach (["twelliumovertime{$suffix}", "twelliumover{$suffix}"] as $cand) {
+                if (Schema::hasTable($cand)) return $cand;
+            }
+        }
+
+        return null;
+    }
+
+    private function getOvertimeJoinColumn(string $baseTable, string $otTable, string $fallbackField): string
+    {
+        if (Schema::hasColumn($baseTable, 'clock_in_id') && Schema::hasColumn($otTable, 'clock_in_id')) {
+            return 'clock_in_id';
+        }
+        if (Schema::hasColumn($baseTable, 'ID') && Schema::hasColumn($otTable, 'ID')) {
+            return 'ID';
+        }
+        if (Schema::hasColumn($baseTable, 'id') && Schema::hasColumn($otTable, 'id')) {
+            return 'id';
+        }
+        if (Schema::hasColumn($baseTable, 'employ') && Schema::hasColumn($otTable, 'employ')) {
+            return 'employ';
+        }
+        if (Schema::hasColumn($baseTable, $fallbackField) && Schema::hasColumn($otTable, $fallbackField)) {
+            return $fallbackField;
+        }
+        return $fallbackField;
+    }
+
+    private function getPayslipQuery(string $tableName, string $staffIdField)
+    {
+        $otTable = $this->resolveOvertimeTable($tableName);
+        $hasOtTable = $otTable && Schema::hasTable($otTable);
+
+        if ($hasOtTable) {
+            $joinCol = $this->getOvertimeJoinColumn($tableName, $otTable, $staffIdField);
+            return DB::table("{$tableName} as b")
+                ->leftJoin("{$otTable} as o", "b.{$joinCol}", '=', "o.{$joinCol}")
+                ->select('o.*', 'b.*');
+        }
+
+        return DB::table("{$tableName} as b")->select('b.*');
+    }
+
     private function resolvePayslipView($client): string
     {
         $dbName    = strtolower((string)($client->client_dbname ?? ''));
@@ -896,14 +964,17 @@ class PayslipController extends Controller
         );
 
         // ---------- OVERTIME HOURS MAPPING ----------
-        $normalOtHrs = $getP('weekday_hours')
+        $normalOtHrs = $getP('weekdaysOT') 
+            ?? $getP('weekdays_ot') 
+            ?? $getP('TOTO_WORKDAY')
+            ?? $getP('totoworkday')
+            ?? $getP('weekday_hours')
             ?? $getP('weekdayhours')
             ?? $getP('weekday_overtime_hours')
             ?? $getP('weekdayovertimehours')
             ?? $getP('weekdayovertimehr')
             ?? $getP('weekdayovertimehrs')
             ?? $getP('overtimehr')
-            ?? $getP('weekdaysOT') 
             ?? $getP('Normal OT HRS') 
             ?? $getP('normal_ot_hrs') 
             ?? $getP('normalOThrs') 
@@ -912,14 +983,17 @@ class PayslipController extends Controller
             ?? $getP('normal_ot_days') 
             ?? 0;
 
-        $saturdayOtHrs = $getP('saturday_hours')
+        $saturdayOtHrs = $getP('weekendOT') 
+            ?? $getP('weekend_ot') 
+            ?? $getP('TOT_OFFDAY')
+            ?? $getP('totoffday')
+            ?? $getP('saturday_hours')
             ?? $getP('saturdayhours')
             ?? $getP('num_saturdays')
             ?? $getP('numsaturdays')
             ?? $getP('weekendovertimehr')
             ?? $getP('weekendovertimehrs')
             ?? $getP('overtimeweekend')
-            ?? $getP('weekendOT') 
             ?? $getP('Saturday OT HRS') 
             ?? $getP('saturday_ot_hrs') 
             ?? $getP('saturdayOThrs') 
@@ -929,7 +1003,12 @@ class PayslipController extends Controller
             ?? $getP('sat')
             ?? 0;
 
-        $holidayOtHrs = $getP('num_sundays_holidays')
+        $holidayOtHrs = $getP('holidayot')
+            ?? $getP('holiday_ot')
+            ?? $getP('Holiday OT')
+            ?? $getP('TOTALSPECIAL')
+            ?? $getP('totalspecial')
+            ?? $getP('num_sundays_holidays')
             ?? $getP('numsundaysholidays')
             ?? $getP('sundays_holiday_overtime')
             ?? $getP('sundaysholidayovertime')
@@ -941,21 +1020,25 @@ class PayslipController extends Controller
             ?? $getP('specialdayovertimehours')
             ?? $getP('holidayovertimehr')
             ?? $getP('holidayovertimehrs')
-            ?? $getP('holiday') 
             ?? $getP('Holiday OT HRS') 
             ?? $getP('holiday_ot_hrs') 
             ?? $getP('holidayOThrs') 
             ?? $getP('otweekend') 
-            ?? $getP('holidayot')
             ?? 0;
 
         $payslip->weekdaysOT       = $normalOtHrs;
         $payslip->weekendOT        = $saturdayOtHrs;
         $payslip->holiday          = $holidayOtHrs;
+        $payslip->holidayot        = $holidayOtHrs;
         $payslip->sat              = $saturdayOtHrs;
 
         // ---------- OVERTIME AMOUNTS MAPPING ----------
-        $normalOtAmt = $getP('weekday_overtime_amt')
+        $normalOtAmt = $getP('normalovertime') 
+            ?? $getP('Normal Overtime') 
+            ?? $getP('normal_overtime') 
+            ?? $getP('WORKDAYOT')
+            ?? $getP('workdayot')
+            ?? $getP('weekday_overtime_amt')
             ?? $getP('weekdayovertimeamt')
             ?? $getP('weekdays_overtime')
             ?? $getP('weekdaysovertime')
@@ -963,13 +1046,10 @@ class PayslipController extends Controller
             ?? $getP('weekdayovertimeamount') 
             ?? $getP('weekdayovertimeamountghc') 
             ?? $getP('weekdayovertimetotal')
-            ?? $getP('overtimetotal')
-            ?? $getP('normalovertime') 
-            ?? $getP('Normal Overtime') 
-            ?? $getP('normal_overtime') 
             ?? $getP('normalot') 
             ?? $getP('normalotamt') 
             ?? $getP('weekdayotamt1')
+            ?? $getP('otworkingday')
             ?? 0;
 
         // Fallback calculation if monetary normal overtime value is absent
@@ -982,7 +1062,12 @@ class PayslipController extends Controller
             }
         }
 
-        $saturdayOtAmt = $getP('saturday_overtime_amt')
+        $saturdayOtAmt = $getP('saturdayovertime') 
+            ?? $getP('Saturday Overtime') 
+            ?? $getP('saturday_overtime') 
+            ?? $getP('OFFDAY_HOLIDAYOT')
+            ?? $getP('offdayholidayot')
+            ?? $getP('saturday_overtime_amt')
             ?? $getP('saturdayovertimeamt')
             ?? $getP('saturdays_overtime')
             ?? $getP('saturdaysovertime')
@@ -990,16 +1075,19 @@ class PayslipController extends Controller
             ?? $getP('weekendovertimeamount') 
             ?? $getP('weekendovertimeamountghc') 
             ?? $getP('overtimetotal2')
-            ?? $getP('saturdayovertime') 
-            ?? $getP('Saturday Overtime') 
-            ?? $getP('saturday_overtime') 
             ?? $getP('satOT')
             ?? $getP('satot')
             ?? ($getP('weekendhr') !== null || $getP('weekendtonage') !== null ? $getP('amount') : null)
             ?? $getP('weekendot') 
+            ?? $getP('otholiday')
             ?? 0;
 
-        $holidayOtAmt = $getP('sunday_holiday_overtime_amt')
+        $holidayOtAmt = $getP('holidayotamt') 
+            ?? $getP('Holiday OT Amt') 
+            ?? $getP('holiday_ot_amt') 
+            ?? $getP('SPECIALDAYOT')
+            ?? $getP('specialdayot')
+            ?? $getP('sunday_holiday_overtime_amt')
             ?? $getP('sundayholidayovertimeamt')
             ?? $getP('sundays_holidays_overtime')
             ?? $getP('sundaysholidaysovertime')
@@ -1010,19 +1098,20 @@ class PayslipController extends Controller
             ?? $getP('holidayovertimetotal')
             ?? $getP('holidayovertimeamount') 
             ?? $getP('holidayovertimeamountghc') 
-            ?? $getP('holidayotamt') 
             ?? $getP('Holiday Overtime') 
-            ?? $getP('holidayot') 
             ?? 0;
 
         $overtimeRefund = $getP('overtimerefund')
             ?? $getP('overtime_refund')
             ?? 0;
 
-        $explicitTotalOt = $getP('total_overtime_amt')
-            ?? $getP('totalovertimeamt')
+        $explicitTotalOt = $getP('totalovertime')
+            ?? $getP('Total Overtime')
             ?? $getP('total_overtime')
-            ?? $getP('totalovertime')
+            ?? $getP('TOT_OTAMT')
+            ?? $getP('tototamt')
+            ?? $getP('total_overtime_amt')
+            ?? $getP('totalovertimeamt')
             ?? $getP('total_overtime_amount')
             ?? $getP('totalovertimeamount')
             ?? $getP('totalovertimeamountghc')
@@ -1038,9 +1127,16 @@ class PayslipController extends Controller
             : $componentTotal;
 
         $payslip->normalovertime              = (float)$normalOtAmt;
+        $payslip->normal_overtime             = (float)$normalOtAmt;
         $payslip->saturdayovertime            = (float)$saturdayOtAmt;
+        $payslip->saturday_overtime           = (float)$saturdayOtAmt;
         $payslip->holidayotamt                = (float)$holidayOtAmt;
+        $payslip->holiday_ot_amt              = (float)$holidayOtAmt;
         $payslip->satOT                       = (float)$saturdayOtAmt;
+        $payslip->totalovertime               = (float)$totalOvertime;
+        $payslip->total_overtime              = (float)$totalOvertime;
+        $payslip->total_overtime_amt          = (float)$totalOvertime;
+        $payslip->overtime                    = (float)$totalOvertime;
 
         // Canonical overtime attributes for Twellium Accra & all payslip viewers
         $payslip->weekday_hours               = $normalOtHrs;
@@ -1050,14 +1146,14 @@ class PayslipController extends Controller
         $payslip->num_sundays_holidays        = $holidayOtHrs;
         $payslip->sunday_holiday_overtime_amt = (float)$holidayOtAmt;
         $payslip->overtimerefund              = (float)$overtimeRefund;
-        $payslip->total_overtime_amt          = (float)$totalOvertime;
-        $payslip->overtime                    = (float)$totalOvertime;
 
         // Kumasi / Ghana alias support
         $payslip->weekday_overtime_hours        = $normalOtHrs;
         $payslip->weekday_overtime_amount       = (float)$normalOtAmt;
-        $payslip->offday_holiday_overtime_hours = $holidayOtHrs;
-        $payslip->offday_holiday_overtime_total = (float)$holidayOtAmt;
+        $payslip->offday_holiday_overtime_hours = $saturdayOtHrs;
+        $payslip->offday_holiday_overtime_total = (float)$saturdayOtAmt;
+        $payslip->special_day_overtime_hours    = $holidayOtHrs;
+        $payslip->special_day_overtime_amount   = (float)$holidayOtAmt;
         $payslip->total_overtime_amount         = (float)$totalOvertime;
 
         // ---------- DEDUCTIONS ----------
@@ -1496,18 +1592,9 @@ class PayslipController extends Controller
 
         [$staffIdField, $nameField] = $this->detectColumns($tableName, $client);
 
-        $otTable = str_starts_with($tableName, 'twelliumaccrabasic')
-            ? ('twelliumaccraovertime' . substr($tableName, strlen('twelliumaccrabasic')))
-            : null;
-        $hasOtTable = $otTable && Schema::hasTable($otTable);
-
-        $payslip = $hasOtTable
-            ? DB::table("{$tableName} as b")
-                ->leftJoin("{$otTable} as o", 'b.clock_in_id', '=', 'o.clock_in_id')
-                ->select('b.*', 'o.weekday_hours', 'o.num_saturdays', 'o.saturday_hours', 'o.num_sundays_holidays', 'o.sundays_holiday_overtime', 'o.overtimerefund', 'o.weekdays_overtime', 'o.saturdays_overtime', 'o.sundays_holidays_overtime', 'o.total_overtime')
-                ->where("b.{$staffIdField}", $staffId)
-                ->first()
-            : DB::table($tableName)->where($staffIdField, $staffId)->first();
+        $payslip = $this->getPayslipQuery($tableName, $staffIdField)
+            ->where("b.{$staffIdField}", $staffId)
+            ->first();
 
         if (!$payslip) {
             $employees = DB::table($tableName)
@@ -1590,30 +1677,15 @@ class PayslipController extends Controller
 
             [$staffIdField, $nameField] = $this->detectColumns($tableName, $client);
 
-            $otTable = str_starts_with($tableName, 'twelliumaccrabasic')
-                ? ('twelliumaccraovertime' . substr($tableName, strlen('twelliumaccrabasic')))
-                : null;
-            $hasOtTable = $otTable && Schema::hasTable($otTable);
-
-            $payslip = $hasOtTable
-                ? DB::table("{$tableName} as b")
-                    ->leftJoin("{$otTable} as o", 'b.clock_in_id', '=', 'o.clock_in_id')
-                    ->select('b.*', 'o.weekday_hours', 'o.num_saturdays', 'o.saturday_hours', 'o.num_sundays_holidays', 'o.sundays_holiday_overtime', 'o.overtimerefund', 'o.weekdays_overtime', 'o.saturdays_overtime', 'o.sundays_holidays_overtime', 'o.total_overtime')
-                    ->where("b.{$staffIdField}", $staffId)
-                    ->first()
-                : DB::table($tableName)->where($staffIdField, $staffId)->first();
+            $payslip = $this->getPayslipQuery($tableName, $staffIdField)
+                ->where("b.{$staffIdField}", $staffId)
+                ->first();
 
             if (!$payslip) {
                 // Fallback: search with trimmed / lowercase staff ID
-                $payslip = $hasOtTable
-                    ? DB::table("{$tableName} as b")
-                        ->leftJoin("{$otTable} as o", 'b.clock_in_id', '=', 'o.clock_in_id')
-                        ->select('b.*', 'o.weekday_hours', 'o.num_saturdays', 'o.saturday_hours', 'o.num_sundays_holidays', 'o.sundays_holiday_overtime', 'o.overtimerefund', 'o.weekdays_overtime', 'o.saturdays_overtime', 'o.sundays_holidays_overtime', 'o.total_overtime')
-                        ->whereRaw("TRIM(LOWER(b.`{$staffIdField}`)) = ?", [trim(strtolower($staffId))])
-                        ->first()
-                    : DB::table($tableName)
-                        ->whereRaw("TRIM(LOWER(`{$staffIdField}`)) = ?", [trim(strtolower($staffId))])
-                        ->first();
+                $payslip = $this->getPayslipQuery($tableName, $staffIdField)
+                    ->whereRaw("TRIM(LOWER(b.`{$staffIdField}`)) = ?", [trim(strtolower($staffId))])
+                    ->first();
             }
 
             if (!$payslip) {
@@ -1697,8 +1769,8 @@ class PayslipController extends Controller
 
             $view = $this->resolvePayslipView($client);
 
-            $payslips = DB::table($tableName)
-                ->whereIn($staffIdField, $staffIds)
+            $payslips = $this->getPayslipQuery($tableName, $staffIdField)
+                ->whereIn("b.{$staffIdField}", $staffIds)
                 ->get()
                 ->keyBy($staffIdField);
 
@@ -2028,19 +2100,10 @@ class PayslipController extends Controller
                     return response()->json(['error' => 'No employees selected'], 400);
                 }
 
-                $otTable = str_starts_with($tableName, 'twelliumaccrabasic')
-                    ? ('twelliumaccraovertime' . substr($tableName, strlen('twelliumaccrabasic')))
-                    : null;
-                $hasOtTable = $otTable && Schema::hasTable($otTable);
-
-                $payslips = $hasOtTable
-                    ? DB::table("{$tableName} as b")
-                        ->leftJoin("{$otTable} as o", 'b.clock_in_id', '=', 'o.clock_in_id')
-                        ->select('b.*', 'o.weekday_hours', 'o.num_saturdays', 'o.saturday_hours', 'o.num_sundays_holidays', 'o.sundays_holiday_overtime', 'o.overtimerefund', 'o.weekdays_overtime', 'o.saturdays_overtime', 'o.sundays_holidays_overtime', 'o.total_overtime')
-                        ->whereIn("b.{$staffIdField}", $staffIds)
-                        ->get()
-                        ->keyBy($staffIdField)
-                    : DB::table($tableName)->whereIn($staffIdField, $staffIds)->get()->keyBy($staffIdField);
+                $payslips = $this->getPayslipQuery($tableName, $staffIdField)
+                    ->whereIn("b.{$staffIdField}", $staffIds)
+                    ->get()
+                    ->keyBy($staffIdField);
                 $ssnits   = DB::table('ssnit')->whereIn('staffid', $staffIds)->pluck('ssnit1a', 'staffid');
                 $banks    = DB::table('bankdetails')->whereIn('employid', $staffIds)->get()->keyBy('employid');
 
@@ -2304,7 +2367,10 @@ class PayslipController extends Controller
             [$staffIdField] = $this->detectColumns($tableName, $client);
             $view           = $this->resolvePayslipView($client);
 
-            $payslips = DB::table($tableName)->whereIn($staffIdField, $staffIds)->get()->keyBy($staffIdField);
+            $payslips = $this->getPayslipQuery($tableName, $staffIdField)
+                ->whereIn("b.{$staffIdField}", $staffIds)
+                ->get()
+                ->keyBy($staffIdField);
             $ssnits   = DB::table('ssnit')->whereIn('staffid', $staffIds)->pluck('ssnit1a', 'staffid');
             $banks    = DB::table('bankdetails')->whereIn('employid', $staffIds)->get()->keyBy('employid');
 

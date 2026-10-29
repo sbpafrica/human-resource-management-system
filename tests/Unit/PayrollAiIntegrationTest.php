@@ -325,4 +325,86 @@ class PayrollAiIntegrationTest extends TestCase
         $this->assertContains('missing_ssnit_deduction', $types);
         $this->assertContains('missing_petra_deduction', $types);
     }
+
+    public function test_melcom_exact_user_row_overtime_extraction(): void
+    {
+        $headers = [
+            'Staff ID', 'Name', 'Outsourcename', 'Designation', 'Join Date', 'Shop Name',
+            'Category', 'Saturday OT', 'Actual Days', 'Night', 'Half Days', 'Sat Off Days',
+            'Sun Off Days', 'Leave Deduct', 'Absent Days', 'Absent Hrs', 'Holiday',
+            'Weekdays OT', 'Weekend OT', 'Holiday OT', 'Basic', 'Absent Without Pay',
+            'Basic Entitlement', 'Transport', 'Normal Overtime', 'Saturday Overtime',
+            'Holiday OT Amt', 'Gross', 'SSNIT ER', 'SSNIT EE', 'SSNIT', 'Taxable',
+            'PAYE', 'Total Overtime', 'Overtime Tax', 'Total Tax', 'Trust', 'Total Deduction',
+            'Bank Transfer'
+        ];
+
+        $matcher = new \App\Services\Payroll\ColumnMatcher\RuleBasedColumnMatcher();
+        $res = $matcher->match($headers, 'melcom');
+
+        $mapping = $res['mapping'];
+        $this->assertEquals(7, $mapping['saturday_rate']);
+        $this->assertEquals(17, $mapping['weekday_hours']);
+        $this->assertEquals(18, $mapping['saturday_hours']);
+        $this->assertEquals(19, $mapping['num_sundays_holidays']);
+        $this->assertEquals(24, $mapping['weekday_overtime_amt']);
+        $this->assertEquals(25, $mapping['saturday_overtime_amt']);
+        $this->assertEquals(26, $mapping['sunday_holiday_overtime_amt']);
+        $this->assertEquals(33, $mapping['total_overtime_amt']);
+        $this->assertEquals(34, $mapping['overtime_tax']);
+        $this->assertEquals(38, $mapping['net_pay']);
+
+        // Now test normalization on the actual row
+        $row = [
+            'STF00421', 'Akosua Mensah', 'Carlcare', 'Shop Assistant', '15/03/2023', 'Kumasi - Adum',
+            'Outsourced', 1, 26, 8, null, null, 1, null, null, null, null,
+            6, 4, null, 1800, null, 1800, 300, 450, 400,
+            null, 3950, 247.5, 247.5, 247.5, 3702.5,
+            428.75, 850, 123.25, 552, 50, 849.75,
+            3100.25
+        ];
+
+        // Map row to database record object as MelcomPayController does
+        $record = (object)[
+            'employ'           => $row[$mapping['staff_id']],
+            'empoyeename'      => $row[$mapping['name']],
+            'satot'            => $row[$mapping['saturday_rate']],
+            'actualdays'       => $row[$mapping['days_worked']],
+            'weekdaysOT'       => $row[$mapping['weekday_hours']],
+            'weekendOT'        => $row[$mapping['saturday_hours']],
+            'holiday'          => $row[$mapping['num_sundays_holidays']],
+            'basic'            => $row[$mapping['basic_salary']],
+            'basicentitlement' => $row[$mapping['basic_entitlement']],
+            'allowance'        => $row[$mapping['transport']],
+            'normalovertime'   => $row[$mapping['weekday_overtime_amt']],
+            'saturdayovertime' => $row[$mapping['saturday_overtime_amt']],
+            'holidayotamt'     => $row[$mapping['sunday_holiday_overtime_amt']],
+            'totalovertime'    => $row[$mapping['total_overtime_amt']],
+            'overtimetax'      => $row[$mapping['overtime_tax']],
+            'grosspay'         => $row[$mapping['gross_salary']],
+            'paye'             => $row[$mapping['paye']],
+            'netpay'           => $row[$mapping['net_pay']],
+        ];
+
+        $client = (object)[
+            'client_dbname' => 'melcom',
+            'slug'          => 'melcom-ghana',
+            'client_name'   => 'Melcom Limited',
+        ];
+
+        $controller = new \App\Http\Controllers\PayslipController();
+        $reflector = new \ReflectionClass($controller);
+        $normMethod = $reflector->getMethod('normalizePayslip');
+        $normMethod->setAccessible(true);
+
+        $normalized = $normMethod->invoke($controller, $record, $client);
+
+        $this->assertEquals(6.0, $normalized->weekdaysOT);
+        $this->assertEquals(4.0, $normalized->weekendOT);
+        $this->assertEquals(450.0, $normalized->normalovertime);
+        $this->assertEquals(400.0, $normalized->saturdayovertime);
+        $this->assertEquals(850.0, $normalized->totalovertime);
+        $this->assertEquals(123.25, $normalized->overtimetax);
+        $this->assertEquals(3100.25, $normalized->net_pay);
+    }
 }

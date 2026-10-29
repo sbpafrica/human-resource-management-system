@@ -167,6 +167,30 @@
             <td></td>
         </tr>
         @endif
+        @if((float)data_get($payslip, 'holidayotamt', 0) > 0)
+        <tr>
+            <td colspan="2">Holiday Overtime</td>
+            <td style="text-align: right;">{{ data_get($payslip, 'holidayot', data_get($payslip, 'holiday', '-')) ?: '-' }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'holidayotamt', 0), 2) }}</td>
+            <td></td>
+        </tr>
+        @endif
+        @if((float)data_get($payslip, 'normalovertime', 0) <= 0 && (float)data_get($payslip, 'saturdayovertime', 0) <= 0 && (float)data_get($payslip, 'holidayotamt', 0) <= 0 && (float)data_get($payslip, 'total_overtime_amt', data_get($payslip, 'overtime', 0)) > 0)
+        <tr>
+            <td colspan="2">Total Overtime</td>
+            <td style="text-align: right;">{{ data_get($payslip, 'overtime_hours', data_get($payslip, 'weekdaysOT', '-')) ?: '-' }}</td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'total_overtime_amt', data_get($payslip, 'overtime', 0)), 2) }}</td>
+            <td></td>
+        </tr>
+        @endif
+        @if((float)data_get($payslip, 'overtimerefund', 0) > 0)
+        <tr>
+            <td colspan="2">Overtime Refund</td>
+            <td></td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'overtimerefund', 0), 2) }}</td>
+            <td></td>
+        </tr>
+        @endif
         @if((float)data_get($payslip, 'other', 0) > 0)
         <tr>
             <td colspan="2">Other Income</td>
@@ -227,6 +251,14 @@
             <td></td>
             <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'paye', 0), 2) }}</td>
         </tr>
+        @if((float)data_get($payslip, 'overtimetax', data_get($payslip, 'ottax', 0)) > 0)
+        <tr>
+            <td colspan="2">Overtime Tax</td>
+            <td></td>
+            <td></td>
+            <td style="text-align: center;">{{ number_format((float)data_get($payslip, 'overtimetax', data_get($payslip, 'ottax', 0)), 2) }}</td>
+        </tr>
+        @endif
         @if((float)data_get($payslip, 'petra', 0) > 0 || (float)data_get($payslip, 'petrafund', 0) > 0 || (float)data_get($payslip, 'tier2', 0) > 0 || (float)data_get($payslip, 'tier3', 0) > 0)
         <tr>
             <td colspan="2">Petra</td>
