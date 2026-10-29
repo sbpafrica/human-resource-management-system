@@ -149,6 +149,78 @@ class PayrollAiIntegrationTest extends TestCase
         $this->assertEquals(13, $result['mapping']['net_pay']);
     }
 
+    public function test_rule_based_matcher_resolves_melcom_payroll_headers(): void
+    {
+        $matcher = new RuleBasedColumnMatcher();
+
+        $headers = [
+            'Sr. No',
+            'Sr. No',
+            'Emp',
+            'Employee',
+            'OUTSOURCE NAME',
+            'Designation',
+            'Join Date',
+            'Location',
+            'CATEGORY',
+            'SATURDAY OVERTIME RATE',
+            'Present Full days',
+            'Present Night days',
+            'Present Half days',
+            'SAT _ OFF DAYS',
+            'SUN _ OFF DAYS',
+            'Leave Taken',
+            'Absent days',
+            'Abesnt Hrs',
+            'Holidays',
+            'Normal OT HRS',
+            'Saturday OT HRS',
+            'Holiday OT HRS',
+            'Basic (Scale)',
+            'Absent without pay',
+            'Basic (Entitle)',
+            'TRANSPORT',
+            'Normal Overtime',
+            'Saturday Overtime',
+            'Holiday Overtime',
+            "GROSS SALARY\n(AA=V+W+X+Y-Z)",
+            'TOTAL CASH EMOLUMENT',
+            'TOTAL ASSESSABLE INCOME',
+            'SSNIT EE 0.5%',
+            'SSNIT EE 5%',
+            'Taxable Income',
+            'PAYE',
+            'Total Overtime',
+            'OVERTIME TAX',
+            'Total Taxation',
+            'TO RECOVER & PAY TO SHOP/ SSNIT LOAN',
+            'TOTAL DEDUCTIONS',
+            'TAKE HOME PAY',
+        ];
+
+        $result = $matcher->match($headers, 'melcom');
+
+        $this->assertNotEmpty($result['mapping']);
+        $this->assertEquals(2, $result['mapping']['staff_id']);
+        $this->assertEquals(3, $result['mapping']['name']);
+        $this->assertEquals(5, $result['mapping']['position']);
+        $this->assertEquals(7, $result['mapping']['shop']);
+        $this->assertEquals(10, $result['mapping']['days_worked']);
+        $this->assertEquals(22, $result['mapping']['basic_salary']);
+        $this->assertEquals(29, $result['mapping']['gross_salary']);
+        $this->assertEquals(30, $result['mapping']['total_cash_emolument']);
+        $this->assertEquals(31, $result['mapping']['total_assessable_income']);
+        $this->assertEquals(32, $result['mapping']['ssnit_ee']);
+        $this->assertEquals(34, $result['mapping']['taxable_income']);
+        $this->assertEquals(35, $result['mapping']['paye']);
+        $this->assertEquals(36, $result['mapping']['total_overtime_amt']);
+        $this->assertEquals(37, $result['mapping']['overtime_tax']);
+        $this->assertEquals(38, $result['mapping']['total_tax']);
+        $this->assertEquals(40, $result['mapping']['total_deductions']);
+        $this->assertEquals(41, $result['mapping']['net_pay']);
+        $this->assertEquals(1.0, $result['confidence']);
+    }
+
     public function test_payslip_controller_normalizes_twellium_accra_overtime_properly(): void
     {
         $client = (object)[
