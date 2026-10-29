@@ -353,7 +353,7 @@ const handleExport = async () => {
  <div className="text-sm text-muted-foreground">Account: {record.account || ""}</div>
  <div className="text-sm text-muted-foreground">Branch Code: {record.code || ""}</div>
  <div className="text-sm text-muted-foreground">Branch: {record.branch || ""}</div>
- <div className="text-sm text-muted-foreground">Net Pay: {record.netpay != null ? record.netpay : ""}</div>
+ <div className="text-sm text-muted-foreground">Net Pay: {record.netpay != null ? Number(record.netpay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</div>
  </div>
  </div>
  ))}
@@ -402,7 +402,7 @@ const handleExport = async () => {
  <TableCell>{record.account || ""}</TableCell>
  <TableCell>{record.code || ""}</TableCell>
  <TableCell>{record.branch || ""}</TableCell>
- <TableCell>{record.netpay != null ? record.netpay : ""}</TableCell>
+ <TableCell>{record.netpay != null ? Number(record.netpay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</TableCell>
  </TableRow>
  ))}
  </TableBody>

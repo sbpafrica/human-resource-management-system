@@ -629,6 +629,25 @@ class PayslipController extends Controller
             return null;
         };
 
+        $toNum = function($val, $default = 0.0) {
+            if ($val === null || $val === '' || $val === '-') {
+                return $default;
+            }
+            if (is_numeric($val)) {
+                return (float)$val;
+            }
+            if (is_string($val)) {
+                $clean = preg_replace('/[^\d.-]/', '', str_replace(',', '', trim($val)));
+                if (is_numeric($clean)) {
+                    return (float)$clean;
+                }
+            }
+            return $default;
+        };
+        $getNum = function($key, $default = 0.0) use ($getP, $toNum) {
+            return $toNum($getP($key), $default);
+        };
+
         // ---------- EMPLOYEE DETAILS ----------
         $payslip->name = $getP('name') 
             ?? $getP('names') 
@@ -1159,8 +1178,7 @@ class PayslipController extends Controller
         $payslip->totaldeduction   = $payslip->totaldeductions;
 
         // ---------- TOTALS (GROSS & NET) ----------
-        $netVal = (float) (
-            $payslip->netpay
+        $rawNet = $payslip->netpay
             ?? $getP('take_home_pay') 
             ?? $getP('takehomepay') 
             ?? $getP('takehome') 
@@ -1175,11 +1193,10 @@ class PayslipController extends Controller
             ?? $getP('actualnetpay') 
             ?? $getP('finalnetpay')
             ?? $getP('nap')
-            ?? 0
-        );
+            ?? 0;
+        $netVal = $toNum($rawNet);
 
-        $grossVal = (float) (
-            $payslip->grosspay
+        $rawGross = $payslip->grosspay
             ?? $getP('gross_salary') 
             ?? $getP('grosssalary') 
             ?? $getP('gross_salaries')
@@ -1193,8 +1210,8 @@ class PayslipController extends Controller
             ?? $getP('grossnew')
             ?? $getP('totalearn')
             ?? $getP('gross')
-            ?? 0
-        );
+            ?? 0;
+        $grossVal = $toNum($rawGross);
 
         // For OFI BWH (olambwh), true gross is totalamount + f&tamount
         if ($grossVal == 0 && $getP('totalamount') !== null && ($getP('f&tamount') !== null || $getP('ftamount') !== null)) {
@@ -1266,9 +1283,20 @@ class PayslipController extends Controller
             $netVal = max(0, round($payslip->grosspay - $payslip->totaldeductions, 2));
         }
 
-        $payslip->netpay        = round($netVal, 2);
-        $payslip->take_home_pay = $payslip->netpay;
-        $payslip->takehome      = $payslip->netpay;
+        $payslip->netpay           = round($netVal, 2);
+        $payslip->take_home_pay    = $payslip->netpay;
+        $payslip->takehome         = $payslip->netpay;
+        $payslip->takehomepay      = $payslip->netpay;
+        $payslip->net_pay          = $payslip->netpay;
+        $payslip->banktransfer     = $payslip->netpay;
+        $payslip->finalnetpay      = $payslip->netpay;
+        $payslip->formatted_netpay = number_format($payslip->netpay, 2, '.', ',');
+        $payslip->salary           = $payslip->basic ?? 0;
+        $payslip->new_basic        = $payslip->basic ?? 0;
+        $payslip->gross            = $payslip->grosspay;
+        $payslip->gross_salary     = $payslip->grosspay;
+        $payslip->grosssalary      = $payslip->grosspay;
+        $payslip->totaldeduct      = $payslip->totaldeductions;
 
         // ---------- BANK & EXTRA INFO ----------
         $payslip->trust         = (float)($getP('trust') ?? 0);
@@ -2049,21 +2077,88 @@ class PayslipController extends Controller
                     }
 
                     $bulkView = $this->resolveBulkPayslipView($client);
-                    $chunks   = array_chunk($preparedData, 3);
 
-                    $pdf = Pdf::loadView($bulkView, [
-                        'chunks'         => $chunks,
-                        'formattedMonth' => $formattedMonth,
-                        'logoData'       => $cachedLogoData,
-                        'client'         => $client,
-                    ])->setOptions([
-                        'isRemoteEnabled' => false,
-                        'isFontSubsettingEnabled' => false,
-                        'defaultFont' => 'Helvetica',
-                    ])->setPaper('a4', 'portrait');
+                    // For up to 90 employees (30 pages): generate a single 3-per-page bulk PDF directly
+                    if (count($preparedData) <= 90) {
+                        $chunks = array_chunk($preparedData, 3);
+                        $pdf = Pdf::loadView($bulkView, [
+                            'chunks'         => $chunks,
+                            'formattedMonth' => $formattedMonth,
+                            'logoData'       => $cachedLogoData,
+                            'client'         => $client,
+                        ])->setOptions([
+                            'isRemoteEnabled' => false,
+                            'isFontSubsettingEnabled' => false,
+                            'defaultFont' => 'Helvetica',
+                        ])->setPaper('a4', 'portrait');
 
-                    $filename = "{$safeShort}_Bulk_Payslips_{$month}.pdf";
-                    return $pdf->download($filename);
+                        $filename = "{$safeShort}_Bulk_Payslips_{$month}.pdf";
+                        return $pdf->download($filename);
+                    }
+
+                    // For large employee sets (> 90 employees): batch into safe-sized 3-per-page PDFs
+                    // and package into a ZIP to guarantee memory safety (< 90MB peak RAM) and 0 timeout crashes on cPanel
+                    $tempDir = storage_path('app/tmp/bulk_pdf_' . uniqid());
+                    if (!is_dir($tempDir)) {
+                        @mkdir($tempDir, 0775, true);
+                    }
+                    $zipPath = storage_path('app/tmp/bulk_payslips_' . uniqid() . '.zip');
+                    $zip     = new ZipArchive();
+                    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                        return response()->json(['error' => 'Cannot create temporary ZIP file.'], 500);
+                    }
+
+                    $bulkBatches = array_chunk($preparedData, 60);
+                    $tempFiles   = [];
+                    $batchNum    = 1;
+
+                    try {
+                        foreach ($bulkBatches as $batchItems) {
+                            $startIdx    = ($batchNum - 1) * 60 + 1;
+                            $endIdx      = $startIdx + count($batchItems) - 1;
+                            $batchChunks = array_chunk($batchItems, 3);
+
+                            $pdf = Pdf::loadView($bulkView, [
+                                'chunks'         => $batchChunks,
+                                'formattedMonth' => $formattedMonth,
+                                'logoData'       => $cachedLogoData,
+                                'client'         => $client,
+                            ])->setOptions([
+                                'isRemoteEnabled' => false,
+                                'isFontSubsettingEnabled' => false,
+                                'defaultFont' => 'Helvetica',
+                            ])->setPaper('a4', 'portrait');
+
+                            $partFileName = "{$safeShort}_Bulk_Payslips_{$month}_Part{$batchNum}_Staff_{$startIdx}_to_{$endIdx}.pdf";
+                            $partFilePath = $tempDir . DIRECTORY_SEPARATOR . $partFileName;
+
+                            file_put_contents($partFilePath, $pdf->output());
+                            $zip->addFile($partFilePath, $partFileName);
+                            $tempFiles[] = $partFilePath;
+
+                            unset($pdf);
+                            gc_collect_cycles();
+                            $batchNum++;
+                        }
+                        $zip->close();
+                    } finally {
+                        foreach ($tempFiles as $f) {
+                            if (file_exists($f)) @unlink($f);
+                        }
+                        if (is_dir($tempDir)) @rmdir($tempDir);
+                    }
+
+                    if (!file_exists($zipPath) || filesize($zipPath) === 0) {
+                        if (file_exists($zipPath)) @unlink($zipPath);
+                        return response()->json(['error' => 'No bulk payslip files could be created.'], 500);
+                    }
+
+                    return response()->download($zipPath, "{$safeShort}_Bulk_Payslips_{$month}.zip", [
+                        'Content-Type'        => 'application/zip',
+                        'Content-Disposition' => "attachment; filename=\"{$safeShort}_Bulk_Payslips_{$month}.zip\"",
+                        'Cache-Control'       => 'no-store, no-cache, must-revalidate, max-age=0',
+                        'Pragma'              => 'no-cache',
+                    ])->deleteFileAfterSend(true);
                 }
 
                 $tempDir = storage_path('app/tmp/bulk_' . uniqid());

@@ -98,7 +98,7 @@
         </tr>
         <tr>
             <td>Basic Salary</td>
-            <td>{{ number_format((float)($payslip->BASIC_SALARY_GHC ?: ($payslip->basic ?: ($payslip->BASIC_SALARY_EARNED_GHC ?: 0))), 2) }}</td>
+            <td>{{ number_format((float)($payslip->BASIC_SALARY_GHC ?? $payslip->basic ?? $payslip->BASIC_SALARY_EARNED_GHC ?? 0), 2) }}</td>
             <td></td>
             <td>Days Worked</td>
             <td>{{ $payslip->workdays ?? $payslip->NUMBER_OF_DAYS_WORKED ?? 0 }}</td>
@@ -116,7 +116,7 @@
         <tr>
             <td colspan="2">Basic Salary Earned</td>
             <td class="text-right">{{ (int)($payslip->workdays ?? $payslip->NUMBER_OF_DAYS_WORKED ?? 0) }}</td>
-            <td class="text-center">{{ number_format((float)($payslip->BASIC_SALARY_EARNED_GHC ?: ($payslip->basic_earned ?: ($payslip->basic ?: 0))), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->BASIC_SALARY_EARNED_GHC ?? $payslip->basic_earned ?? $payslip->basic ?? 0), 2) }}</td>
             <td></td>
         </tr>
         @if(($payslip->absentdays ?? $payslip->ABSENT_DAYS ?? 0) > 0 || ($payslip->absentwithoutpay ?? $payslip->ABSENT_DAYS_DEDUCTIONS_GHC ?? 0) > 0)
@@ -124,7 +124,7 @@
             <td colspan="2">Absent Days Deduction</td>
             <td class="text-right">{{ (int)($payslip->absentdays ?? $payslip->ABSENT_DAYS ?? 0) }}</td>
             <td></td>
-            <td class="text-center">{{ number_format((float)($payslip->absentwithoutpay ?: ($payslip->ABSENT_DAYS_DEDUCTIONS_GHC ?: 0)), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->absentwithoutpay ?? $payslip->ABSENT_DAYS_DEDUCTIONS_GHC ?? 0), 2) }}</td>
         </tr>
         @endif
         
@@ -133,7 +133,7 @@
             <td colspan="2">Normal Overtime</td>
             <td class="text-right">{{ (float)($payslip->weekdaysOT ?? $payslip->WEEKDAY_OVERTIME_HRS ?? 0) == 0 ? 0 : round((float)($payslip->weekdaysOT ?? $payslip->WEEKDAY_OVERTIME_HRS ?? 0), 2) }}</td>
             <td class="text-center">
-                {{ number_format((float)($payslip->normalovertime ?: ($payslip->WEEKDAY_OVERTIME_AMOUNT_GHC ?: 0)), 2) }}
+                {{ number_format((float)($payslip->normalovertime ?? $payslip->WEEKDAY_OVERTIME_AMOUNT_GHC ?? 0), 2) }}
             </td>
             <td></td>
         </tr>
@@ -143,7 +143,7 @@
             $legalDays = (float)($payslip->LEGAL_WORK_DAYS ?? 26);
             $dailyRate = ($basicSal > 0 && $legalDays > 0) ? ($basicSal / $legalDays) : 0;
             
-            $weekendOtAmt = (float)($payslip->saturdayovertime ?: ($payslip->WEEKEND_OVERTIME_AMOUNT_GHC ?: 0));
+            $weekendOtAmt = (float)($payslip->saturdayovertime ?? $payslip->WEEKEND_OVERTIME_AMOUNT_GHC ?? 0);
             if ($weekendOtAmt > 0 && $dailyRate > 0) {
                 $rawWeekendDays = $weekendOtAmt / $dailyRate;
                 $weekendDaysFormatted = (abs($rawWeekendDays - round($rawWeekendDays)) < 0.15) ? (int)round($rawWeekendDays) : round($rawWeekendDays, 2);
@@ -151,7 +151,7 @@
                 $weekendDaysFormatted = 0;
             }
 
-            $transportAmt = (float)($payslip->allowance ?: ($payslip->TRANSPORT_GHC ?: 0));
+            $transportAmt = (float)($payslip->allowance ?? $payslip->TRANSPORT_GHC ?? 0);
             $transportDaysFormatted = ($transportAmt > 0) ? (int)($payslip->workdays ?? $payslip->NUMBER_OF_DAYS_WORKED ?? 0) : 0;
         @endphp
 
@@ -159,7 +159,7 @@
         <tr>
             <td colspan="2">Weekend Overtime</td>
             <td class="text-right">{{ $weekendDaysFormatted }}</td>
-            <td class="text-center">{{ number_format((float)($payslip->saturdayovertime ?: ($payslip->WEEKEND_OVERTIME_AMOUNT_GHC ?: 0)), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->saturdayovertime ?? $payslip->WEEKEND_OVERTIME_AMOUNT_GHC ?? 0), 2) }}</td>
             <td></td>
         </tr>
 
@@ -167,7 +167,7 @@
         <tr>
             <td colspan="2">Holiday Overtime</td>
             <td class="text-right">{{ (float)($payslip->holiday ?? $payslip->HOLIDAY_OVERTIME_HRS ?? 0) == 0 ? 0 : round((float)($payslip->holiday ?? $payslip->HOLIDAY_OVERTIME_HRS ?? 0), 2) }}</td>
-            <td class="text-center">{{ number_format((float)($payslip->holidayotamt ?: ($payslip->HOLIDAY_OVERTIME_AMOUNT_GHC ?: 0)), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->holidayotamt ?? $payslip->HOLIDAY_OVERTIME_AMOUNT_GHC ?? 0), 2) }}</td>
             <td></td>
         </tr>
 
@@ -175,7 +175,7 @@
         <tr>
             <td colspan="2">Transport Allowance</td>
             <td class="text-right">{{ $transportDaysFormatted }}</td>
-            <td class="text-center">{{ number_format((float)($payslip->allowance ?: ($payslip->TRANSPORT_GHC ?: 0)), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->allowance ?? $payslip->TRANSPORT_GHC ?? 0), 2) }}</td>
             <td></td>
         </tr>
 
@@ -184,7 +184,7 @@
             <td colspan="2" style="font-weight: bold;">Gross Salary</td>
             <td></td>
             <td class="text-center" style="font-weight: bold;">
-                {{ number_format((float)($payslip->grosspay ?: ($payslip->GROSS_SALARY_GHC ?: 0)), 2) }}
+                {{ number_format((float)($payslip->grosspay ?? $payslip->GROSS_SALARY_GHC ?? 0), 2) }}
             </td>
             <td></td>
         </tr>
@@ -194,26 +194,26 @@
             <td colspan="2">SSNIT EE (0.5%)</td>
             <td></td>
             <td></td>
-            <td class="text-center">{{ number_format((float)($payslip->ssnitee ?: ($payslip->SSNIT_EE_0_5_PERCENT ?: 0)), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->ssnitee ?? $payslip->SSNIT_EE_0_5_PERCENT ?? 0), 2) }}</td>
         </tr>
         <tr>
             <td colspan="2">Petra (5%)</td>
             <td></td>
             <td></td>
-            <td class="text-center">{{ number_format((float)($payslip->petra ?: ($payslip->PETRA_5_PERCENT ?: 0)), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->petra ?? $payslip->PETRA_5_PERCENT ?? 0), 2) }}</td>
         </tr>
         <tr>
             <td colspan="2">Normal Tax (PAYE)</td>
             <td></td>
             <td></td>
-            <td class="text-center">{{ number_format((float)($payslip->paye ?: ($payslip->PAYE_GHC ?: 0)), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->paye ?? $payslip->PAYE_GHC ?? 0), 2) }}</td>
         </tr>
         @if(($payslip->overtimetax ?? $payslip->OVERTIME_TAX_GHC ?? 0) > 0)
         <tr>
             <td colspan="2">Overtime Tax</td>
             <td></td>
             <td></td>
-            <td class="text-center">{{ number_format((float)($payslip->overtimetax ?: ($payslip->OVERTIME_TAX_GHC ?: 0)), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->overtimetax ?? $payslip->OVERTIME_TAX_GHC ?? 0), 2) }}</td>
         </tr>
         @endif
         @if(($payslip->otherdeduction ?? $payslip->DEDUCTIONS_SURCHARGE_STUDENT_LOAN_GHC ?? 0) > 0)
@@ -221,7 +221,7 @@
             <td colspan="2">Other Deductions / Student Loan</td>
             <td></td>
             <td></td>
-            <td class="text-center">{{ number_format((float)($payslip->otherdeduction ?: ($payslip->DEDUCTIONS_SURCHARGE_STUDENT_LOAN_GHC ?: 0)), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->otherdeduction ?? $payslip->DEDUCTIONS_SURCHARGE_STUDENT_LOAN_GHC ?? 0), 2) }}</td>
         </tr>
         @endif
 

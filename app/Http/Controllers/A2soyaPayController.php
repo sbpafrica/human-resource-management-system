@@ -171,7 +171,7 @@ public function export(Request $request)
             $sheet->setCellValueExplicit("F{$row}", $r->code ?? '',    DataType::TYPE_STRING);
 
             $sheet->setCellValue("G{$row}", $r->branch ?? '');
-            $sheet->setCellValue("H{$row}", $r->take_home_pay ? (float)$r->take_home_pay : '');
+            $sheet->setCellValue("H{$row}", ($r->take_home_pay !== null && $r->take_home_pay !== '') ? number_format((float)$r->take_home_pay, 2, '.', '') : '');
 
             $row++;
         }

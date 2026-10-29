@@ -469,13 +469,13 @@ class TransbfaPayController extends Controller
                 $sheet->setCellValue('C' . $row, $r->bankname ?? '');
                 $sheet->setCellValueExplicit('D' . $row, $r->accountnum ?? '', DataType::TYPE_STRING);
                 $netPay = (float)($r->finalnetpay ?? 0);
-                $sheet->setCellValue('E' . $row, $netPay);
+                $sheet->setCellValue('E' . $row, number_format($netPay, 2, '.', ''));
                 $totalPay += $netPay;
                 $row++;
             }
 
             $sheet->setCellValue('A' . $row, 'TOTAL');
-            $sheet->setCellValue('E' . $row, $totalPay);
+            $sheet->setCellValue('E' . $row, number_format($totalPay, 2, '.', ''));
             $sheet->getStyle('A' . $row . ':E' . $row)->getFont()->setBold(true);
 
             $sheet->getStyle('A1:E1')->applyFromArray([

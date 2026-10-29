@@ -623,7 +623,7 @@ class TogoBungePayController extends Controller
             foreach ($records as $r) {
                 $sheet->setCellValue("A{$row}", $r->staffid);
                 $sheet->setCellValue("B{$row}", $r->nom ?? '');
-                $sheet->setCellValue("C{$row}", $r->netpayer ?? '');
+                $sheet->setCellValue("C{$row}", ($r->netpayer !== null && $r->netpayer !== '') ? number_format((float)$r->netpayer, 2, '.', '') : '');
                 $row++;
             }
 

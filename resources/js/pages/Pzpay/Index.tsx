@@ -521,7 +521,7 @@ export default function PzPay({
                           Branch: {record.branch || ""}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          Net Pay: {record.netpay != null ? record.netpay : ""}
+                          Net Pay: {record.netpay != null ? Number(record.netpay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
                         </div>
                       </div>
                     </div>
@@ -645,7 +645,7 @@ export default function PzPay({
                           <TableCell>{record.code || ""}</TableCell>
                           <TableCell>{record.branch || ""}</TableCell>
                           <TableCell>
-                            {record.netpay != null ? record.netpay : ""}
+                            {record.netpay != null ? Number(record.netpay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
                           </TableCell>
                         </TableRow>
                       ))}

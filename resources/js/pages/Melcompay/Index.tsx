@@ -364,7 +364,7 @@ const handleExport = async () => {
  <div className="text-sm text-muted-foreground">Account: {record.account || "N/A"}</div>
  <div className="text-sm text-muted-foreground">Branch Code: {record.code || "N/A"}</div>
  <div className="text-sm text-muted-foreground">Branch: {record.branch || "N/A"}</div>
- <div className="text-sm text-muted-foreground">Net Pay: {record.employ != null ? record.employ : "N/A"}</div>
+ <div className="text-sm text-muted-foreground">Net Pay: {record.banktransfer != null ? Number(record.banktransfer).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</div>
  </div>
  </div>
  ))}
@@ -413,7 +413,7 @@ const handleExport = async () => {
  <TableCell>{record.account || "N/A"}</TableCell>
  <TableCell>{record.code || "N/A"}</TableCell>
  <TableCell>{record.branch || "N/A"}</TableCell>
- <TableCell>{record.banktransfer != null ? record.banktransfer : "N/A"}</TableCell>
+ <TableCell>{record.banktransfer != null ? Number(record.banktransfer).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</TableCell>
  </TableRow>
  ))}
  </TableBody>

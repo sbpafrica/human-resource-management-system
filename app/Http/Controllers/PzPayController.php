@@ -223,7 +223,7 @@ class PzPayController extends Controller
                 $sheet->setCellValueExplicit("F{$row}", $r->account ?? '', DataType::TYPE_STRING);
                 $sheet->setCellValueExplicit("G{$row}", $r->code ?? '', DataType::TYPE_STRING);
                 $sheet->setCellValue("H{$row}", $r->branch ?? '');
-                $sheet->setCellValue("I{$row}", $r->take_home_pay ? (float)$r->take_home_pay : '');
+                $sheet->setCellValue("I{$row}", ($r->take_home_pay !== null && $r->take_home_pay !== '') ? number_format((float)$r->take_home_pay, 2, '.', '') : '');
                 $row++;
             }
 
