@@ -28,7 +28,7 @@ class MelcomSalaryPaymentController extends Controller
             'saturdayot', 'actualdays', 'night', 'halfdays', 'satoffdays', 'sunoffdays', 'leavededuct',
             'absentdays', 'absenthrs', 'holiday', 'weekdaysOT', 'weekendOT', 'holidayot', 'basic',
             'absentwithoutpay', 'basicentitlement', 'transport', 'normalovertime', 'saturdayovertime',
-            'holidayotamt', 'gross', 'ssnit', 'taxable', 'paye', 'totalovertime', 'overtimetax',
+            'holidayotamt', 'gross', 'total_cash_emolument', 'total_assessable_income', 'ssnit', 'taxable', 'paye', 'totalovertime', 'overtimetax',
             'totaltax', 'trust', 'totaldeduction', 'banktransfer'
         ];
     }

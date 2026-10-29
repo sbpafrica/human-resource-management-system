@@ -232,59 +232,87 @@ public function export(Request $request)
  $duplicateStaffIds = [];
  $validRecords = [];
  $errors = [];
+ $hasNewColsInTable = DB::getSchemaBuilder()->hasColumn($tableName, 'total_cash_emolument');
 
  foreach ($rows as $index => $row) {
-    if (count($row) < 39) {
-        $errors[] = "Row " . ($index + 2) . ": Expected 39 columns, found " . count($row);
+    // Skip empty rows
+    if (empty(array_filter($row, fn($v) => !is_null($v) && trim((string)$v) !== ''))) {
         continue;
     }
 
-    // === DIRECT MAPPING FROM EXCEL (39 COLUMNS) ===
-    $employ             = trim($row[0] ?? '')  ?: null;   // Staff ID
-    $empoyeename        = trim($row[1] ?? '')  ?: null;   // Name
-    $outsourcename      = trim($row[2] ?? '')  ?: null;   // Outsourcing Company
-    $designation        = trim($row[3] ?? '')  ?: null;   // Position
-    $joindate           = trim($row[4] ?? '')  ?: null;   // Join Date
-    $shopname           = trim($row[5] ?? '')  ?: null;   // Shop/Branch
-    $category           = trim($row[6] ?? '')  ?: null;   // Staff Category
-    $saturdayot         = $row[7] ?? 0;
-    $actualdays         = is_numeric($row[8]  ?? '') ? (float)$row[8]  : null;
-    $night              = is_numeric($row[9]  ?? '') ? (float)$row[9]  : 0;
-    $halfdays           = is_numeric($row[10] ?? '') ? (float)$row[10] : 0;
-    $satoffdays         = is_numeric($row[11] ?? '') ? (float)$row[11] : 0;
-    $sunoffdays         = is_numeric($row[12] ?? '') ? (float)$row[12] : 0;
-    $leavededuct        = is_numeric($row[13] ?? '') ? (float)$row[13] : 0;
-    $absentdays         = is_numeric($row[14] ?? '') ? (float)$row[14] : 0;
-    $absenthrs          = is_numeric($row[15] ?? '') ? (float)$row[15] : 0;
-    $holiday            = is_numeric($row[16] ?? '') ? (float)$row[16] : 0;
-    $weekdaysOT         = is_numeric($row[17] ?? '') ? (float)$row[17] : 0;
-    $weekendOT          = is_numeric($row[18] ?? '') ? (float)$row[18] : 0;
-    $holidayot          = is_numeric($row[19] ?? '') ? (float)$row[19] : 0;
-    $basic              = is_numeric($row[20] ?? '') ? (float)$row[20] : null;
-    $absentwithoutpay   = is_numeric($row[21] ?? '') ? (float)$row[21] : 0;
-    $basicentitlement   = is_numeric($row[22] ?? '') ? (float)$row[22] : null;
-    $transport          = is_numeric($row[23] ?? '') ? (float)$row[23] : 0;
-    // Excel column 25 (index 24) = Normal Overtime.
-    $normalovertime     = is_numeric($row[24] ?? '') ? (float)$row[24] : 0;
-    $saturdayovertime   = is_numeric($row[25] ?? '') ? (float)$row[25] : 0;
-    $holidayotamt       = is_numeric($row[26] ?? '') ? (float)$row[26] : 0;
-    $gross              = is_numeric($row[27] ?? '') ? (float)$row[27] : null;
-    $ssniter              = is_numeric($row[28] ?? '') ? (float)$row[28] : 0;
-     $ssnitee              = is_numeric($row[29] ?? '') ? (float)$row[29] : 0;
-      $ssnit              = is_numeric($row[30] ?? '') ? (float)$row[30] : 0;
-    $taxable          = is_numeric($row[31] ?? '') ? (float)$row[31] : 0;
-    $paye               = is_numeric($row[32] ?? '') ? (float)$row[32] : 0;
-    $totalovertime      = is_numeric($row[33] ?? '') ? (float)$row[33] : 0;
-    $overtimetax        = is_numeric($row[34] ?? '') ? (float)$row[34] : 0;
-    $totaltax           = is_numeric($row[35] ?? '') ? (float)$row[35] : 0;
-    $trust              = is_numeric($row[36] ?? '') ? (float)$row[36] : 0;
-    $totaldeduction     = is_numeric($row[37] ?? '') ? (float)$row[37] : 0;
+    // Detect row offset (e.g., raw client file has 2 leading Sr. No columns)
+    $offset = 0;
+    if (count($row) >= 42 && is_numeric($row[0] ?? null) && is_numeric($row[1] ?? null) && !empty($row[2])) {
+        $offset = 2;
+    }
 
-    // Excel column 39 (index 38) = Bank Transfer / Net Pay.
-    $rawBankTransfer    = $row[38] ?? null;
-    $banktransfer       = is_numeric($rawBankTransfer)
-        ? (float)$rawBankTransfer
-        : null;
+    $effectiveCount = count($row) - $offset;
+    if ($effectiveCount < 39) {
+        $errors[] = "Row " . ($index + 2) . ": Expected at least 39 columns, found " . count($row);
+        continue;
+    }
+
+    $hasNewColsInRow = ($effectiveCount >= 41);
+
+    // Skip header rows if encountered in data
+    $firstCell = trim((string)($row[$offset] ?? ''));
+    if (in_array(strtolower($firstCell), ['staff id', 'emp', 'sr. no', 'sr.no', 'employee', 'employ'])) {
+        continue;
+    }
+
+    // === DIRECT MAPPING FROM EXCEL ===
+    $employ             = trim((string)($row[$offset + 0] ?? '')) ?: null;   // Staff ID
+    $empoyeename        = trim((string)($row[$offset + 1] ?? '')) ?: null;   // Name
+    $outsourcename      = trim((string)($row[$offset + 2] ?? '')) ?: null;   // Outsourcing Company
+    $designation        = trim((string)($row[$offset + 3] ?? '')) ?: null;   // Position
+    $joindate           = trim((string)($row[$offset + 4] ?? '')) ?: null;   // Join Date
+    $shopname           = trim((string)($row[$offset + 5] ?? '')) ?: null;   // Shop/Branch
+    $category           = trim((string)($row[$offset + 6] ?? '')) ?: null;   // Staff Category
+    $saturdayot         = $row[$offset + 7] ?? 0;
+    $actualdays         = is_numeric($row[$offset + 8]  ?? '') ? (float)$row[$offset + 8]  : null;
+    $night              = is_numeric($row[$offset + 9]  ?? '') ? (float)$row[$offset + 9]  : 0;
+    $halfdays           = is_numeric($row[$offset + 10] ?? '') ? (float)$row[$offset + 10] : 0;
+    $satoffdays         = is_numeric($row[$offset + 11] ?? '') ? (float)$row[$offset + 11] : 0;
+    $sunoffdays         = is_numeric($row[$offset + 12] ?? '') ? (float)$row[$offset + 12] : 0;
+    $leavededuct        = is_numeric($row[$offset + 13] ?? '') ? (float)$row[$offset + 13] : 0;
+    $absentdays         = is_numeric($row[$offset + 14] ?? '') ? (float)$row[$offset + 14] : 0;
+    $absenthrs          = is_numeric($row[$offset + 15] ?? '') ? (float)$row[$offset + 15] : 0;
+    $holiday            = is_numeric($row[$offset + 16] ?? '') ? (float)$row[$offset + 16] : 0;
+    $weekdaysOT         = is_numeric($row[$offset + 17] ?? '') ? (float)$row[$offset + 17] : 0;
+    $weekendOT          = is_numeric($row[$offset + 18] ?? '') ? (float)$row[$offset + 18] : 0;
+    $holidayot          = is_numeric($row[$offset + 19] ?? '') ? (float)$row[$offset + 19] : 0;
+    $basic              = is_numeric($row[$offset + 20] ?? '') ? (float)$row[$offset + 20] : null;
+    $absentwithoutpay   = is_numeric($row[$offset + 21] ?? '') ? (float)$row[$offset + 21] : 0;
+    $basicentitlement   = is_numeric($row[$offset + 22] ?? '') ? (float)$row[$offset + 22] : null;
+    $transport          = is_numeric($row[$offset + 23] ?? '') ? (float)$row[$offset + 23] : 0;
+    $normalovertime     = is_numeric($row[$offset + 24] ?? '') ? (float)$row[$offset + 24] : 0;
+    $saturdayovertime   = is_numeric($row[$offset + 25] ?? '') ? (float)$row[$offset + 25] : 0;
+    $holidayotamt       = is_numeric($row[$offset + 26] ?? '') ? (float)$row[$offset + 26] : 0;
+    $gross              = is_numeric($row[$offset + 27] ?? '') ? (float)$row[$offset + 27] : null;
+
+    if ($hasNewColsInRow) {
+        $total_cash_emolument    = is_numeric($row[$offset + 28] ?? '') ? (float)$row[$offset + 28] : null;
+        $total_assessable_income = is_numeric($row[$offset + 29] ?? '') ? (float)$row[$offset + 29] : null;
+        $postGrossOffset = 2;
+    } else {
+        $total_cash_emolument    = null;
+        $total_assessable_income = null;
+        $postGrossOffset = 0;
+    }
+
+    $ssniter            = is_numeric($row[$offset + 28 + $postGrossOffset] ?? '') ? (float)$row[$offset + 28 + $postGrossOffset] : 0;
+    $ssnitee            = is_numeric($row[$offset + 29 + $postGrossOffset] ?? '') ? (float)$row[$offset + 29 + $postGrossOffset] : 0;
+    $ssnit              = is_numeric($row[$offset + 30 + $postGrossOffset] ?? '') ? (float)$row[$offset + 30 + $postGrossOffset] : 0;
+    $taxable            = is_numeric($row[$offset + 31 + $postGrossOffset] ?? '') ? (float)$row[$offset + 31 + $postGrossOffset] : 0;
+    $paye               = is_numeric($row[$offset + 32 + $postGrossOffset] ?? '') ? (float)$row[$offset + 32 + $postGrossOffset] : 0;
+    $totalovertime      = is_numeric($row[$offset + 33 + $postGrossOffset] ?? '') ? (float)$row[$offset + 33 + $postGrossOffset] : 0;
+    $overtimetax        = is_numeric($row[$offset + 34 + $postGrossOffset] ?? '') ? (float)$row[$offset + 34 + $postGrossOffset] : 0;
+    $totaltax           = is_numeric($row[$offset + 35 + $postGrossOffset] ?? '') ? (float)$row[$offset + 35 + $postGrossOffset] : 0;
+    $trust              = is_numeric($row[$offset + 36 + $postGrossOffset] ?? '') ? (float)$row[$offset + 36 + $postGrossOffset] : 0;
+    $totaldeduction     = is_numeric($row[$offset + 37 + $postGrossOffset] ?? '') ? (float)$row[$offset + 37 + $postGrossOffset] : 0;
+
+    $rawBankTransfer    = $row[$offset + 38 + $postGrossOffset] ?? null;
+    $banktransfer       = is_numeric($rawBankTransfer) ? (float)$rawBankTransfer : null;
 
     // === VALIDATION ===
     if (empty($employ)) {
@@ -313,7 +341,7 @@ public function export(Request $request)
         continue;
     }
 
-    // === FINAL DATA ARRAY - 100% MATCH ===
+    // === FINAL DATA ARRAY ===
     $data = [
         'employ'            => $employ,
         'empoyeename'       => $empoyeename,
@@ -326,11 +354,11 @@ public function export(Request $request)
         'actualdays'        => $actualdays,
         'night'             => $night,
         'halfdays'          => $halfdays,
-        'satoffdays'       => $satoffdays,
-        'sunoffdays'       => $sunoffdays,
+        'satoffdays'        => $satoffdays,
+        'sunoffdays'        => $sunoffdays,
         'leavededuct'       => $leavededuct,
         'absentdays'        => $absentdays,
-        'absenthrs'          => $absenthrs,
+        'absenthrs'         => $absenthrs,
         'holiday'           => $holiday,
         'weekdaysOT'        => $weekdaysOT,
         'weekendOT'         => $weekendOT,
@@ -343,10 +371,10 @@ public function export(Request $request)
         'saturdayovertime'  => $saturdayovertime,
         'holidayotamt'      => $holidayotamt,
         'gross'             => $gross,
-        'ssniter'             => $ssniter,
-        'ssnitee'             => $ssnitee,
+        'ssniter'           => $ssniter,
+        'ssnitee'           => $ssnitee,
         'ssnit'             => $ssnit,
-        'taxable'          => $taxable,
+        'taxable'           => $taxable,
         'paye'              => $paye,
         'totalovertime'     => $totalovertime,
         'overtimetax'       => $overtimetax,
@@ -355,6 +383,11 @@ public function export(Request $request)
         'totaldeduction'    => $totaldeduction,
         'banktransfer'      => $banktransfer,
     ];
+
+    if ($hasNewColsInTable) {
+        $data['total_cash_emolument'] = $total_cash_emolument ?? $gross;
+        $data['total_assessable_income'] = $total_assessable_income ?? $gross;
+    }
 
     $validRecords[] = $data;
     $existingStaffIds[] = $employ;
@@ -459,6 +492,8 @@ public function export(Request $request)
         'Saturday Overtime',  // saturdayovertime
         'Holiday OT Amt',     // holidayotamt
         'Gross',              // gross
+        'Total Cash Emolument',    // total_cash_emolument
+        'Total Assessable Income', // total_assessable_income
         'SSNIT ER',              // ssnit (employee contribution)
          'SSNIT EE',              // ssnit (employee contribution)
           'SSNIT',              // ssnit (employee contribution)
@@ -508,6 +543,8 @@ public function export(Request $request)
         400.00,         // Saturday Overtime
         0.00,           // Holiday OT Amt
         3950.00,        // Gross
+        3950.00,        // Total Cash Emolument
+        3950.00,        // Total Assessable Income
         247.50,         // SSNIT (13.5%)
         247.50,         // SSNIT (13.5%)
         247.50,         // SSNIT (13.5%)
