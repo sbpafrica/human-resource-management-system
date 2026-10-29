@@ -239,7 +239,14 @@ public function export(Request $request)
  $spreadsheet = $reader->load($file->getRealPath());
  $sheet = $spreadsheet->getActiveSheet();
  $rows = $sheet->toArray();
- array_shift($rows); // Remove header row
+ $headerRow = array_shift($rows); // Remove header row
+
+ // New Kumasi layout (47 cols) has Total Cash Emolument (col M) and Total Assessable Income (col O).
+ // Detect by header name; legacy 45-col files still work.
+ $hasNewCols = false;
+ foreach ($headerRow as $h) {
+     if (stripos(trim((string)$h), 'total cash emolument') !== false) { $hasNewCols = true; break; }
+ }
 
  // Check for existing staff IDs
  $existingStaffIds = DB::table($tableName)->pluck('employ')->toArray();
@@ -248,9 +255,25 @@ public function export(Request $request)
  $errors = [];
 
  foreach ($rows as $index => $row) {
-    if (count($row) < 45) {
-        $errors[] = "Row " . ($index + 2) . ": Expected 45 columns, found " . count($row);
+    $minCols = $hasNewCols ? 47 : 45;
+    if (count($row) < $minCols) {
+        $errors[] = "Row " . ($index + 2) . ": Expected {$minCols} columns, found " . count($row);
         continue;
+    }
+
+    // Skip fully empty rows
+    if (empty(array_filter($row, fn($v) => !is_null($v) && trim((string)$v) !== ''))) {
+        continue;
+    }
+
+    // Pull out the two new columns and normalise the row back to the legacy positions
+    $total_cash_emolument = null;
+    $total_assessable_income = null;
+    if ($hasNewCols) {
+        $total_cash_emolument    = is_numeric($row[12] ?? '') ? (float)$row[12] : null;
+        $total_assessable_income = is_numeric($row[14] ?? '') ? (float)$row[14] : null;
+        unset($row[14], $row[12]);
+        $row = array_values($row);
     }
 
    // === MAPPED TO 24-COLUMN DATABASE STRUCTURE ===
@@ -351,7 +374,9 @@ $data = [
     'night_allowance'                 => $night_allowance,
     'refund'                          => $refund,
     'allowance'                       => $allowance,
+    'total_cash_emolument'            => $total_cash_emolument,
     'deduction'                       => $deduction,
+    'total_assessable_income'         => $total_assessable_income,
     'ssnit_ee'                        => $ssnit_ee,
     'petra'                        => $petra,
     'taxable_income'                  => $taxable_income,
@@ -457,7 +482,7 @@ $data = [
     'Staff ID', 'Name', 'Department', 'Date Employed',
     'Expected Work Days', 'Total Hours Worked',
     'Basic', 'Basic Earned', 'Food Allowance', 'Night Allowance',
-    'Refund', 'Allowance', 'Deduction',
+    'Refund', 'Allowance', 'Total Cash Emolument', 'Deduction', 'Total Assessable Income',
     'SSNIT EE', 'PETRA', 'Taxable Income', 'PAYE', 'SSF', 'Welfare',
     'Medical Insurance', 'Workmens Compensation', 'Risk Allowance',
     'End of Year', 'PPE', 'Staff Cost', 'Mgt Fee', 'GFL', 'NHIL',
@@ -470,14 +495,16 @@ $data = [
 ];
 
         $sheet->fromArray($headers, null, 'A1');
-        $sheet->getStyle('A1:AU1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:AW1')->getFont()->setBold(true);
+        $sheet->getStyle('M1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
+        $sheet->getStyle('O1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
 
         // Example row
         $exampleData = [
     'EMP00123', 'Ama Serwaa', 'Operations', '2022-03-15',
     22, 176.5,
     4800.00, 4800.00, 400.00, 600.00,
-    150.00, 1150.00, 200.00,
+    150.00, 1150.00, 6400.00, 200.00, 6200.00,
     264.00, 5700.00, 850.00, 624.00, 100.00,
     180.00, 120.00, 300.00,
     0.00, 80.00,80.00, 7434.00, 1200.00, 135.00, 135.00,

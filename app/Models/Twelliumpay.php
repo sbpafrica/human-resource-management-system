@@ -27,7 +27,9 @@ class Twelliumpay extends Model
         'night_allowance',
         'refund',
         'allowance',
+        'total_cash_emolument',
         'deduction',
+        'total_assessable_income',
         'ssnit_ee',
         'petra',
         'taxable_income',
@@ -82,7 +84,9 @@ class Twelliumpay extends Model
         'night_allowance'                 => 'double',
         'refund'                          => 'double',
         'allowance'                       => 'double',
+        'total_cash_emolument'            => 'double',
         'deduction'                       => 'double',
+        'total_assessable_income'         => 'double',
         'ssnit_ee'                        => 'double',
         'petra'                        => 'double',
         'taxable_income'                  => 'double',
@@ -142,7 +146,9 @@ class Twelliumpay extends Model
                     `night_allowance` DECIMAL(12,2) NULL DEFAULT NULL,
                     `refund` DECIMAL(12,2) NULL DEFAULT NULL,
                     `allowance` DECIMAL(12,2) NULL DEFAULT NULL,
+                    `total_cash_emolument` DECIMAL(12,2) NULL DEFAULT NULL,
                     `deduction` DECIMAL(12,2) NULL DEFAULT NULL,
+                    `total_assessable_income` DECIMAL(12,2) NULL DEFAULT NULL,
                     `ssnit_ee` DECIMAL(12,2) NULL DEFAULT NULL,
                     `petra` DECIMAL(12,2) NULL DEFAULT NULL,
                     `taxable_income` DECIMAL(12,2) NULL DEFAULT NULL,
@@ -177,6 +183,15 @@ class Twelliumpay extends Model
                     `netpay` DECIMAL(12,2) NULL DEFAULT NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
             ");
+        } else {
+            // Upgrade older monthly tables with the two new Kumasi columns (existing data untouched)
+            $schema = DB::getSchemaBuilder();
+            if (!$schema->hasColumn($tableName, 'total_cash_emolument')) {
+                DB::statement("ALTER TABLE `$tableName` ADD COLUMN `total_cash_emolument` DECIMAL(12,2) NULL DEFAULT NULL AFTER `allowance`");
+            }
+            if (!$schema->hasColumn($tableName, 'total_assessable_income')) {
+                DB::statement("ALTER TABLE `$tableName` ADD COLUMN `total_assessable_income` DECIMAL(12,2) NULL DEFAULT NULL AFTER `deduction`");
+            }
         }
     }
 
