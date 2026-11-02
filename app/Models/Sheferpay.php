@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class Sheferpay extends Model
 {
@@ -11,8 +12,6 @@ class Sheferpay extends Model
     public $incrementing = false;
     protected $keyType = 'string';
     public $timestamps = false;
-
-
 
     protected $fillable = [
         'staff_id',
@@ -52,9 +51,13 @@ class Sheferpay extends Model
         'medical',
         'total_allowance',
         'gross',
+        // ★ NEW columns (SHEFER 58-col file, AN & AO) ★
+        'total_cash_emolument',
+        'total_assessable_income',
+        // ────────────────────────────────────────────────
         'emp_ssnit_13_percent',
         'ssnit_5_5_percent',
-         'petra',
+        'petra',
         'taxable_income',
         'paye',
         'ot_tax',
@@ -68,11 +71,11 @@ class Sheferpay extends Model
 
     protected $casts = [
         // Integers
-        'total_weekdays'     => 'integer',
-        'no_of_days_worked'  => 'integer',
+        'total_weekdays'    => 'integer',
+        'no_of_days_worked' => 'integer',
         'leavepay'          => 'integer',
-        'absent_days'        => 'integer',
-        'nightdays'          => 'integer',
+        'absent_days'       => 'integer',
+        'nightdays'         => 'integer',
 
         // Decimal & Double fields → PHP float
         'basic'                  => 'double',
@@ -83,7 +86,7 @@ class Sheferpay extends Model
         'weekendOT_hours'        => 'double',
         'weekendOT_rate'         => 'double',
         'weekendOT_amount'       => 'double',
-        'sunOT_hours'           => 'double',
+        'sunOT_hours'            => 'double',
         'sunOT_rate'             => 'double',
         'sunOT_amount'           => 'double',
         'fixedotbasic'           => 'double',
@@ -102,9 +105,14 @@ class Sheferpay extends Model
         'medical'                => 'double',
         'total_allowance'        => 'double',
         'gross'                  => 'double',
+
+        // ★ NEW columns ★
+        'total_cash_emolument'    => 'double',
+        'total_assessable_income' => 'double',
+
         'emp_ssnit_13_percent'   => 'double',
         'ssnit_5_5_percent'      => 'double',
-        'petra'      => 'double',
+        'petra'                  => 'double',
         'taxable_income'         => 'double',
         'paye'                   => 'double',
         'ot_tax'                 => 'double',
@@ -125,7 +133,9 @@ class Sheferpay extends Model
     }
 
     /**
-     * Create monthly payroll table if it doesn't exist
+     * Create monthly payroll table if it doesn't exist,
+     * and ensure the two new columns exist on already-created tables.
+     * Safe to call on every upload — ALTER guarded by Schema::hasColumn().
      */
     public static function createTableIfNotExists($tableName)
     {
@@ -169,6 +179,8 @@ class Sheferpay extends Model
                     `medical` DECIMAL(10,2) NULL DEFAULT NULL,
                     `total_allowance` DECIMAL(10,2) NULL DEFAULT NULL,
                     `gross` DECIMAL(10,2) NULL DEFAULT NULL,
+                    `total_cash_emolument` DECIMAL(15,2) NULL DEFAULT NULL,
+                    `total_assessable_income` DECIMAL(15,2) NULL DEFAULT NULL,
                     `emp_ssnit_13_percent` DECIMAL(10,2) NULL DEFAULT NULL,
                     `ssnit_5_5_percent` DECIMAL(10,2) NULL DEFAULT NULL,
                     `petra` DECIMAL(10,2) NULL DEFAULT NULL,
@@ -184,14 +196,38 @@ class Sheferpay extends Model
                 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
             ");
         } else {
+            // Legacy column-type fixes (unchanged)
             try {
-                DB::statement("ALTER TABLE `$tableName` 
+                DB::statement("ALTER TABLE `$tableName`
                     MODIFY COLUMN `leavepay` DECIMAL(10,2) NULL DEFAULT NULL,
                     MODIFY COLUMN `nightdays` DECIMAL(10,2) NULL DEFAULT NULL,
                     MODIFY COLUMN `foodbasic` DECIMAL(10,2) NULL DEFAULT NULL
                 ");
             } catch (\Exception $e) {
                 // Ignore alter errors if columns don't exist
+            }
+
+            // Add the two new columns to existing monthly tables
+            $schema = DB::getSchemaBuilder();
+
+            if (!$schema->hasColumn($tableName, 'total_cash_emolument')) {
+                try {
+                    DB::statement("ALTER TABLE `$tableName`
+                        ADD COLUMN `total_cash_emolument` DECIMAL(15,2) NULL DEFAULT NULL
+                    ");
+                } catch (\Exception $e) {
+                    // ignore
+                }
+            }
+
+            if (!$schema->hasColumn($tableName, 'total_assessable_income')) {
+                try {
+                    DB::statement("ALTER TABLE `$tableName`
+                        ADD COLUMN `total_assessable_income` DECIMAL(15,2) NULL DEFAULT NULL
+                    ");
+                } catch (\Exception $e) {
+                    // ignore
+                }
             }
         }
     }

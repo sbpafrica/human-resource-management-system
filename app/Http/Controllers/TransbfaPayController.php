@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
+use PhpOffice\PhpSpreadsheet\IOFactory;                 // ← FIX #1 (auto-detect xlsx/xls/csv/ods)
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -18,19 +18,29 @@ use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
 class TransbfaPayController extends Controller
 {
-    /**
-     * Build the monthly table name for transburkina payroll.
-     * E.g. April 2026 → transburkinaapril26
-     */
+    /** Build the monthly table name. E.g. April 2026 → transburkinaapril26 */
     private function buildTableName(string $month): string
     {
         $date = Carbon::createFromFormat('Y-m', $month);
         return 'transburkina' . strtolower($date->format('F')) . $date->format('y');
     }
 
-    /**
-     * Auto-create the transburkina payroll table if it does not exist.
-     */
+    /** Safely parse a Y-m string, falling back to the current month. */
+    private function parseMonthOrNow(?string $month): array
+    {
+        try {
+            $date = Carbon::createFromFormat('Y-m', (string) $month);
+            // Guard against overflows like "2026-13"
+            if ($date->format('Y-m') !== (string) $month) {
+                throw new \InvalidArgumentException('Invalid month');
+            }
+            return [$month, $date];
+        } catch (\Throwable $e) {
+            $now = now();
+            return [$now->format('Y-m'), $now];
+        }
+    }
+
     private function createTableIfNotExists(string $tableName): void
     {
         DB::statement("
@@ -105,13 +115,62 @@ class TransbfaPayController extends Controller
         ");
     }
 
+    /**
+     * FIX #10 — central whitelist used by both index() and export() so the two
+     * never drift apart.
+     */
+    private function resolveSortColumn(string $sort, string $tableAlias = 't', string $bankAlias = 'b'): ?string
+    {
+        return match ($sort) {
+            'staffid'     => "{$tableAlias}.staffid",
+            'fullname'    => "{$tableAlias}.fullname",
+            'finalnetpay' => "{$tableAlias}.finalnetpay",
+            'bankname'    => "{$bankAlias}.bankname",   // handled specially below
+            default       => "{$tableAlias}.fullname",
+        };
+    }
+
+    private function applySearch($query, string $search, string $tableAlias = 't', string $bankAlias = 'b'): void
+    {
+        if ($search === '') {
+            return;
+        }
+        $query->where(function ($q) use ($search, $tableAlias, $bankAlias) {
+            $q->where("{$tableAlias}.staffid",   'like', "%{$search}%")
+              ->orWhere("{$tableAlias}.fullname", 'like', "%{$search}%")
+              ->orWhere("{$bankAlias}.bankname",  'like', "%{$search}%")
+              ->orWhere("{$bankAlias}.accountnum",'like', "%{$search}%");
+        });
+    }
+
+    /**
+     * FIX #3 + #4 — NULL-safe sort direction for bankname, plus a stable
+     * secondary sort on staffid so pagination doesn't shuffle rows.
+     */
+    private function applySort($query, string $sort, string $order, string $tableAlias = 't', string $bankAlias = 'b'): void
+    {
+        $direction = $order === 'desc' ? 'desc' : 'asc';
+
+        if ($sort === 'bankname') {
+            // Non-null banks first, then null banks last, regardless of direction
+            $query->orderByRaw("{$bankAlias}.bankname IS NULL, {$bankAlias}.bankname {$direction}");
+        } else {
+            $column = $this->resolveSortColumn($sort, $tableAlias, $bankAlias);
+            $query->orderBy($column, $direction);
+        }
+
+        // Stable tiebreaker
+        $query->orderBy("{$tableAlias}.staffid", 'asc');
+    }
+
     public function index(Request $request)
     {
-        $month  = $request->input('month', now()->format('Y-m'));
-        $search = $request->input('search', '');
-        $sort   = $request->input('sort', 'fullname');
-        $order  = $request->input('order', 'asc');
-        $date   = Carbon::createFromFormat('Y-m', $month);
+        [$month, $date] = $this->parseMonthOrNow($request->input('month'));
+
+        $search = (string) $request->input('search', '');
+        $sort   = (string) $request->input('sort', 'fullname');
+        $order  = (string) $request->input('order', 'asc');
+
         $tableName = $this->buildTableName($month);
 
         if (!Schema::hasTable($tableName)) {
@@ -126,7 +185,9 @@ class TransbfaPayController extends Controller
                 'search'         => $search,
                 'sort'           => $sort,
                 'order'          => $order,
-                'flash'          => ['error' => "No data available for {$date->format('F Y')}. Please upload data."],
+                'flash'          => [
+                    'error' => "No data available for {$date->format('F Y')}. Please upload data.",
+                ],
             ]);
         }
 
@@ -141,25 +202,8 @@ class TransbfaPayController extends Controller
                 'b.employname'
             );
 
-        if ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where('t.staffid',   'like', "%{$search}%")
-                  ->orWhere('t.fullname', 'like', "%{$search}%")
-                  ->orWhere('b.bankname', 'like', "%{$search}%")
-                  ->orWhere('b.accountnum', 'like', "%{$search}%");
-            });
-        }
-
-        // Map sort param to actual column
-        $sortColumn = match ($sort) {
-            'staffid'     => 't.staffid',
-            'fullname'    => 't.fullname',
-            'finalnetpay' => 't.finalnetpay',
-            'bankname'    => 'b.bankname',
-            default       => 't.fullname',
-        };
-
-        $query->orderBy($sortColumn, $order === 'desc' ? 'desc' : 'asc');
+        $this->applySearch($query, $search);
+        $this->applySort($query, $sort, $order);
 
         $records = $query->paginate(15)->appends([
             'month'  => $month,
@@ -169,15 +213,16 @@ class TransbfaPayController extends Controller
         ]);
 
         $totalRecords = DB::table($tableName)->count();
-        $searchCount  = $search ? $records->total() : null;
+        $searchCount  = $search !== '' ? $records->total() : null;
 
-        // Stats for bank coverage
-        $allRecords = DB::table("{$tableName} as t")
+        // FIX #5 — COUNT(DISTINCT) so duplicate bfabank rows don't inflate the metric
+        $hasBank = (int) DB::table("{$tableName} as t")
             ->leftJoin('bfabank as b', 't.staffid', '=', 'b.staffida')
-            ->select('b.bankname')
-            ->get();
-        $hasBank = $allRecords->filter(fn($r) => !is_null($r->bankname))->count();
-        $noBank  = $allRecords->filter(fn($r) => is_null($r->bankname))->count();
+            ->whereNotNull('b.bankname')
+            ->selectRaw('COUNT(DISTINCT t.staffid) as c')
+            ->value('c');
+
+        $noBank = max(0, $totalRecords - $hasBank);
 
         return Inertia::render('TranssionBfa/Pay/Index', [
             'records'        => $records,
@@ -209,43 +254,47 @@ class TransbfaPayController extends Controller
 
         try {
             $this->createTableIfNotExists($tableName);
-            DB::table($tableName)->truncate();
 
-            $file        = $request->file('file');
-            $reader      = new XlsxReader();
+            $file = $request->file('file');
+
+            // FIX #1 — auto-detect reader from file extension
+            $reader = IOFactory::createReaderForFile($file->getRealPath());
+            $reader->setReadDataOnly(false);
             $spreadsheet = $reader->load($file->getRealPath());
             $sheet       = $spreadsheet->getActiveSheet();
-            $rows        = $sheet->toArray(null, true, true, false);
+
+            // FIX #2 — formatData = false → raw floats/ints instead of "1,234.56"
+            $rows = $sheet->toArray(null, true, false, false);
 
             if (empty($rows)) {
                 return redirect()->back()->with('error', 'Uploaded file is empty.');
             }
 
-            // Find primary header row (skipping top summary/totals rows if present)
+            // ── Detect header row ──────────────────────────────────────────
             $headerRowIdx = -1;
             foreach ($rows as $rIdx => $row) {
                 foreach ($row as $cell) {
-                    $cleanCell = strtolower(trim((string)$cell));
-                    if (str_contains($cleanCell, 'staff.no') || 
-                        str_contains($cleanCell, 'staff id') || 
-                        str_contains($cleanCell, 'staff no') || 
-                        str_contains($cleanCell, 'full name') ||
-                        str_contains($cleanCell, 'nom et prenoms')) {
+                    $cleanCell = strtolower(trim((string) $cell));
+                    if (str_contains($cleanCell, 'staff.no')
+                        || str_contains($cleanCell, 'staff no')
+                        || str_contains($cleanCell, 'staff id')
+                        || str_contains($cleanCell, 'full name')
+                        || str_contains($cleanCell, 'nom et prenoms')
+                        || str_contains($cleanCell, 'nom et prenom')) {
                         $headerRowIdx = $rIdx;
                         break 2;
                     }
                 }
             }
-
             if ($headerRowIdx === -1) {
                 $headerRowIdx = 0;
             }
 
-            // Build normalized merged header map from top rows around headerRowIdx
+            // ── Merge headers from headerRowIdx downward ────────────────────
             $mergedHeaders = [];
             for ($r = max(0, $headerRowIdx); $r < min($headerRowIdx + 3, count($rows)); $r++) {
                 foreach ($rows[$r] as $idx => $cell) {
-                    $clean = strtolower(preg_replace('/\s+/', ' ', trim((string)$cell)));
+                    $clean = strtolower(preg_replace('/\s+/', ' ', trim((string) $cell)));
                     if ($clean !== '' && !isset($mergedHeaders[$idx])) {
                         $mergedHeaders[$idx] = $clean;
                     }
@@ -320,7 +369,6 @@ class TransbfaPayController extends Controller
                 'brand'          => ['brand'],
             ];
 
-            // Resolve column index in uploaded file for each DB column
             $dbColToIdx = [];
             foreach ($aliasMap as $dbColumn => $aliases) {
                 foreach ($mergedHeaders as $idx => $hText) {
@@ -333,54 +381,98 @@ class TransbfaPayController extends Controller
                 }
             }
 
+            // FIX #10 — bail loudly instead of silently inserting 0 records
+            if (!isset($dbColToIdx['staffid'])) {
+                return redirect()->back()->with(
+                    'error',
+                    'Could not detect a "Staff ID" / "Staff No" column in the uploaded file. Please use the provided template.'
+                );
+            }
+
             $stringColumns = [
                 'staffid', 'firstname', 'lastname', 'fullname', 'department', 'dept2', 'cost', 'center',
                 'hiredate', 'departure', 'constart', 'conend', 'corporatecode', 'position', 'grade', 'workplace',
                 'bank', 'alcnum', 'cnssno', 'kpirank', 'enfant', 'nom', 'brand',
             ];
 
+            // FIX #9 — expanded to cover every header we might still hit
             $skipHeaderWords = [
-                'no', 'staff.no', 'staff no', 'staff id', 'legal', 'actual', 'basic', 'allowance', 
-                'kpi', 'overtime', 'salaires', 'transp', 'logem', 'fonct', 'abattem', 'cnss', 
-                'iuts', 'base', 'total', 'exonérations & base imposable', "employees' contributions", 
-                "employers' contributions", 'coût rh total'
+                'no', 'no.', 'n°', 'nº', 's/n', 'sn', 'number', 'num',
+                'staff.no', 'staff no', 'staff id', 'staff_id', 'staff_no',
+                'legal', 'actual', 'basic', 'allowance',
+                'kpi', 'overtime', 'salaires', 'transp', 'logem', 'fonct', 'abattem', 'cnss',
+                'iuts', 'base', 'total', 'subtotal', 'grand total',
+                'exonérations & base imposable', "employees' contributions",
+                "employers' contributions", 'coût rh total',
+                'nom et prenoms', 'nom et prenom', 'full name', 'name', 'names',
+                'first name', 'last name', 'prenom',
             ];
 
+            $staffidIdx = $dbColToIdx['staffid'];
             $validRecords = [];
 
             foreach ($rows as $row) {
-                $staffidIdx = $dbColToIdx['staffid'] ?? null;
-                $staffid    = $staffidIdx !== null ? trim((string)($row[$staffidIdx] ?? '')) : '';
+                $staffid = trim((string) ($row[$staffidIdx] ?? ''));
                 $cleanStaff = strtolower($staffid);
-                if ($staffid === '' || in_array($cleanStaff, $skipHeaderWords)) continue;
+
+                if ($staffid === '' || in_array($cleanStaff, $skipHeaderWords, true)) {
+                    continue;
+                }
 
                 $record = ['staffid' => $staffid];
                 foreach ($aliasMap as $dbColumn => $aliases) {
-                    if ($dbColumn === 'staffid') continue;
+                    if ($dbColumn === 'staffid') {
+                        continue;
+                    }
                     $idx = $dbColToIdx[$dbColumn] ?? null;
                     $val = $idx !== null ? ($row[$idx] ?? null) : null;
-                    if (in_array($dbColumn, $stringColumns)) {
-                        $record[$dbColumn] = $val !== null ? trim((string)$val) : null;
+
+                    if (in_array($dbColumn, $stringColumns, true)) {
+                        if ($val === null) {
+                            $record[$dbColumn] = null;
+                        } elseif (is_float($val) && $val == floor($val) && abs($val) < PHP_INT_MAX) {
+                            // Large integer cell (e.g. account number) — render without scientific notation
+                            $record[$dbColumn] = (string) (int) $val;
+                        } else {
+                            $record[$dbColumn] = trim((string) $val);
+                        }
                     } else {
-                        $strVal = trim((string)($val ?? ''));
-                        $record[$dbColumn] = is_numeric($strVal) ? (float)$strVal : 0;
+                        $strVal  = trim((string) ($val ?? ''));
+                        $cleaned = str_replace([',', ' ', "\u{00A0}"], '', $strVal);
+                        $record[$dbColumn] = is_numeric($cleaned) ? (float) $cleaned : 0;
                     }
                 }
 
                 $validRecords[] = $record;
             }
 
-            if (!empty($validRecords)) {
-                foreach (array_chunk($validRecords, 200) as $chunk) {
-                    DB::table($tableName)->insert($chunk);
-                }
+            // FIX #6 — dedupe by staffid; the DB primary key would otherwise
+            // make the chunked insert fail hard on the second duplicate.
+            $deduped = [];
+            foreach ($validRecords as $rec) {
+                $deduped[$rec['staffid']] = $rec;
             }
+            $validRecords = array_values($deduped);
 
-            return redirect()->back()
-                ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s) for ' . Carbon::createFromFormat('Y-m', $month)->format('F Y') . '.');
+            // FIX #7 — atomic replace so a failure mid-insert doesn't wipe the month
+            DB::transaction(function () use ($tableName, $validRecords) {
+                DB::table($tableName)->truncate();
+                foreach (array_chunk($validRecords, 200) as $chunk) {
+                    DB::table($tableName)->insertOrIgnore($chunk);
+                }
+            });
+
+            return redirect()->back()->with(
+                'success',
+                'Successfully uploaded ' . count($validRecords)
+                . ' record(s) for ' . Carbon::createFromFormat('Y-m', $month)->format('F Y') . '.'
+            );
 
         } catch (\Exception $e) {
-            Log::error('TransbfaPay upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            Log::error('TransbfaPay upload failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return redirect()->back()->with('error', 'Failed to process file: ' . $e->getMessage());
         }
     }
@@ -402,7 +494,7 @@ class TransbfaPayController extends Controller
         ];
 
         foreach ($headers as $i => $header) {
-            $sheet->setCellValue(Coordinate::stringFromColumnIndex($i + 1) . "1", $header);
+            $sheet->setCellValue(Coordinate::stringFromColumnIndex($i + 1) . '1', $header);
         }
 
         $totalCols   = count($headers);
@@ -432,10 +524,18 @@ class TransbfaPayController extends Controller
         ]);
     }
 
+    /**
+     * FIX #11 — respects the search/sort/order that the user currently has applied,
+     * so the exported file matches what they see on screen.
+     */
     public function export(Request $request)
     {
-        $month     = $request->input('month', now()->format('Y-m'));
-        $date      = Carbon::createFromFormat('Y-m', $month);
+        [$month, $date] = $this->parseMonthOrNow($request->input('month'));
+
+        $search = (string) $request->input('search', '');
+        $sort   = (string) $request->input('sort', 'fullname');
+        $order  = (string) $request->input('order', 'asc');
+
         $tableName = $this->buildTableName($month);
 
         if (!Schema::hasTable($tableName)) {
@@ -443,14 +543,17 @@ class TransbfaPayController extends Controller
         }
 
         try {
-            $records = DB::table("{$tableName} as t")
+            $query = DB::table("{$tableName} as t")
                 ->leftJoin('bfabank as b', 't.staffid', '=', 'b.staffida')
-                ->select('t.staffid', 't.fullname', 'b.bankname', 'b.accountnum', 't.finalnetpay')
-                ->orderBy('t.fullname')
-                ->get();
+                ->select('t.staffid', 't.fullname', 'b.bankname', 'b.accountnum', 't.finalnetpay');
+
+            $this->applySearch($query, $search);
+            $this->applySort($query, $sort, $order);
+
+            $records = $query->get();
 
             $spreadsheet = new Spreadsheet();
-            $sheet = $spreadsheet->getActiveSheet();
+            $sheet       = $spreadsheet->getActiveSheet();
 
             $sheet->setCellValue('A1', 'Staff ID');
             $sheet->setCellValue('B1', 'Full Name');
@@ -458,6 +561,7 @@ class TransbfaPayController extends Controller
             $sheet->setCellValue('D1', 'Account Number');
             $sheet->setCellValue('E1', 'Net Pay');
 
+            // Force account numbers to stay as text
             $sheet->getStyle('D:D')->getNumberFormat()
                 ->setFormatCode(\PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT);
 
@@ -467,8 +571,9 @@ class TransbfaPayController extends Controller
                 $sheet->setCellValue('A' . $row, $r->staffid ?? '');
                 $sheet->setCellValue('B' . $row, $r->fullname ?? '');
                 $sheet->setCellValue('C' . $row, $r->bankname ?? '');
-                $sheet->setCellValueExplicit('D' . $row, $r->accountnum ?? '', DataType::TYPE_STRING);
-                $netPay = (float)($r->finalnetpay ?? 0);
+                $sheet->setCellValueExplicit('D' . $row, (string) ($r->accountnum ?? ''), DataType::TYPE_STRING);
+
+                $netPay = (float) ($r->finalnetpay ?? 0);
                 $sheet->setCellValue('E' . $row, $netPay);
                 $totalPay += $netPay;
                 $row++;
@@ -493,7 +598,7 @@ class TransbfaPayController extends Controller
             return response()->streamDownload(function () use ($writer) {
                 $writer->save('php://output');
             }, $fileName, [
-                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Type'  => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 'Cache-Control' => 'no-store, no-cache',
             ]);
 
@@ -507,9 +612,8 @@ class TransbfaPayController extends Controller
     {
         $request->validate(['month' => ['required', 'date_format:Y-m']]);
 
-        $month     = $request->input('month');
-        $date      = Carbon::createFromFormat('Y-m', $month);
-        $tableName = $this->buildTableName($month);
+        [$month, $date] = $this->parseMonthOrNow($request->input('month'));
+        $tableName      = $this->buildTableName($month);
 
         try {
             if (Schema::hasTable($tableName)) {
@@ -534,10 +638,9 @@ class TransbfaPayController extends Controller
             'ids.*' => ['string'],
         ]);
 
-        $month     = $request->input('month');
-        $ids       = $request->input('ids');
-        $date      = Carbon::createFromFormat('Y-m', $month);
-        $tableName = $this->buildTableName($month);
+        [$month, $date] = $this->parseMonthOrNow($request->input('month'));
+        $ids            = $request->input('ids');
+        $tableName      = $this->buildTableName($month);
 
         try {
             if (Schema::hasTable($tableName)) {
