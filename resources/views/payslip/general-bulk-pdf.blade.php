@@ -155,6 +155,22 @@
                         <td></td>
                     </tr>
                     @endif
+                    @if((float)data_get($payslip, 'normalovertime', 0) <= 0 && (float)data_get($payslip, 'saturdayovertime', 0) <= 0 && (float)data_get($payslip, 'holidayotamt', 0) <= 0 && (float)data_get($payslip, 'total_overtime_amt', data_get($payslip, 'overtime', 0)) > 0)
+                    <tr>
+                        <td colspan="2">Total Overtime</td>
+                        <td style="text-align:right;">{{ data_get($payslip, 'overtime_hours', data_get($payslip, 'weekdaysOT', '-')) }}</td>
+                        <td style="text-align:center;">{{ number_format((float)data_get($payslip, 'total_overtime_amt', data_get($payslip, 'overtime', 0)), 2) }}</td>
+                        <td></td>
+                    </tr>
+                    @endif
+                    @if((float)data_get($payslip, 'overtimerefund', 0) > 0)
+                    <tr>
+                        <td colspan="2">Overtime Refund</td>
+                        <td></td>
+                        <td style="text-align:center;">{{ number_format((float)data_get($payslip, 'overtimerefund', 0), 2) }}</td>
+                        <td></td>
+                    </tr>
+                    @endif
                     <tr>
                         <td colspan="2" class="bold">Gross Salary</td>
                         <td></td>

@@ -96,6 +96,29 @@ class DynamicIngestionService
                 ? (float) $row[$cols['days_worked']] : null;
             $overtimeAmount = isset($cols['overtime_amount'], $row[$cols['overtime_amount']]) && is_numeric($row[$cols['overtime_amount']])
                 ? (float) $row[$cols['overtime_amount']] : null;
+            $weekdayHours = isset($cols['weekday_hours'], $row[$cols['weekday_hours']]) && is_numeric($row[$cols['weekday_hours']])
+                ? (float) $row[$cols['weekday_hours']] : null;
+            $weekdayOvertimeAmt = isset($cols['weekday_overtime_amt'], $row[$cols['weekday_overtime_amt']]) && is_numeric($row[$cols['weekday_overtime_amt']])
+                ? (float) $row[$cols['weekday_overtime_amt']] : null;
+            $saturdayHours = isset($cols['saturday_hours'], $row[$cols['saturday_hours']]) && is_numeric($row[$cols['saturday_hours']])
+                ? (float) $row[$cols['saturday_hours']] : null;
+            $saturdayOvertimeAmt = isset($cols['saturday_overtime_amt'], $row[$cols['saturday_overtime_amt']]) && is_numeric($row[$cols['saturday_overtime_amt']])
+                ? (float) $row[$cols['saturday_overtime_amt']] : null;
+            $numSundaysHolidays = isset($cols['num_sundays_holidays'], $row[$cols['num_sundays_holidays']]) && is_numeric($row[$cols['num_sundays_holidays']])
+                ? (float) $row[$cols['num_sundays_holidays']] : null;
+            $sundayHolidayOvertimeAmt = isset($cols['sunday_holiday_overtime_amt'], $row[$cols['sunday_holiday_overtime_amt']]) && is_numeric($row[$cols['sunday_holiday_overtime_amt']])
+                ? (float) $row[$cols['sunday_holiday_overtime_amt']] : null;
+            $overtimeRefund = isset($cols['overtimerefund'], $row[$cols['overtimerefund']]) && is_numeric($row[$cols['overtimerefund']])
+                ? (float) $row[$cols['overtimerefund']] : null;
+            $totalOvertimeAmt = isset($cols['total_overtime_amt'], $row[$cols['total_overtime_amt']]) && is_numeric($row[$cols['total_overtime_amt']])
+                ? (float) $row[$cols['total_overtime_amt']] : null;
+
+            // Compute effective total overtime across aggregate or component fields
+            $componentOtSum = ($weekdayOvertimeAmt !== null || $saturdayOvertimeAmt !== null || $sundayHolidayOvertimeAmt !== null)
+                ? ((float)($weekdayOvertimeAmt ?? 0) + (float)($saturdayOvertimeAmt ?? 0) + (float)($sundayHolidayOvertimeAmt ?? 0))
+                : null;
+            $effectiveOvertime = $totalOvertimeAmt ?? $overtimeAmount ?? $componentOtSum;
+
             $grossSalary = isset($cols['gross_salary'], $row[$cols['gross_salary']]) && is_numeric($row[$cols['gross_salary']])
                 ? (float) $row[$cols['gross_salary']] : null;
             $ssnit = isset($cols['ssnit_ee'], $row[$cols['ssnit_ee']]) && is_numeric($row[$cols['ssnit_ee']])
@@ -110,22 +133,30 @@ class DynamicIngestionService
             $account = isset($cols['account'], $row[$cols['account']]) ? trim((string) $row[$cols['account']]) : null;
 
             $parsedRecords[] = [
-                'row_number' => $rowNum,
-                'staff_id' => $staffId,
-                'name' => $name,
-                'position' => isset($cols['position'], $row[$cols['position']]) ? trim((string) $row[$cols['position']]) : null,
-                'basic_salary' => $basicSalary,
-                'daily_rate' => $dailyRate,
-                'days_worked' => $daysWorked,
-                'overtime_amount' => $overtimeAmount,
-                'gross_salary' => $grossSalary,
-                'ssnit_ee' => $ssnit,
-                'petra' => $petra,
-                'paye' => $paye,
-                'net_pay' => $netPay,
-                'bank' => $bank,
-                'account' => $account,
-                'raw_row' => $row,
+                'row_number'                  => $rowNum,
+                'staff_id'                    => $staffId,
+                'name'                        => $name,
+                'position'                    => isset($cols['position'], $row[$cols['position']]) ? trim((string) $row[$cols['position']]) : null,
+                'basic_salary'                => $basicSalary,
+                'daily_rate'                  => $dailyRate,
+                'days_worked'                 => $daysWorked,
+                'overtime_amount'             => $effectiveOvertime,
+                'total_overtime_amt'          => $effectiveOvertime,
+                'weekday_hours'               => $weekdayHours,
+                'weekday_overtime_amt'        => $weekdayOvertimeAmt,
+                'saturday_hours'              => $saturdayHours,
+                'saturday_overtime_amt'       => $saturdayOvertimeAmt,
+                'num_sundays_holidays'        => $numSundaysHolidays,
+                'sunday_holiday_overtime_amt' => $sundayHolidayOvertimeAmt,
+                'overtimerefund'              => $overtimeRefund,
+                'gross_salary'                => $grossSalary,
+                'ssnit_ee'                    => $ssnit,
+                'petra'                       => $petra,
+                'paye'                        => $paye,
+                'net_pay'                     => $netPay,
+                'bank'                        => $bank,
+                'account'                     => $account,
+                'raw_row'                     => $row,
             ];
         }
 

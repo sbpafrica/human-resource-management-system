@@ -95,6 +95,102 @@ class PayrollAiIntegrationTest extends TestCase
         $this->assertEquals(5, $ofiResult['mapping']['ssnit_ee']);
         $this->assertEquals(6, $ofiResult['mapping']['petra']);
         $this->assertEquals(8, $ofiResult['mapping']['net_pay']);
+
+        $twelliumAccraResult = $matcher->match([], 'twelliumaccra');
+        $this->assertEquals(0, $twelliumAccraResult['mapping']['staff_id']);
+        $this->assertEquals(10, $twelliumAccraResult['mapping']['weekday_hours']);
+        $this->assertEquals(11, $twelliumAccraResult['mapping']['weekday_overtime_amt']);
+        $this->assertEquals(12, $twelliumAccraResult['mapping']['saturday_hours']);
+        $this->assertEquals(13, $twelliumAccraResult['mapping']['saturday_overtime_amt']);
+        $this->assertEquals(14, $twelliumAccraResult['mapping']['num_sundays_holidays']);
+        $this->assertEquals(15, $twelliumAccraResult['mapping']['sunday_holiday_overtime_amt']);
+        $this->assertEquals(16, $twelliumAccraResult['mapping']['overtimerefund']);
+        $this->assertEquals(17, $twelliumAccraResult['mapping']['total_overtime_amt']);
+        $this->assertEquals(37, $twelliumAccraResult['mapping']['net_pay']);
+    }
+
+    public function test_rule_based_matcher_resolves_twellium_accra_overtime_headers(): void
+    {
+        $matcher = new RuleBasedColumnMatcher();
+
+        $headers = [
+            'Staff ID',
+            'Name',
+            'Position',
+            'Basic Salary',
+            'Weekday Hours',
+            'Weekday Overtime Amt',
+            'Saturday Hours',
+            'Saturday Overtime Amt',
+            'Num Sundays Holidays',
+            'Sunday Holiday Overtime Amt',
+            'Overtime Refund',
+            'Total Overtime Amt',
+            'Gross Salary',
+            'Take Home Pay',
+        ];
+
+        $result = $matcher->match($headers, 'twelliumaccra');
+
+        $this->assertNotEmpty($result['mapping']);
+        $this->assertEquals(0, $result['mapping']['staff_id']);
+        $this->assertEquals(1, $result['mapping']['name']);
+        $this->assertEquals(2, $result['mapping']['position']);
+        $this->assertEquals(3, $result['mapping']['basic_salary']);
+        $this->assertEquals(4, $result['mapping']['weekday_hours']);
+        $this->assertEquals(5, $result['mapping']['weekday_overtime_amt']);
+        $this->assertEquals(6, $result['mapping']['saturday_hours']);
+        $this->assertEquals(7, $result['mapping']['saturday_overtime_amt']);
+        $this->assertEquals(8, $result['mapping']['num_sundays_holidays']);
+        $this->assertEquals(9, $result['mapping']['sunday_holiday_overtime_amt']);
+        $this->assertEquals(10, $result['mapping']['overtimerefund']);
+        $this->assertEquals(11, $result['mapping']['total_overtime_amt']);
+        $this->assertEquals(12, $result['mapping']['gross_salary']);
+        $this->assertEquals(13, $result['mapping']['net_pay']);
+    }
+
+    public function test_payslip_controller_normalizes_twellium_accra_overtime_properly(): void
+    {
+        $client = (object)[
+            'client_dbname' => 'twelliumaccra',
+            'slug'          => 'twellium-industrial-company-accra',
+            'short_name'    => 'Twellium Accra',
+        ];
+
+        $rawRecord = (object)[
+            'staff_id'                    => 'SBPTWMA01',
+            'name'                        => 'Francis Ohimeh',
+            'position'                    => 'Supervisor',
+            'basic_salary'                => 4024.43,
+            'basic_earned'                => 3841.50,
+            'weekday_hours'               => 10.00,
+            'weekday_overtime_amt'        => 250.00,
+            'saturday_hours'              => 12.00,
+            'saturday_overtime_amt'       => 1200.00,
+            'num_sundays_holidays'        => 8.00,
+            'sunday_holiday_overtime_amt' => 900.00,
+            'overtimerefund'              => 50.00,
+            'total_overtime_amt'          => 2400.00,
+            'gross_salary'                => 6241.50,
+            'take_home_pay'               => 5500.00,
+        ];
+
+        $controller = new \App\Http\Controllers\PayslipController();
+        $refMethod = new \ReflectionMethod($controller, 'normalizePayslip');
+        $normalized = $refMethod->invoke($controller, $rawRecord, $client, '-');
+
+        $this->assertEquals(10.00, $normalized->weekday_hours);
+        $this->assertEquals(250.00, $normalized->weekday_overtime_amt);
+        $this->assertEquals(12.00, $normalized->saturday_hours);
+        $this->assertEquals(1200.00, $normalized->saturday_overtime_amt);
+        $this->assertEquals(8.00, $normalized->num_sundays_holidays);
+        $this->assertEquals(900.00, $normalized->sunday_holiday_overtime_amt);
+        $this->assertEquals(50.00, $normalized->overtimerefund);
+        $this->assertEquals(2400.00, $normalized->total_overtime_amt);
+        $this->assertEquals(2400.00, $normalized->overtime);
+        $this->assertEquals(250.00, $normalized->normalovertime);
+        $this->assertEquals(1200.00, $normalized->saturdayovertime);
+        $this->assertEquals(900.00, $normalized->holidayotamt);
     }
 
     public function test_hybrid_column_matcher_falls_back_gracefully_to_rule_or_legacy(): void
