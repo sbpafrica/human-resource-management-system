@@ -1561,7 +1561,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         </tr>
         <tr>
             <td className="p-2">Basic Salary</td>
-            <td className="p-2">{(payslip.basic ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2">{(payslip.basic ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td className="p-2"></td>
             <td className="p-2">Expected Work Days</td>
             <td className="p-2">{Number(payslip.expected_work_days ?? payslip.legal_work_days ?? 0) > 0 ? (payslip.expected_work_days ?? payslip.legal_work_days) : '-'}</td>
@@ -1575,39 +1575,83 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         <tr>
             <td colSpan={2} className="p-2">Basic Earned</td>
             <td className="p-2 text-right">{payslip.description || (Number(payslip.total_hours_worked ?? payslip.days_worked ?? 0) > 0 ? (payslip.total_hours_worked ?? payslip.days_worked) : '')}</td>
-            <td className="p-2 text-center">{(payslip.basic_earned ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{(payslip.basic_earned ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Weekday Overtime</td>
             <td className="p-2 text-right">{Number(payslip.weekday_overtime_hours ?? 0) > 0 ? payslip.weekday_overtime_hours : ''}</td>
-            <td className="p-2 text-center">{(payslip.weekday_overtime_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{(payslip.weekday_overtime_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Offday/Holiday Overtime</td>
             <td className="p-2 text-right">{Number(payslip.offday_holiday_overtime_hours ?? 0) > 0 ? payslip.offday_holiday_overtime_hours : ''}</td>
-            <td className="p-2 text-center">{(payslip.offday_holiday_overtime_total ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{(payslip.offday_holiday_overtime_total ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Special Day Overtime</td>
             <td className="p-2 text-right">{Number(payslip.special_day_overtime_hours ?? 0) > 0 ? payslip.special_day_overtime_hours : ''}</td>
-            <td className="p-2 text-center">{(payslip.special_day_overtime_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{(payslip.special_day_overtime_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
+        {Number(payslip.food_allowance ?? 0) > 0 && (
+            <tr>
+                <td colSpan={2} className="p-2">Food Allowance</td>
+                <td></td>
+                <td className="p-2 text-center">{(Number(payslip.food_allowance)).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td></td>
+            </tr>
+        )}
+        {Number(payslip.night_allowance ?? 0) > 0 && (
+            <tr>
+                <td colSpan={2} className="p-2">Night Allowance</td>
+                <td></td>
+                <td className="p-2 text-center">{(Number(payslip.night_allowance)).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td></td>
+            </tr>
+        )}
+        {Number(payslip.refund ?? 0) > 0 && (
+            <tr>
+                <td colSpan={2} className="p-2">Refund</td>
+                <td></td>
+                <td className="p-2 text-center">{(Number(payslip.refund)).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td></td>
+            </tr>
+        )}
         <tr>
             <td colSpan={2} className="p-2">Allowance</td>
             <td></td>
-            <td className="p-2 text-center">{(payslip.allowance ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{(payslip.allowance ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Risk Allowance</td>
             <td></td>
-            <td className="p-2 text-center">{(payslip.risk_allowance ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{(payslip.risk_allowance ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
+        {payslip.total_cash_emolument !== null && payslip.total_cash_emolument !== undefined && (
+            <tr>
+                <td colSpan={2} className="p-2 font-bold">Total Cash Emolument</td>
+                <td></td>
+                <td className="p-2 text-center font-bold">
+                    {(Number(payslip.total_cash_emolument)).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+                <td></td>
+            </tr>
+        )}
+        {payslip.total_assessable_income !== null && payslip.total_assessable_income !== undefined && (
+            <tr>
+                <td colSpan={2} className="p-2 font-bold">Total Assessable Income</td>
+                <td></td>
+                <td className="p-2 text-center font-bold">
+                    {(Number(payslip.total_assessable_income)).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+                <td></td>
+            </tr>
+        )}
         <tr>
     <td colSpan={2} className="p-2 font-bold">Gross Salary</td>
     <td></td>
@@ -1618,7 +1662,10 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             Number(payslip.offday_holiday_overtime_total ?? 0) +
             Number(payslip.special_day_overtime_amount ?? 0) +
             Number(payslip.allowance ?? 0) +
-            Number(payslip.risk_allowance ?? 0)
+            Number(payslip.risk_allowance ?? 0) +
+            Number(payslip.food_allowance ?? 0) +
+            Number(payslip.night_allowance ?? 0) +
+            Number(payslip.refund ?? 0)
         ).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
     </td>
     <td></td>
@@ -1627,33 +1674,33 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td colSpan={2} className="p-2">SSNIT</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{(payslip.ssnit_ee ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{(payslip.ssnit_ee ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         {Number(payslip.petra ?? payslip.petra_5_percent ?? 0) > 0 && (
             <tr>
                 <td colSpan={2} className="p-2">Petra (5%)</td>
                 <td></td>
                 <td></td>
-                <td className="p-2 text-center">{(payslip.petra ?? payslip.petra_5_percent ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+                <td className="p-2 text-center">{(payslip.petra ?? payslip.petra_5_percent ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
         )}
         <tr>
             <td colSpan={2} className="p-2">Normal Tax-Regular</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{(payslip.paye ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{(payslip.paye ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Overtime Tax</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{(payslip.overtime_tax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{(payslip.overtime_tax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Other Deduction</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{(payslip.deduction ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{(payslip.deduction ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr style={{ backgroundColor: '#3498db', color: 'white' }}>
     <td colSpan={2} className="p-2 font-bold">Total</td>
@@ -1683,7 +1730,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td className="p-2">{payslip.name}</td>
             <td></td>
             <td colSpan={2} className="p-2 text-right" style={{ backgroundColor: '#e74c3c', color: 'white', fontSize: '16px', fontWeight: 'bold' }}>
-                {(payslip.netpay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}
+                {(payslip.netpay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
         </tr>
         <tr>
@@ -1971,7 +2018,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         <tr>
             <td className="p-2">Basic Salary</td>
             <td className="p-2">
-                {Number(payslip.basic ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}
+                {Number(payslip.basic ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
             <td colSpan={3}></td>
         </tr>
@@ -1984,112 +2031,112 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         <tr>
             <td colSpan={2} className="p-2">Basic Entitled</td>
             <td className="p-2 text-right">{payslip.no_of_days_worked ?? 0}</td>
-            <td className="p-2 text-center">{Number(payslip.basic_earned ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.basic_earned ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Absent Days</td>
             <td className="p-2 text-right">{payslip.absent_days ?? 0}</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.absent_without_pay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.absent_without_pay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Weekday Overtime</td>
             <td className="p-2 text-right">{payslip.weekdayOT_hours ?? 0}</td>
-            <td className="p-2 text-center">{Number(payslip.weekdayOT_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.weekdayOT_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Saturday Overtime</td>
             <td className="p-2 text-right">{payslip.weekendOT_hours ?? 0}</td>
-            <td className="p-2 text-center">{Number(payslip.weekendOT_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.weekendOT_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Sunday Overtime</td>
             <td className="p-2 text-right">{payslip.sunOT_hours ?? 0}</td>
-            <td className="p-2 text-center">{Number(payslip.sunOT_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.sunOT_amount ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Fixed Overtime</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.fixedot ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.fixedot ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Food Allowance</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.food ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.food ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Airtime Allowance</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.airtime ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.airtime ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Medical Allowance</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.medical ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.medical ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Responsibility Allowance</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.responseallo ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.responseallo ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Transport Allowance</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.transport ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.transport ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2 font-bold">Gross Salary</td>
             <td></td>
-            <td className="p-2 text-center font-bold">{Number(payslip.gross ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center font-bold">{Number(payslip.gross ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">SSNIT</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.ssnit_5_5_percent ?? payslip.ssnitee ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.ssnit_5_5_percent ?? payslip.ssnitee ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         {Number(payslip.petra ?? payslip.petra_5_percent ?? 0) > 0 && (
             <tr>
                 <td colSpan={2} className="p-2">Petra (5%)</td>
                 <td></td>
                 <td></td>
-                <td className="p-2 text-center">{Number(payslip.petra ?? payslip.petra_5_percent ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+                <td className="p-2 text-center">{Number(payslip.petra ?? payslip.petra_5_percent ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
         )}
         <tr>
             <td colSpan={2} className="p-2">Normal Tax-Regular</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.paye ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.paye ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Overtime Tax</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.ot_tax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.ot_tax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Salary Loan</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.salaryloan ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.salaryloan ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr style={{ backgroundColor: '#3498db', color: 'white' }}>
             <td colSpan={2} className="p-2 font-bold">Total</td>
             <td></td>
-            <td className="p-2 text-center font-bold">{Number(payslip.gross ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
-            <td className="p-2 text-center font-bold">{Number(payslip.total_deductions ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center font-bold">{Number(payslip.gross ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center font-bold">{Number(payslip.total_deductions ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr>
             <td className="p-2 font-bold">Bank Name</td>
@@ -2102,7 +2149,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td className="p-2">{payslip.name ?? '-'}</td>
             <td></td>
             <td colSpan={2} className="p-2 text-center" style={{ backgroundColor: '#e74c3c', color: 'white', fontSize: '16px', fontWeight: 'bold' }}>
-                {Number(payslip.net_pay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}
+                {Number(payslip.net_pay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
         </tr>
         <tr>
@@ -2151,31 +2198,31 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         <tr>
             <td colSpan={2} className="p-2">Basic Salary</td>
             <td className="p-2 text-right">{payslip.actualwork ?? 0}</td>
-            <td className="p-2 text-center">{Number(payslip.actualbasic ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.actualbasic ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Monthly KPI</td>
             <td className="p-2 text-right">{payslip.coefficient ?? 0}</td>
-            <td className="p-2 text-center">{Number(payslip.monthlykpi ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.monthlykpi ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
-            <td colSpan={2} className="p-2">Commission</td>
+            <td colSpan={2} className="p-2">Commission Earned</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.commission ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.commission_earned ?? payslip.commission ?? payslip.bonus ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Overtime</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.overtime ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.overtime ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Transport Subsidy</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.transport ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.transport ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
@@ -2185,10 +2232,10 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                 {(
                     Number(payslip.actualbasic ?? 0) +
                     Number(payslip.monthlykpi ?? 0) +
-                    Number(payslip.commission ?? 0) +
+                    Number(payslip.commission_earned ?? payslip.commission ?? payslip.bonus ?? 0) +
                     Number(payslip.overtime ?? 0) +
                     Number(payslip.transport ?? 0)
-                ).toLocaleString('en-GH', { minimumFractionDigits: 2 })}
+                ).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
             <td></td>
         </tr>
@@ -2196,45 +2243,45 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td colSpan={2} className="p-2">SSNIT (0.5%)</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.ssnitpay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.ssnitpay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         {Number(payslip.petra ?? payslip.petra_5_percent ?? 0) > 0 && (
             <tr>
                 <td colSpan={2} className="p-2">Petra (5%)</td>
                 <td></td>
                 <td></td>
-                <td className="p-2 text-center">{Number(payslip.petra ?? payslip.petra_5_percent ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+                <td className="p-2 text-center">{Number(payslip.petra ?? payslip.petra_5_percent ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
         )}
         <tr>
             <td colSpan={2} className="p-2">PAYE</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.totaltax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.totaltax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Annual Bonus</td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip['13thmonth'] ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip['13thmonth'] ?? payslip.endyearmonth ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Annual Tax</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip['13thtax'] ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip['13thtax'] ?? payslip.endyeartax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Salary Loan</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.loans ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.loans ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr>
             <td colSpan={2} className="p-2">Commission Tax</td>
             <td></td>
             <td></td>
-            <td className="p-2 text-center">{Number(payslip.commissiontax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}</td>
+            <td className="p-2 text-center">{Number(payslip.commission_tax ?? payslip.commissiontax ?? payslip.bonustax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
         <tr style={{ backgroundColor: '#3498db', color: 'white' }}>
             <td colSpan={3} className="p-2 font-bold">Total</td>
@@ -2242,14 +2289,14 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                 {(
                     Number(payslip.actualbasic ?? 0) +
                     Number(payslip.monthlykpi ?? 0) +
-                    Number(payslip.commission ?? 0) +
+                    Number(payslip.commission_earned ?? payslip.commission ?? payslip.bonus ?? 0) +
                     Number(payslip.overtime ?? 0) +
                     Number(payslip.transport ?? 0) +
-                    Number(payslip['13thmonth'] ?? 0)
-                ).toLocaleString('en-GH', { minimumFractionDigits: 2 })}
+                    Number(payslip['13thmonth'] ?? payslip.endyearmonth ?? 0)
+                ).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
             <td className="p-2 text-center font-bold">
-                {Number(payslip.totaldeduction ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}
+                {Number(payslip.totaldeduction ?? payslip.total_deductions ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
         </tr>
         <tr>
@@ -2263,7 +2310,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td className="p-2">{payslip.name}</td>
             <td></td>
             <td colSpan={2} className="p-2 text-center" style={{ backgroundColor: '#e74c3c', color: 'white', fontSize: '16px', fontWeight: 'bold' }}>
-                {Number(payslip.netpay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2 })}
+                {Number(payslip.netpay ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
         </tr>
         <tr>

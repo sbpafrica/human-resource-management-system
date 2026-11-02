@@ -121,6 +121,10 @@ public function export(Request $request)
             return response()->json(['error' => "No data available for {$date->format('F Y')}"], 404);
         }
 
+        $tableColumns = DB::getSchemaBuilder()->getColumnListing($tableName);
+        $commEarnedExpr = in_array('commission_earned', $tableColumns) ? 'tp.commission_earned' : (in_array('bonus', $tableColumns) ? 'tp.bonus' : 'NULL');
+        $commTaxExpr    = in_array('commission_tax', $tableColumns) ? 'tp.commission_tax' : (in_array('bonustax', $tableColumns) ? 'tp.bonustax' : 'NULL');
+
         $query = DB::table($tableName . ' as tp')
             ->leftJoin('bankdetails as bd', 'tp.id', '=', 'bd.employid')
             ->select(
@@ -131,7 +135,9 @@ public function export(Request $request)
                 'bd.account',
                 'bd.code',
                 'bd.branch',
-                'tp.netpay as net_pay'
+                'tp.netpay as net_pay',
+                DB::raw("{$commEarnedExpr} as commission_earned"),
+                DB::raw("{$commTaxExpr} as commission_tax")
             );
 
         // Search
@@ -149,17 +155,19 @@ public function export(Request $request)
         $order = $request->input('order', 'asc');
 
         $sortMap = [
-            'id'          => 'tp.id',
-            'staff_id'    => 'tp.id',
-            'name'        => 'tp.name',
-            'employee_name'=> 'tp.name',
-            'shop'        => 'bd.shop',
-            'bank'        => 'bd.bank',
-            'account'     => 'bd.account',
-            'code'        => 'bd.code',
-            'branch'      => 'bd.branch',
-            'netpay'      => 'tp.netpay',
-            'net_pay'     => 'tp.netpay',
+            'id'                => 'tp.id',
+            'staff_id'          => 'tp.id',
+            'name'              => 'tp.name',
+            'employee_name'     => 'tp.name',
+            'shop'              => 'bd.shop',
+            'bank'              => 'bd.bank',
+            'account'           => 'bd.account',
+            'code'              => 'bd.code',
+            'branch'            => 'bd.branch',
+            'netpay'            => 'tp.netpay',
+            'net_pay'           => 'tp.netpay',
+            'commission_earned' => DB::raw($commEarnedExpr),
+            'commission_tax'    => DB::raw($commTaxExpr),
         ];
 
         $query->orderBy($sortMap[$sort] ?? 'tp.id', $order);
@@ -178,7 +186,9 @@ public function export(Request $request)
             'Account Number',
             'Branch Code',
             'Branch',
-            'Final Net Pay (GHS)'
+            'Final Net Pay (GHS)',
+            'Commission Earned',
+            'Commission Tax'
         ];
         $sheet->fromArray($headers, null, 'A1');
 
@@ -192,18 +202,20 @@ public function export(Request $request)
             $sheet->setCellValueExplicit("F{$row}", $r->code ?? '', DataType::TYPE_STRING);
             $sheet->setCellValue("G{$row}", $r->branch ?? '');
             $sheet->setCellValue("H{$row}", $r->net_pay ? number_format((float)$r->net_pay, 2, '.', '') : '');
+            $sheet->setCellValue("I{$row}", $r->commission_earned ? number_format((float)$r->commission_earned, 2, '.', '') : '');
+            $sheet->setCellValue("J{$row}", $r->commission_tax ? number_format((float)$r->commission_tax, 2, '.', '') : '');
             $row++;
         }
 
         // Professional Styling – same as ALL your exports
         $sheet->getParent()->getDefaultStyle()->getFont()->setName('Calibri')->setSize(11);
-        $headerStyle = $sheet->getStyle('A1:H1');
+        $headerStyle = $sheet->getStyle('A1:J1');
         $headerStyle->getFont()->setBold(true);
         $headerStyle->getFill()
             ->setFillType(Fill::FILL_SOLID)
             ->getStartColor()->setARGB('BBDEFE'); // Light blue header
 
-        foreach (range('A', 'H') as $col) {
+        foreach (range('A', 'J') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
@@ -236,139 +248,241 @@ public function export(Request $request)
  $date = Carbon::createFromFormat('Y-m', $selectedMonth);
  $tableName = 'inhouse' . strtolower($date->format('F')) . $date->format('y') . 'pay';
 
- // Create table if it doesn't exist
- InhousePay::createTableIfNotExists($tableName);
+        // Create table if it doesn't exist
+        InhousePay::createTableIfNotExists($tableName);
 
- $file = $request->file('file');
- $reader = new XlsxReader();
- $spreadsheet = $reader->load($file->getRealPath());
- $sheet = $spreadsheet->getActiveSheet();
- $rows = $sheet->toArray();
- array_shift($rows); // Remove header row
+        $file = $request->file('file');
+        $reader = new XlsxReader();
+        $spreadsheet = $reader->load($file->getRealPath());
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray();
+        $headerRow = array_shift($rows); // Remove header row
 
- // Check for existing staff IDs
- $existingStaffIds = DB::table($tableName)->pluck('id')->toArray();
- $duplicateStaffIds = [];
- $validRecords = [];
- $errors = [];
+        // Check for existing staff IDs
+        $existingStaffIds = DB::table($tableName)->pluck('id')->toArray();
+        $duplicateStaffIds = [];
+        $validRecords = [];
+        $errors = [];
 
- foreach ($rows as $index => $row) {
- if (count($row) < 37) {
- $errors[] = "Row " . ($index + 2) . ": Expected 34 columns, found " . count($row);
- continue;
- }
+        // Build dynamic column map from header row
+        $norm = function ($text) {
+            return strtolower(trim(preg_replace('/[^a-zA-Z0-9]/', '', (string)$text)));
+        };
 
-// === 34-COLUMN MAPPING (0 → 33) ===
-$id             = trim($row[0] ?? '') ?: null;      // Staff ID
-$name           = trim($row[1] ?? '') ?: null;
-$position       = trim($row[2] ?? '') ?: null;
-$ghcard         = trim($row[3] ?? '') ?: null;
-$ssnit          = trim($row[4] ?? '') ?: null;
-$datejoin       = trim($row[5] ?? '') ?: null;
-$alcnum         = trim($row[6] ?? '') ?: null;      // Account Number
-$bankname       = trim($row[7] ?? '') ?: null;
-$branch         = trim($row[8] ?? '') ?: null;
+        $colMap = [];
+        if (!empty($headerRow)) {
+            foreach ($headerRow as $cIdx => $val) {
+                $h = $norm($val);
+                if (empty($h)) continue;
+                if (in_array($h, ['emid', 'staffid', 'id']) && !isset($colMap['id'])) $colMap['id'] = $cIdx;
+                elseif (in_array($h, ['name', 'staffname', 'fullname', 'employeename']) && !isset($colMap['name'])) $colMap['name'] = $cIdx;
+                elseif (in_array($h, ['position', 'designation', 'jobtitle']) && !isset($colMap['position'])) $colMap['position'] = $cIdx;
+                elseif (in_array($h, ['ghcardno', 'ghanacard', 'ghcard', 'ghcardnumber']) && !isset($colMap['ghcard'])) $colMap['ghcard'] = $cIdx;
+                elseif (in_array($h, ['ssnitnumber', 'ssnitno', 'ssnit']) && !isset($colMap['ssnit'])) $colMap['ssnit'] = $cIdx;
+                elseif (in_array($h, ['datejoined', 'datejoin', 'doj']) && !isset($colMap['datejoin'])) $colMap['datejoin'] = $cIdx;
+                elseif (in_array($h, ['acnumber', 'accountnumber', 'alcnum', 'accno', 'accnum', 'accountno']) && !isset($colMap['alcnum'])) $colMap['alcnum'] = $cIdx;
+                elseif (in_array($h, ['bankname', 'bank']) && !isset($colMap['bankname'])) $colMap['bankname'] = $cIdx;
+                elseif (in_array($h, ['branch']) && !isset($colMap['branch'])) $colMap['branch'] = $cIdx;
+                elseif (in_array($h, ['legalworkingdays', 'legalworkdays', 'legalwork']) && !isset($colMap['legalwork'])) $colMap['legalwork'] = $cIdx;
+                elseif (in_array($h, ['actualworkingdaysforworkattendance', 'actualworkingdays', 'actualdaysworked', 'actualwork']) && !isset($colMap['actualwork'])) $colMap['actualwork'] = $cIdx;
+                elseif (in_array($h, ['basicsalary', 'basic']) && !isset($colMap['basic'])) $colMap['basic'] = $cIdx;
+                elseif (in_array($h, ['actualbasicsalary', 'actualbasic']) && !isset($colMap['actualbasic'])) $colMap['actualbasic'] = $cIdx;
+                elseif (in_array($h, ['basickpi', 'kpitarget', 'kpi']) && !isset($colMap['kpi'])) $colMap['kpi'] = $cIdx;
+                elseif (in_array($h, ['coefficient']) && !isset($colMap['coefficient'])) $colMap['coefficient'] = $cIdx;
+                elseif (in_array($h, ['monthlykpibonus', 'monthlykpi']) && !isset($colMap['monthlykpi'])) $colMap['monthlykpi'] = $cIdx;
+                elseif (in_array($h, ['overtimeallowance', 'overtime']) && !isset($colMap['overtime'])) $colMap['overtime'] = $cIdx;
+                elseif (in_array($h, ['transportsubsidy', 'transport']) && !isset($colMap['transport'])) $colMap['transport'] = $cIdx;
+                elseif (in_array($h, ['leave', 'leavepay', 'leave1']) && !isset($colMap['leave1'])) $colMap['leave1'] = $cIdx;
+                elseif (in_array($h, ['grosssalary', 'grossearnings', 'total', 'gross']) && !isset($colMap['total'])) $colMap['total'] = $cIdx;
+                elseif (in_array($h, ['ssniter']) && !isset($colMap['ssniter'])) $colMap['ssniter'] = $cIdx;
+                elseif (in_array($h, ['ssnitee', 'ssnitpay', 'ssnit5']) && !isset($colMap['ssnitpay'])) $colMap['ssnitpay'] = $cIdx;
+                elseif (in_array($h, ['petra']) && !isset($colMap['petra'])) $colMap['petra'] = $cIdx;
+                elseif (in_array($h, ['taxableincome', 'taxincome']) && !isset($colMap['taxincome'])) $colMap['taxincome'] = $cIdx;
+                elseif (in_array($h, ['paye']) && !isset($colMap['paye'])) $colMap['paye'] = $cIdx;
+                elseif (in_array($h, ['overtimetax']) && !isset($colMap['overtimetax'])) $colMap['overtimetax'] = $cIdx;
+                elseif (in_array($h, ['totaltaxation', 'totaltax']) && !isset($colMap['totaltax'])) $colMap['totaltax'] = $cIdx;
+                elseif (in_array($h, ['totaldeductions', 'totaldeduction']) && !isset($colMap['totaldeduction'])) $colMap['totaldeduction'] = $cIdx;
+                elseif (in_array($h, ['netsalary', 'netpaybefore13th', 'netpay1']) && !isset($colMap['netpay1'])) $colMap['netpay1'] = $cIdx;
+                elseif (in_array($h, ['commissionbonusearned', 'commissionearned', 'bonusearned', 'commissionbonus', 'bonus']) && !isset($colMap['commission_earned'])) $colMap['commission_earned'] = $cIdx;
+                elseif (in_array($h, ['commissionbonustax', 'commissiontax', 'bonustax']) && !isset($colMap['commission_tax'])) $colMap['commission_tax'] = $cIdx;
+                elseif (in_array($h, ['commissionbonusfinal', 'commissionfinal', 'commissiionbonusfinal', 'bonusfinal']) && !isset($colMap['commission_final'])) $colMap['commission_final'] = $cIdx;
+                elseif (in_array($h, ['noofmonthsworked', '13thmonthdays', 'numdays']) && !isset($colMap['numdays'])) $colMap['numdays'] = $cIdx;
+                elseif (in_array($h, ['13thmonth', '13thmonthpay', 'endyearmonth']) && !isset($colMap['endyearmonth'])) $colMap['endyearmonth'] = $cIdx;
+                elseif (in_array($h, ['13thtax', '13thmonthtax', 'endyeartax']) && !isset($colMap['endyeartax'])) $colMap['endyeartax'] = $cIdx;
+                elseif (in_array($h, ['13thmonthpayable', '13thmonthnet', 'endyearpay']) && !isset($colMap['endyearpay'])) $colMap['endyearpay'] = $cIdx;
+                elseif (in_array($h, ['loans', 'loan']) && !isset($colMap['loans'])) $colMap['loans'] = $cIdx;
+                elseif (in_array($h, ['actualnet', 'finalnetpay', 'netpay']) && !isset($colMap['netpay'])) $colMap['netpay'] = $cIdx;
+            }
+        }
 
-$legalwork      = is_numeric($row[9] ?? '') ? (int)$row[9] : null;
-$actualwork     = is_numeric($row[10] ?? '') ? (float)$row[10] : null;
+        // Determine positional fallback if header mapping is incomplete
+        $firstHeaderNorm = !empty($headerRow) ? $norm($headerRow[0] ?? '') : '';
+        $is39Format = ($firstHeaderNorm === 'sn' || (isset($headerRow) && count($headerRow) >= 39));
 
-$basic          = is_numeric($row[11] ?? '') ? (float)$row[11] : null;
-$actualbasic    = is_numeric($row[12] ?? '') ? (float)$row[12] : null;
-$kpi            = is_numeric($row[13] ?? '') ? (float)$row[13] : null;
-$coefficient    = is_numeric($row[14] ?? '') ? (float)$row[14] : null;
-$monthlykpi     = is_numeric($row[15] ?? '') ? (float)$row[15] : null;
-$overtime       = is_numeric($row[16] ?? '') ? (float)$row[16] : null;
-$transport      = is_numeric($row[17] ?? '') ? (float)$row[17] : null;
-$leave1         = is_numeric($row[18] ?? '') ? (float)$row[18] : null;
-$total          = is_numeric($row[19] ?? '') ? (float)$row[19] : null;
+        $getVal = function ($row, $field, $fallbackIdx39, $fallbackIdx37) use ($colMap, $is39Format) {
+            $idx = $colMap[$field] ?? ($is39Format ? $fallbackIdx39 : $fallbackIdx37);
+            return $row[$idx] ?? null;
+        };
 
-$ssniter        = is_numeric($row[20] ?? '') ? (float)$row[20] : null;
-$ssnitpay       = is_numeric($row[21] ?? '') ? (float)$row[21] : null;
-$taxincome      = is_numeric($row[22] ?? '') ? (float)$row[22] : null;
-$paye           = is_numeric($row[23] ?? '') ? (float)$row[23] : null;
-$overtimetax    = is_numeric($row[24] ?? '') ? (float)$row[24] : null;
-$totaltax       = is_numeric($row[25] ?? '') ? (float)$row[25] : null;
-$totaldeduction = is_numeric($row[26] ?? '') ? (float)$row[26] : null;
-$netpay1        = is_numeric($row[27] ?? '') ? (float)$row[27] : null;
-$bonus        = is_numeric($row[28] ?? '') ? (float)$row[28] : null;
-$bonustax        = is_numeric($row[29] ?? '') ? (float)$row[29] : null;
-$bonusfinal        = is_numeric($row[30] ?? '') ? (float)$row[30] : null;
+        $tableColumns = DB::getSchemaBuilder()->getColumnListing($tableName);
 
-$numdays        = is_numeric($row[31] ?? '') ? (int)$row[31] : null;
-$thmonth      = is_numeric($row[32] ?? '') ? (float)$row[32] : null;
-$thtax        = is_numeric($row[33] ?? '') ? (float)$row[33] : null;
-$thpay        = is_numeric($row[34] ?? '') ? (float)$row[34] : null;
-$loans          = is_numeric($row[35] ?? '') ? (float)$row[35] : null;
+        foreach ($rows as $index => $row) {
+            if (empty(array_filter($row, fn($cell) => $cell !== null && trim((string)$cell) !== ''))) {
+                continue; // Skip blank rows
+            }
 
-// Final Net Pay – cleaned
-$rawNet         = trim($row[36] ?? '');
-$cleanNet       = preg_replace('/[^0-9.-]/', '', $rawNet);
-$netpay         = is_numeric($cleanNet) ? (float)$cleanNet : null;
+            if (count($row) < 34) {
+                $errors[] = "Row " . ($index + 2) . ": Expected at least 34 columns, found " . count($row);
+                continue;
+            }
 
+            $id         = trim((string)$getVal($row, 'id', 1, 0)) ?: null;
+            $name       = trim((string)$getVal($row, 'name', 2, 1)) ?: null;
+            $position   = trim((string)$getVal($row, 'position', 3, 2)) ?: null;
+            $datejoin   = trim((string)$getVal($row, 'datejoin', 4, 5)) ?: null;
+            $ssnit      = trim((string)$getVal($row, 'ssnit', 5, 4)) ?: null;
+            $ghcard     = trim((string)$getVal($row, 'ghcard', 6, 3)) ?: null;
+            $bankname   = trim((string)$getVal($row, 'bankname', 7, 7)) ?: null;
+            $alcnum     = trim((string)$getVal($row, 'alcnum', 8, 6)) ?: null;
+            $branch     = trim((string)$getVal($row, 'branch', 9, 8)) ?: null;
 
+            $legalworkRaw  = $getVal($row, 'legalwork', 10, 9);
+            $actualworkRaw = $getVal($row, 'actualwork', 11, 10);
+            $legalwork     = is_numeric($legalworkRaw) ? (int)$legalworkRaw : null;
+            $actualwork    = is_numeric($actualworkRaw) ? (float)$actualworkRaw : null;
 
- // Validation
- if (empty($id)) {
- $errors[] = "Row " . ($index + 2) . ": Staff ID cannot be empty.";
- continue;
- }
- if (empty($name)) {
- $errors[] = "Row " . ($index + 2) . ": Name cannot be empty.";
- continue;
- }
- if (is_null($netpay)) {
- $errors[] = "Row " . ($index + 2) . ": Net Pay must be a valid number (found: '$rawNetPay').";
- continue;
- }
+            $basicRaw       = $getVal($row, 'basic', 12, 11);
+            $actualbasicRaw = $getVal($row, 'actualbasic', 13, 12);
+            $kpiRaw         = $getVal($row, 'kpi', 14, 13);
+            $coefficientRaw = $getVal($row, 'coefficient', 15, 14);
+            $monthlykpiRaw  = $getVal($row, 'monthlykpi', 16, 15);
+            $overtimeRaw    = $getVal($row, 'overtime', 17, 16);
+            $transportRaw   = $getVal($row, 'transport', 18, 17);
+            $leave1Raw      = $getVal($row, 'leave1', 19, 18);
+            $totalRaw       = $getVal($row, 'total', 20, 19);
 
- if (in_array($id, $existingStaffIds) || in_array($id, $duplicateStaffIds)) {
- $duplicateStaffIds[] = $id;
- continue;
- }
+            $basic          = is_numeric($basicRaw) ? (float)$basicRaw : null;
+            $actualbasic    = is_numeric($actualbasicRaw) ? (float)$actualbasicRaw : null;
+            $kpi            = is_numeric($kpiRaw) ? (float)$kpiRaw : null;
+            $coefficient    = is_numeric($coefficientRaw) ? (float)$coefficientRaw : null;
+            $monthlykpi     = is_numeric($monthlykpiRaw) ? (float)$monthlykpiRaw : null;
+            $overtime       = is_numeric($overtimeRaw) ? (float)$overtimeRaw : null;
+            $transport      = is_numeric($transportRaw) ? (float)$transportRaw : null;
+            $leave1         = is_numeric($leave1Raw) ? (float)$leave1Raw : null;
+            $total          = is_numeric($totalRaw) ? (float)$totalRaw : null;
 
- $data = [
-    'id'             => $id,
-    'name'           => $name,
-    'position'       => $position,
-    'ghcard'         => $ghcard,
-    'ssnit'          => $ssnit,
-    'datejoin'       => $datejoin,
-    'alcnum'         => $alcnum,
-    'bankname'       => $bankname,
-    'branch'         => $branch,
-    'legalwork'      => $legalwork,
-    'actualwork'     => $actualwork,
-    'basic'          => $basic,
-    'actualbasic'    => $actualbasic,
-    'kpi'            => $kpi,
-    'coefficient'    => $coefficient,
-    'monthlykpi'     => $monthlykpi,
-    'overtime'       => $overtime,
-    'transport'      => $transport,
-    'leave1'         => $leave1,
-    'total'          => $total,
-    'ssniter'        => $ssniter,
-    'ssnitpay'       => $ssnitpay,
-    'taxincome'      => $taxincome,
-    'paye'           => $paye,
-    'overtimetax'    => $overtimetax,
-    'totaltax'       => $totaltax,
-    'totaldeduction' => $totaldeduction,
-    'netpay1'        => $netpay1,
-    'bonus'        => $bonus,
-    'bonustax'        => $bonustax,
-    'bonusfinal'        => $bonusfinal,
-    'numdays'        => $numdays,
-    'endyearmonth'      => $thmonth,
-    'endyeartax'        => $thtax,
-    'endyearpay'        => $thpay,
-    'loans'          => $loans,
-    'netpay'         => $netpay,
-];
+            $ssniterRaw     = $getVal($row, 'ssniter', 21, 20);
+            $ssnitpayRaw    = $getVal($row, 'ssnitpay', 22, 21);
+            $petraRaw       = $getVal($row, 'petra', 23, null);
+            $taxincomeRaw   = $getVal($row, 'taxincome', 24, 22);
+            $payeRaw        = $getVal($row, 'paye', 25, 23);
+            $overtimetaxRaw = $getVal($row, 'overtimetax', 26, 24);
+            $totaltaxRaw    = $getVal($row, 'totaltax', 27, 25);
+            $totaldeductRaw = $getVal($row, 'totaldeduction', 28, 26);
+            $netpay1Raw     = $getVal($row, 'netpay1', 29, 27);
 
- $validRecords[] = $data;
- $existingStaffIds[] = $id;
- }
+            $ssniter        = is_numeric($ssniterRaw) ? (float)$ssniterRaw : null;
+            $ssnitpay       = is_numeric($ssnitpayRaw) ? (float)$ssnitpayRaw : null;
+            $petra          = is_numeric($petraRaw) ? (float)$petraRaw : null;
+            $taxincome      = is_numeric($taxincomeRaw) ? (float)$taxincomeRaw : null;
+            $paye           = is_numeric($payeRaw) ? (float)$payeRaw : null;
+            $overtimetax    = is_numeric($overtimetaxRaw) ? (float)$overtimetaxRaw : null;
+            $totaltax       = is_numeric($totaltaxRaw) ? (float)$totaltaxRaw : null;
+            $totaldeduction = is_numeric($totaldeductRaw) ? (float)$totaldeductRaw : null;
+            $netpay1        = is_numeric($netpay1Raw) ? (float)$netpay1Raw : null;
+
+            // Commission / Bonus fields
+            $commEarnedRaw  = $getVal($row, 'commission_earned', 30, 28);
+            $commTaxRaw     = $getVal($row, 'commission_tax', 31, 29);
+            $commFinalRaw   = $getVal($row, 'commission_final', 32, 30);
+            $commEarned     = is_numeric($commEarnedRaw) ? (float)$commEarnedRaw : null;
+            $commTax        = is_numeric($commTaxRaw) ? (float)$commTaxRaw : null;
+            $commFinal      = is_numeric($commFinalRaw) ? (float)$commFinalRaw : null;
+
+            $numdaysRaw     = $getVal($row, 'numdays', 33, 31);
+            $thmonthRaw     = $getVal($row, 'endyearmonth', 34, 32);
+            $thtaxRaw       = $getVal($row, 'endyeartax', 35, 33);
+            $thpayRaw       = $getVal($row, 'endyearpay', 36, 34);
+            $loansRaw       = $getVal($row, 'loans', 37, 35);
+
+            $numdays        = is_numeric($numdaysRaw) ? (int)$numdaysRaw : null;
+            $thmonth        = is_numeric($thmonthRaw) ? (float)$thmonthRaw : null;
+            $thtax          = is_numeric($thtaxRaw) ? (float)$thtaxRaw : null;
+            $thpay          = is_numeric($thpayRaw) ? (float)$thpayRaw : null;
+            $loans          = is_numeric($loansRaw) ? (float)$loansRaw : null;
+
+            // Final Net Pay
+            $rawNet         = trim((string)$getVal($row, 'netpay', 38, 36));
+            $cleanNet       = preg_replace('/[^0-9.-]/', '', $rawNet);
+            $netpay         = is_numeric($cleanNet) ? (float)$cleanNet : null;
+
+            // Validation
+            if (empty($id)) {
+                $errors[] = "Row " . ($index + 2) . ": Staff ID cannot be empty.";
+                continue;
+            }
+            if (empty($name)) {
+                $errors[] = "Row " . ($index + 2) . ": Name cannot be empty.";
+                continue;
+            }
+            if (is_null($netpay)) {
+                $errors[] = "Row " . ($index + 2) . ": Net Pay must be a valid number (found: '{$rawNet}').";
+                continue;
+            }
+
+            if (in_array($id, $existingStaffIds) || in_array($id, $duplicateStaffIds)) {
+                $duplicateStaffIds[] = $id;
+                continue;
+            }
+
+            $record = [
+                'id'                => $id,
+                'name'              => $name,
+                'position'          => $position,
+                'ghcard'            => $ghcard,
+                'ssnit'             => $ssnit,
+                'datejoin'          => $datejoin,
+                'alcnum'            => $alcnum,
+                'bankname'          => $bankname,
+                'branch'            => $branch,
+                'legalwork'         => $legalwork,
+                'actualwork'        => $actualwork,
+                'basic'             => $basic,
+                'actualbasic'       => $actualbasic,
+                'kpi'               => $kpi,
+                'coefficient'       => $coefficient,
+                'monthlykpi'        => $monthlykpi,
+                'overtime'          => $overtime,
+                'transport'         => $transport,
+                'leave1'            => $leave1,
+                'total'             => $total,
+                'ssniter'           => $ssniter,
+                'ssnitpay'          => $ssnitpay,
+                'petra'             => $petra,
+                'taxincome'         => $taxincome,
+                'paye'              => $paye,
+                'overtimetax'       => $overtimetax,
+                'totaltax'          => $totaltax,
+                'totaldeduction'    => $totaldeduction,
+                'netpay1'           => $netpay1,
+                'bonus'             => $commEarned,
+                'bonustax'          => $commTax,
+                'bonusfinal'        => $commFinal,
+                'commission_earned' => $commEarned,
+                'commission_tax'    => $commTax,
+                'commission_final'  => $commFinal,
+                'numdays'           => $numdays,
+                'endyearmonth'      => $thmonth,
+                'endyeartax'        => $thtax,
+                'endyearpay'        => $thpay,
+                'loans'             => $loans,
+                'netpay'            => $netpay,
+            ];
+
+            // Filter columns against database schema to avoid unknown column errors
+            $validRecords[] = array_intersect_key($record, array_flip($tableColumns));
+            $existingStaffIds[] = $id;
+        }
 
  if (!empty($errors)) {
  Log::error("Upload errors: " . implode(' | ', $errors));
@@ -430,19 +544,51 @@ $netpay         = is_numeric($cleanNet) ? (float)$cleanNet : null;
  $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
  $sheet = $spreadsheet->getActiveSheet();
 
- // Set headers
- $headers = [
-    'Staff ID','Name','Position','Ghana Card','SSNIT No','Date Joined','Account Number','Bank','Branch',
-    'Legal Work Days','Actual Days Worked',
-    'Basic Salary','Actual Basic','KPI Target','Coefficient','Monthly KPI Bonus',
-    'Overtime','Transport','Leave Pay','Gross Earnings',
-    'SSNIT ER','SSNIT EE','Taxable Income','PAYE','Overtime Tax','Total Tax','Total Deduction','Net Pay (Before 13th)','Commission/Bonus','Commission/Bonus Tax','Commissiion/Bonus Final',
-    '13th Month Days','13th Month Pay','13th Month Tax','13th Month Net','Loans',
-    'Final Net Pay'
-];
+        // Set headers matching official inhouse template
+        $headers = [
+            'S/N',
+            'EM ID',
+            'NAME',
+            'POSITION',
+            'DATE JOINED',
+            'SSNIT NUMBER',
+            'GH-CARD NO',
+            'BANK NAME',
+            'A/C NUMBER',
+            'BRANCH',
+            'Legal Working Days',
+            'Actual working days for work (Attendance)',
+            'Basic Salary',
+            'Actual Basic Salary',
+            'Basic KPI',
+            'Coefficient',
+            'Monthly KPI Bonus',
+            'Overtime Allowance',
+            'Transport Subsidy',
+            'LEAVE',
+            'Gross Salary',
+            'SSNIT ER',
+            'SSNIT EE',
+            'PETRA',
+            'TAXABLE INCOME',
+            'PAYE',
+            'OVERTIME TAX',
+            'TOTAL TAXATION',
+            'TOTAL DEDUCTIONS',
+            'NET SALARY',
+            'COMMISSION/ BONUS EARNED',
+            'COMMISSION/ BONUS TAX',
+            'COMMISSION/ BONUS FINAL',
+            'NO OF MONTHS WORKED',
+            '13TH MONTH',
+            '13TH TAX',
+            '13TH MONTH PAYABLE',
+            'LOANS',
+            'ACTUAL NET',
+        ];
 
-$sheet->fromArray($headers, null, 'A1');
-$sheet->getStyle('A1:AJ1')->getFont()->setBold(true);
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->getStyle('A1:AM1')->getFont()->setBold(true);
 
 
 

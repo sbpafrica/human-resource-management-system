@@ -35,6 +35,7 @@ class Inhousepay extends Model
         'total',
         'ssniter',
         'ssnitpay',
+        'petra',
         'taxincome',
         'paye',
         'overtimetax',
@@ -44,6 +45,9 @@ class Inhousepay extends Model
         'bonus',
         'bonustax',
         'bonusfinal',
+        'commission_earned',
+        'commission_tax',
+        'commission_final',
         'numdays',
         'endyearmonth',
         'endyeartax',
@@ -70,6 +74,7 @@ class Inhousepay extends Model
     'total'             => 'double',
     'ssniter'           => 'double',
     'ssnitpay'          => 'double',
+    'petra'             => 'double',
     'taxincome'         => 'double',
     'paye'              => 'double',
     'overtimetax'       => 'double',
@@ -79,6 +84,9 @@ class Inhousepay extends Model
     'bonus'             => 'double',
     'bonustax'          => 'double',
     'bonusfinal'        => 'double',
+    'commission_earned' => 'double',
+    'commission_tax'    => 'double',
+    'commission_final'  => 'double',
     'endyearmonth'      => 'double',
     'endyeartax'        => 'double',
     'endyearpay'        => 'double',
@@ -133,6 +141,9 @@ class Inhousepay extends Model
                     `bonus` DOUBLE NULL DEFAULT NULL,
                     `bonustax` DOUBLE NULL DEFAULT NULL,
                     `bonusfinal` DOUBLE NULL DEFAULT NULL,
+                    `commission_earned` DOUBLE NULL DEFAULT NULL,
+                    `commission_tax` DOUBLE NULL DEFAULT NULL,
+                    `commission_final` DOUBLE NULL DEFAULT NULL,
                     `numdays` INT(11) NULL DEFAULT NULL,
                     `endyearmonth` DOUBLE NULL DEFAULT NULL,
                     `endyeartax` DOUBLE NULL DEFAULT NULL,
@@ -141,6 +152,29 @@ class Inhousepay extends Model
                     `netpay` DOUBLE NULL DEFAULT NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
             ");
+        } else {
+            $schema = DB::getSchemaBuilder();
+            if (!$schema->hasColumn($tableName, 'bonus')) {
+                DB::statement("ALTER TABLE `$tableName` ADD COLUMN `bonus` DOUBLE NULL DEFAULT NULL AFTER `netpay1`");
+            }
+            if (!$schema->hasColumn($tableName, 'bonustax')) {
+                DB::statement("ALTER TABLE `$tableName` ADD COLUMN `bonustax` DOUBLE NULL DEFAULT NULL AFTER `bonus`");
+            }
+            if (!$schema->hasColumn($tableName, 'bonusfinal')) {
+                DB::statement("ALTER TABLE `$tableName` ADD COLUMN `bonusfinal` DOUBLE NULL DEFAULT NULL AFTER `bonustax`");
+            }
+            if (!$schema->hasColumn($tableName, 'commission_earned')) {
+                DB::statement("ALTER TABLE `$tableName` ADD COLUMN `commission_earned` DOUBLE NULL DEFAULT NULL AFTER `bonusfinal`");
+            }
+            if (!$schema->hasColumn($tableName, 'commission_tax')) {
+                DB::statement("ALTER TABLE `$tableName` ADD COLUMN `commission_tax` DOUBLE NULL DEFAULT NULL AFTER `commission_earned`");
+            }
+            if (!$schema->hasColumn($tableName, 'commission_final')) {
+                DB::statement("ALTER TABLE `$tableName` ADD COLUMN `commission_final` DOUBLE NULL DEFAULT NULL AFTER `commission_tax`");
+            }
+            if (!$schema->hasColumn($tableName, 'petra')) {
+                DB::statement("ALTER TABLE `$tableName` ADD COLUMN `petra` DOUBLE NULL DEFAULT NULL AFTER `ssnitpay`");
+            }
         }
     }
 

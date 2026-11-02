@@ -245,7 +245,14 @@ public function export(Request $request)
  // Detect by header name; legacy 45-col files still work.
  $hasNewCols = false;
  foreach ($headerRow as $h) {
-     if (stripos(trim((string)$h), 'total cash emolument') !== false) { $hasNewCols = true; break; }
+     $headerStr = strtolower(trim((string)$h));
+     if (str_contains($headerStr, 'total cash emolument') || str_contains($headerStr, 'cash emolument') || str_contains($headerStr, 'assessable income')) {
+         $hasNewCols = true;
+         break;
+     }
+ }
+ if (!$hasNewCols && count($headerRow) >= 47) {
+     $hasNewCols = true;
  }
 
  // Check for existing staff IDs
@@ -350,7 +357,7 @@ $netpay                          = is_numeric($cleanNetpay) ? (float)$cleanNetpa
     }
 
     if (is_null($netpay)) {
-        $errors[] = "Row " . ($index + 2) . ": Bank Transfer (Net Pay) must be a valid number. Found: '$rawBankTransfer'";
+        $errors[] = "Row " . ($index + 2) . ": Bank Transfer (Net Pay) must be a valid number. Found: '$rawNetpay'";
         continue;
     }
 
@@ -475,59 +482,74 @@ $data = [
      */
     public function downloadTemplate()
     {
-       $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-    $sheet = $spreadsheet->getActiveSheet();
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
 
         $headers = [
-    'Staff ID', 'Name', 'Department', 'Date Employed',
-    'Expected Work Days', 'Total Hours Worked',
-    'Basic', 'Basic Earned', 'Food Allowance', 'Night Allowance',
-    'Refund', 'Allowance', 'Total Cash Emolument', 'Deduction', 'Total Assessable Income',
-    'SSNIT EE', 'PETRA', 'Taxable Income', 'PAYE', 'SSF', 'Welfare',
-    'Medical Insurance', 'Workmens Compensation', 'Risk Allowance',
-    'End of Year', 'PPE', 'Staff Cost', 'Mgt Fee', 'GFL', 'NHIL',
-    'COVID', 'VAT', 'C2C',
-    'Weekday OT Hours', 'Weekday OT Rate', 'Weekday OT Amount',
-    'Offday/Holiday OT Hours', 'Offday/Holiday OT Rate', 'Offday/Holiday OT Total',
-    'Special Day OT Hours', 'Special Day OT Rate', 'Special Day OT Amount',
-    'Total Overtime Amount', 'Overtime Tax',
-    'Total Taxation', 'Total Deductions', 'Net Pay'
-];
+            'Staff ID', 'Name', 'Department', 'Date Employed',
+            'Expected Work Days', 'Total Hours Worked',
+            'Basic', 'Basic Earned', 'Food Allowance', 'Night Allowance',
+            'Refund', 'Allowance', 'Total Cash Emolument', 'Deduction', 'Total Assessable Income',
+            'SSNIT EE', 'PETRA', 'Taxable Income', 'PAYE', 'SSF', 'Welfare',
+            'Medical Insurance', 'Workmens Compensation', 'Risk Allowance',
+            'End of Year', 'PPE', 'Staff Cost', 'Mgt Fee', 'GFL', 'NHIL',
+            'COVID', 'VAT', 'C2C',
+            'Weekday OT Hours', 'Weekday OT Rate', 'Weekday OT Amount',
+            'Offday/Holiday OT Hours', 'Offday/Holiday OT Rate', 'Offday/Holiday OT Total',
+            'Special Day OT Hours', 'Special Day OT Rate', 'Special Day OT Amount',
+            'Total Overtime Amount', 'Overtime Tax',
+            'Total Taxation', 'Total Deductions', 'Net Pay'
+        ];
 
         $sheet->fromArray($headers, null, 'A1');
-        $sheet->getStyle('A1:AW1')->getFont()->setBold(true);
-        $sheet->getStyle('M1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
-        $sheet->getStyle('O1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
 
         // Example row
         $exampleData = [
-    'EMP00123', 'Ama Serwaa', 'Operations', '2022-03-15',
-    22, 176.5,
-    4800.00, 4800.00, 400.00, 600.00,
-    150.00, 1150.00, 6400.00, 200.00, 6200.00,
-    264.00, 5700.00, 850.00, 624.00, 100.00,
-    180.00, 120.00, 300.00,
-    0.00, 80.00,80.00, 7434.00, 1200.00, 135.00, 135.00,
-    57.00, 150.00, 8916.00,
-    12.5, 45.00, 562.50,
-    8.0, 90.00, 720.00,
-    0.0, 0.00, 0.00,
-    1282.50, 192.38,
-    1042.38, 1656.38, 5897.62
-];
+            'EMP00123', 'Ama Serwaa', 'Operations', '2022-03-15',
+            22, 176.5,
+            4800.00, 4800.00, 400.00, 600.00,
+            150.00, 1150.00, 7100.00, 200.00, 6900.00,
+            264.00, 240.00, 6396.00, 850.00, 100.00, 180.00,
+            120.00, 300.00, 0.00,
+            80.00, 80.00, 7434.00, 1200.00, 135.00, 135.00,
+            57.00, 150.00, 8916.00,
+            12.5, 45.00, 562.50,
+            8.0, 90.00, 720.00,
+            0.0, 0.00, 0.00,
+            1282.50, 192.38,
+            1042.38, 1656.38, 5897.62
+        ];
 
-   $sheet->fromArray($exampleData, null, 'A2');
+        $sheet->fromArray($exampleData, null, 'A2');
 
-    // Instruction note
-    $sheet->setCellValue('A' . ($sheet->getHighestRow() + 3),
-        'INSTRUCTIONS: Fill only the yellow/required fields. All amounts in GHS. Do NOT add commas, GH¢ or text in number columns. Dates: DD/MM/YYYY or MM/DD/YYYY.'
-    );
+        // Professional Styling
+        $sheet->getParent()->getDefaultStyle()->getFont()->setName('Calibri')->setSize(11);
+        $headerStyle = $sheet->getStyle('A1:AU1');
+        $headerStyle->getFont()->setBold(true);
+        $headerStyle->getFill()
+            ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+            ->getStartColor()->setARGB('BBDEFE');
 
-    $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
-    $fileName = 'Payroll_Upload_Template_' . date('M-Y') . '.xlsx';
-    $tempFile = tempnam(sys_get_temp_dir(), $fileName);
-    $writer->save($tempFile);
+        // Highlight the two new columns (M1: Total Cash Emolument, O1: Total Assessable Income)
+        $sheet->getStyle('M1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
+        $sheet->getStyle('O1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF00');
 
-    return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
-}
+        // Auto-fit all columns A to AU
+        for ($col = 1; $col <= count($headers); $col++) {
+            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+            $sheet->getColumnDimension($colLetter)->setAutoSize(true);
+        }
+
+        // Instruction note
+        $sheet->setCellValue('A4',
+            'INSTRUCTIONS: Fill only the required fields. All amounts in GHS. Do NOT add commas, GH¢ or text in number columns. Dates: YYYY-MM-DD or DD/MM/YYYY. Yellow columns M and O are the newly added Total Cash Emolument and Total Assessable Income.'
+        );
+
+        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+        $fileName = 'twellium_template.xlsx';
+        $tempFile = tempnam(sys_get_temp_dir(), $fileName);
+        $writer->save($tempFile);
+
+        return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+    }
 }

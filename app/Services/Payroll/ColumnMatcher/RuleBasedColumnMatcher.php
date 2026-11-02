@@ -19,6 +19,7 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^emp$/i',
             '/^emp(loyee)?\s*(no|num|number|\#)?$/i',
             '/^staff\s*(no|num|number|\#)?$/i',
+            '/^em\s*id$/i',
         ],
         'name' => [
             '/^(full\s*)?name$/i',
@@ -39,6 +40,15 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
         'join_date' => [
             '/^(join|start|hire|employment)\s*date$/i',
             '/^date\s*of\s*(joining|employment)$/i',
+            '/^date\s*joined$/i',
+        ],
+        'gh_card' => [
+            '/^gh[-_ ]*card(\s*no|\s*number)?$/i',
+            '/^ghana\s*card(\s*no|\s*number)?$/i',
+        ],
+        'ssnit_number' => [
+            '/^ssnit\s*(no|num|number)$/i',
+            '/^ssnit\s*card(\s*no)?$/i',
         ],
         'shop' => [
             '/^shop(\s*name)?$/i',
@@ -287,7 +297,29 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
         'total_deductions' => [
             '/^total\s*ded(uctions?)?$/i',
         ],
+        'commission_earned' => [
+            '/^comm(ission)?(\s*\/\s*bonus)?\s*earned$/i',
+            '/^commission\s*earned$/i',
+            '/^bonus\s*earned$/i',
+            '/^comm(ission)?\s*\/\s*bonus$/i',
+        ],
+        'commission_tax' => [
+            '/^comm(ission)?(\s*\/\s*bonus)?\s*tax$/i',
+            '/^commission\s*tax$/i',
+            '/^bonus\s*tax$/i',
+        ],
+        'commission_final' => [
+            '/^comm(ission)?(\s*\/\s*bonus)?\s*final$/i',
+            '/^commission\s*final$/i',
+            '/^bonus\s*final$/i',
+        ],
+        'net_salary' => [
+            '/^net\s*salary$/i',
+            '/^net\s*pay\s*(1|before\s*13th)$/i',
+        ],
         'net_pay' => [
+            '/^actual\s*net(\s*(pay|salary))?$/i',
+            '/^final\s*net(\s*(pay|salary))?$/i',
             '/^net(\s*(salary|pay))?$/i',
             '/^bank\s*transfer$/i',
             '/^take\s*home(\s*pay)?$/i',
@@ -302,6 +334,7 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
         ],
         'account' => [
             '/^acc(ount)?\s*(no|num|number)?$/i',
+            '/^a\/c\s*(no|num|number)?$/i',
             '/^bank\s*acc(ount)?$/i',
             '/^momo(\s*(no|number))?$/i',
         ],
@@ -349,6 +382,11 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             $mapping['overtime_amount'] = $mapping['total_overtime_amt'];
         } elseif (isset($mapping['overtime_amount']) && !isset($mapping['total_overtime_amt'])) {
             $mapping['total_overtime_amt'] = $mapping['overtime_amount'];
+        }
+
+        // Fallback net_pay to net_salary if actual net pay was not distinct
+        if (!isset($mapping['net_pay']) && isset($mapping['net_salary'])) {
+            $mapping['net_pay'] = $mapping['net_salary'];
         }
 
         // Calculate confidence score based on essential payroll field matches

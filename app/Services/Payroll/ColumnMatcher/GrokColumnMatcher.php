@@ -73,8 +73,11 @@ The standard internal fields are:
 - "taxable_income": Net taxable earnings for GRA PAYE calculation
 - "paye": GRA Personal Income Tax (P.A.Y.E.)
 - "overtime_tax": Tax withheld specifically on overtime earnings (e.g. Overtime Tax)
+- "commission_earned": Commission or bonus earned amount (e.g. Commission / Bonus Earned, Bonus, Commission Earned)
+- "commission_tax": Tax withheld on commission or bonus (e.g. Commission / Bonus Tax, Bonus Tax)
+- "commission_final": Net commission or bonus payable after tax (e.g. Commission / Bonus Final, Bonus Final)
 - "total_deductions": Sum of all statutory and non-statutory deductions
-- "net_pay": Final take-home pay transferred to employee bank account / MoMo
+- "net_pay": Final take-home pay transferred to employee bank account / MoMo (e.g. Actual Net, Final Net Pay, Net Pay)
 - "bank": Bank name
 - "account": Bank account number or mobile money number
 

@@ -407,4 +407,178 @@ class PayrollAiIntegrationTest extends TestCase
         $this->assertEquals(123.25, $normalized->overtimetax);
         $this->assertEquals(3100.25, $normalized->net_pay);
     }
+
+    public function test_twellium_kumasi_payslip_includes_total_cash_emolument_and_total_assessable_income(): void
+    {
+        $client = (object)[
+            'client_dbname' => 'twellium',
+            'slug'          => 'twellium-industrial-company-ghana',
+            'short_name'    => 'Twellium Kumasi',
+        ];
+
+        $rawRecord = (object)[
+            'employ'                  => 'EMP00123',
+            'name'                    => 'Ama Serwaa',
+            'basic'                   => 4800.00,
+            'basic_earned'            => 4800.00,
+            'food_allowance'          => 400.00,
+            'night_allowance'         => 600.00,
+            'refund'                  => 150.00,
+            'allowance'               => 1150.00,
+            'total_cash_emolument'    => 7100.00,
+            'deduction'               => 200.00,
+            'total_assessable_income' => 6900.00,
+            'netpay'                  => 5897.62,
+        ];
+
+        $controller = new \App\Http\Controllers\PayslipController();
+        $refMethod = new \ReflectionMethod($controller, 'normalizePayslip');
+        $normalized = $refMethod->invoke($controller, $rawRecord, $client, '-');
+
+        $this->assertEquals(7100.00, $normalized->total_cash_emolument);
+        $this->assertEquals(6900.00, $normalized->total_assessable_income);
+        $this->assertEquals(400.00, $normalized->food_allowance);
+        $this->assertEquals(600.00, $normalized->night_allowance);
+        $this->assertEquals(150.00, $normalized->refund);
+
+        // Verify view rendering
+        $view = view('payslip.twellium-pdf', [
+            'payslip'        => $normalized,
+            'formattedMonth' => 'October 2026',
+            'ssnit'          => 'C123456789012',
+            'bank'           => [
+                'bankname' => 'GCB Bank',
+                'name'     => 'Ama Serwaa',
+                'alcnum'   => '123456789',
+                'branch'   => 'Kumasi Main',
+            ],
+        ])->render();
+
+        $this->assertStringContainsString('Total Cash Emolument', $view);
+        $this->assertStringContainsString('7,100.00', $view);
+        $this->assertStringContainsString('Total Assessable Income', $view);
+        $this->assertStringContainsString('6,900.00', $view);
+    }
+
+    public function test_inhouse_payroll_matcher_resolves_commission_earned_and_commission_tax(): void
+    {
+        $headers = [
+            'S/N',
+            'EM ID',
+            'NAME',
+            'POSITION',
+            'DATE JOINED',
+            'SSNIT NUMBER',
+            'GH-CARD NO',
+            'BANK NAME',
+            'A/C NUMBER',
+            'BRANCH',
+            'Legal Working Days',
+            'Actual working days for work (Attendance)',
+            'Basic Salary ',
+            'Actual Basic Salary',
+            'Basic KPI',
+            'Coefficient ',
+            'Monthly KPI Bonus',
+            'Overtime Allowance',
+            'Transport Subsidy ',
+            'LEAVE',
+            'Gross Salary',
+            'SSNIT ER',
+            'SSNIT EE',
+            'PETRA',
+            'TAXABLE INCOME',
+            'PAYE',
+            'OVERTIME TAX',
+            'TOTAL TAXATION',
+            'TOTAL DEDUCTIONS',
+            'NET SALARY',
+            'COMMISSION/ BONUS EARNED',
+            'COMMISSION/ BONUS TAX',
+            'COMMISSION/ BONUS FINAL',
+            'NO OF MONTHS WORKED',
+            '13TH MONTH',
+            '13TH TAX',
+            '13TH MONTH PAYABLE',
+            'LOANS',
+            'ACTUAL NET',
+        ];
+
+        // 1. RuleBased Matcher
+        $ruleMatcher = new RuleBasedColumnMatcher();
+        $ruleResult = $ruleMatcher->match($headers, 'inhouse');
+
+        $this->assertEquals(1, $ruleResult['mapping']['staff_id']);
+        $this->assertEquals(2, $ruleResult['mapping']['name']);
+        $this->assertEquals(3, $ruleResult['mapping']['position']);
+        $this->assertEquals(4, $ruleResult['mapping']['join_date']);
+        $this->assertEquals(30, $ruleResult['mapping']['commission_earned']);
+        $this->assertEquals(31, $ruleResult['mapping']['commission_tax']);
+        $this->assertEquals(32, $ruleResult['mapping']['commission_final']);
+        $this->assertEquals(38, $ruleResult['mapping']['net_pay']);
+
+        // 2. Legacy Matcher
+        $legacyMatcher = new LegacyColumnMatcher();
+        $legacyResult = $legacyMatcher->match($headers, 'inhouse');
+
+        $this->assertEquals(1, $legacyResult['mapping']['staff_id']);
+        $this->assertEquals(30, $legacyResult['mapping']['commission_earned']);
+        $this->assertEquals(31, $legacyResult['mapping']['commission_tax']);
+        $this->assertEquals(32, $legacyResult['mapping']['commission_final']);
+        $this->assertEquals(38, $legacyResult['mapping']['net_pay']);
+    }
+
+    public function test_inhouse_payslip_includes_commission_earned_and_commission_tax(): void
+    {
+        $client = (object)[
+            'client_dbname' => 'inhouse',
+            'slug'          => 'inhouse',
+            'short_name'    => 'Inhouse',
+        ];
+
+        $rawRecord = (object)[
+            'id'                => 'INH001',
+            'name'              => 'Kofi Annan',
+            'position'          => 'Sales Executive',
+            'actualwork'        => 22,
+            'actualbasic'       => 3500.00,
+            'monthlykpi'        => 450.00,
+            'overtime'          => 200.00,
+            'transport'         => 300.00,
+            'ssnitpay'          => 17.50,
+            'petra'             => 175.00,
+            'totaltax'          => 420.00,
+            'commission_earned' => 1250.00,
+            'commission_tax'    => 125.00,
+            'commission_final'  => 1125.00,
+            'loans'             => 100.00,
+            'netpay'            => 4662.50,
+        ];
+
+        $controller = new \App\Http\Controllers\PayslipController();
+        $refMethod = new \ReflectionMethod($controller, 'normalizePayslip');
+        $normalized = $refMethod->invoke($controller, $rawRecord, $client, 'D987654321012');
+
+        $this->assertEquals(1250.00, $normalized->commission_earned);
+        $this->assertEquals(1250.00, $normalized->commission);
+        $this->assertEquals(125.00, $normalized->commission_tax);
+        $this->assertEquals(125.00, $normalized->commissiontax);
+
+        $view = view('payslip.inhouse-pdf', [
+            'payslip'        => $normalized,
+            'formattedMonth' => 'October 2026',
+            'ssnit'          => 'D987654321012',
+            'bank'           => [
+                'bankname' => 'Fidelity Bank',
+                'name'     => 'Kofi Annan',
+                'alcnum'   => '10987654321',
+                'branch'   => 'Accra Ridge',
+            ],
+        ])->render();
+
+        $this->assertStringContainsString('Commission Earned', $view);
+        $this->assertStringContainsString('1,250.00', $view);
+        $this->assertStringContainsString('Commission Tax', $view);
+        $this->assertStringContainsString('125.00', $view);
+    }
 }

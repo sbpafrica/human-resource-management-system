@@ -860,8 +860,8 @@ class PayslipController extends Controller
             ?? $getP('weekdayrate')
             ?? 0
         );
-        $payslip->rate = $rate;
-        $payslip->daily_rate = $rate;
+        $payslip->rate = round($rate, 2);
+        $payslip->daily_rate = round($rate, 2);
 
         $basicEarned = $getP('earned_basic_salary')
             ?? $getP('earnedbasicsalary')
@@ -920,13 +920,19 @@ class PayslipController extends Controller
         $payslip->amount          = (float)($getP('amount') ?? 0);
         $payslip->weekdayhr       = (float)($getP('weekdayhr') ?? 0);
         $payslip->weekdaytonage   = (float)($getP('weekdaytonage') ?? 0);
-        $payslip->weekdayrate     = (float)($getP('weekdayrate') ?? 0);
-        $payslip->weekdayothr     = (float)($getP('weekdayothr') ?? 0);
-        $payslip->weekdayotrate   = (float)($getP('weekdayotrate') ?? 0);
-        $payslip->weekdayotamt1   = (float)($getP('weekdayotamt1') ?? 0);
-        $payslip->weekendhr       = (float)($getP('weekendhr') ?? 0);
-        $payslip->weekendtonage   = (float)($getP('weekendtonage') ?? 0);
-        $payslip->weekendrate     = (float)($getP('weekendrate') ?? 0);
+        $payslip->weekdayrate                   = round((float)($getP('weekdayrate') ?? $getP('weekday_rate') ?? 0), 2);
+        $payslip->weekdayothr                   = (float)($getP('weekdayothr') ?? 0);
+        $payslip->weekdayotrate                 = round((float)($getP('weekdayotrate') ?? $getP('weekday_overtime_rate') ?? $getP('weekday_ot_rate') ?? $getP('normal_overtime_rate') ?? 0), 2);
+        $payslip->weekdayotamt1                 = round((float)($getP('weekdayotamt1') ?? 0), 2);
+        $payslip->weekendhr                     = (float)($getP('weekendhr') ?? 0);
+        $payslip->weekendtonage                 = (float)($getP('weekendtonage') ?? 0);
+        $payslip->weekendrate                   = round((float)($getP('weekendrate') ?? $getP('weekend_rate') ?? $getP('saturday_rate') ?? $getP('saturdayrate') ?? 0), 2);
+        $payslip->weekday_rate                  = $payslip->weekdayrate;
+        $payslip->weekday_overtime_rate         = $payslip->weekdayotrate;
+        $payslip->saturday_rate                 = $payslip->weekendrate;
+        $payslip->offday_holiday_overtime_rate  = round((float)($getP('offday_holiday_overtime_rate') ?? $getP('offdayholidayovertimerate') ?? $payslip->saturday_rate), 2);
+        $payslip->special_day_overtime_rate     = round((float)($getP('special_day_overtime_rate') ?? $getP('specialdayovertimerate') ?? $getP('holiday_rate') ?? $getP('holidayrate') ?? 0), 2);
+        $payslip->overtime_rate                 = round((float)($getP('overtime_rate') ?? $getP('overtimerate') ?? $payslip->weekday_overtime_rate), 2);
         $payslip->total1          = (float)($getP('total1') ?? 0);
         $payslip->total2          = (float)($getP('total2') ?? 0);
         $payslip->totalamount     = (float)($getP('totalamount') ?? 0);
@@ -1424,13 +1430,64 @@ class PayslipController extends Controller
         $payslip->surcharge_or_student_loan = $payslip->otherdeduction;
         $payslip->absentee_days             = $getP('absentee_days') ?? $getP('absent_days') ?? $getP('absentdays') ?? 0;
         $payslip->absent_deductions         = (float)($getP('absent_deductions') ?? $getP('absentdeductions') ?? $getP('absentee_deductions') ?? 0);
+        $payslip->food_allowance            = (float)($getP('food_allowance') ?? $getP('foodallowance') ?? 0);
         $payslip->night_allowance           = (float)($getP('night_allowance') ?? $payslip->nightallowance ?? 0);
+        $payslip->refund                    = (float)($getP('refund') ?? 0);
+
+        $totalCash = $getP('total_cash_emolument')
+            ?? $getP('totalcashemolument')
+            ?? $getP('total_cash')
+            ?? $getP('cash_emolument')
+            ?? null;
+
+        $totalAssessable = $getP('total_assessable_income')
+            ?? $getP('totalassessableincome')
+            ?? $getP('assessable_income')
+            ?? null;
+
+        $isTwelliumKumasi = ($clientDb === 'twellium' || str_contains($clientSlug, 'twellium-industrial-company-ghana') || str_contains($clientSlug, 'twellium'));
+
+        if ($totalCash !== null && is_numeric($totalCash)) {
+            $payslip->total_cash_emolument = round((float)$totalCash, 2);
+        } elseif ($isTwelliumKumasi) {
+            $payslip->total_cash_emolument = round(
+                (float)($payslip->basic_earned ?? 0)
+                + (float)($payslip->food_allowance ?? 0)
+                + (float)($payslip->night_allowance ?? 0)
+                + (float)($payslip->refund ?? 0)
+                + (float)($payslip->allowance ?? 0),
+                2
+            );
+        } else {
+            $payslip->total_cash_emolument = null;
+        }
+
+        if ($totalAssessable !== null && is_numeric($totalAssessable)) {
+            $payslip->total_assessable_income = round((float)$totalAssessable, 2);
+        } elseif ($isTwelliumKumasi && $payslip->total_cash_emolument !== null) {
+            $payslip->total_assessable_income = round((float)$payslip->total_cash_emolument - (float)($payslip->deduction ?? 0), 2);
+        } else {
+            $payslip->total_assessable_income = null;
+        }
+
         $payslip->saturdays_worked          = $getP('saturdays_worked') ?? $getP('saturdaysworked') ?? 0;
         $payslip->saturday_amount           = (float)($getP('saturday_amount') ?? $payslip->saturdayovertime ?? 0);
         $payslip->overtime_hours            = $getP('overtime_hours') ?? $getP('overtimehrs') ?? 0;
         $payslip->overtime_amount           = (float)($getP('overtime_amount') ?? $payslip->overtime ?? 0);
-        $payslip->commission                = (float)($getP('commission') ?? 0);
-        $payslip->commissiontax             = (float)($getP('commissiontax') ?? $getP('commission_tax') ?? 0);
+        $commEarned = $getP('commission_earned') ?? $getP('commissionearned') ?? $getP('commission') ?? $getP('bonus') ?? 0;
+        $commTax    = $getP('commission_tax') ?? $getP('commissiontax') ?? $getP('bonustax') ?? 0;
+        $commFinal  = $getP('commission_final') ?? $getP('commissionfinal') ?? $getP('bonusfinal') ?? 0;
+
+        $payslip->commission_earned = (float)$commEarned;
+        $payslip->commission        = (float)$commEarned;
+        $payslip->bonus             = (float)$commEarned;
+
+        $payslip->commission_tax    = (float)$commTax;
+        $payslip->commissiontax     = (float)$commTax;
+        $payslip->bonustax          = (float)$commTax;
+
+        $payslip->commission_final  = (float)$commFinal;
+        $payslip->bonusfinal        = (float)$commFinal;
 
         // Transsion BFA / Burkina Faso statutory deductions & payroll items
         $isTransburkina = str_contains($client->client_dbname ?? '', 'transburkina') 

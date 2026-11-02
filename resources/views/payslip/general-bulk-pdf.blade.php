@@ -171,6 +171,22 @@
                         <td></td>
                     </tr>
                     @endif
+                    @if((float)data_get($payslip, 'total_cash_emolument', 0) > 0)
+                    <tr>
+                        <td colspan="2" class="bold">Total Cash Emolument</td>
+                        <td></td>
+                        <td style="text-align:center;" class="bold">{{ number_format((float)data_get($payslip, 'total_cash_emolument', 0), 2) }}</td>
+                        <td></td>
+                    </tr>
+                    @endif
+                    @if((float)data_get($payslip, 'total_assessable_income', 0) > 0)
+                    <tr>
+                        <td colspan="2" class="bold">Total Assessable Income</td>
+                        <td></td>
+                        <td style="text-align:center;" class="bold">{{ number_format((float)data_get($payslip, 'total_assessable_income', 0), 2) }}</td>
+                        <td></td>
+                    </tr>
+                    @endif
                     <tr>
                         <td colspan="2" class="bold">Gross Salary</td>
                         <td></td>
