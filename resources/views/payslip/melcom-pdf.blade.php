@@ -137,18 +137,10 @@
         </tr>
 
         <!-- Saturday & Sunday Overtime -->
-        @php
-            $satOtAmt = (float)($payslip->saturdayovertime ?? 0);
-            $satOtDesc = (float)($payslip->saturday_ot_hrs ?? ($payslip->sat_ot_hrs ?? ($payslip->weekendOT ?? ($payslip->saturday_hours ?? 0))));
-            $basicVal = (float)($payslip->basic ?? 0);
-            if ($satOtAmt > 0 && $basicVal > 0 && ($satOtDesc == 0 || abs($satOtDesc - $satOtAmt) < 2.0 || $satOtDesc > 72)) {
-                $satOtDesc = round($satOtAmt / ($basicVal / 144));
-            }
-        @endphp
         <tr>
             <td colspan="2">Saturday & Sunday Overtime</td>
-            <td class="text-right">{{ (int)$satOtDesc }}</td>
-            <td class="text-center">{{ number_format($satOtAmt, 2) }}</td>
+            <td class="text-right">{{ (int)($payslip->saturday_ot_hrs ?? ($payslip->sat_ot_hrs ?? ($payslip->weekendOT ?? ($payslip->saturday_hours ?? 0)))) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->saturdayovertime ?? 0), 2) }}</td>
             <td></td>
         </tr>
 

@@ -443,14 +443,7 @@ public function export(Request $request)
              'absenthrs'         => $parseNum($row[$colAbsentHrs] ?? 0),
              'holiday'           => $parseNum($row[$colHoliday] ?? 0),
              'weekdaysOT'        => $parseNum($row[$colWeekdaysOt] ?? 0),
-             'weekendOT'         => (function() use ($parseNum, $row, $colWeekendOt, $colSaturdayOtAmt, $basic) {
-                 $rawHours = $parseNum($row[$colWeekendOt] ?? null, null);
-                 $satAmt = $parseNum($row[$colSaturdayOtAmt] ?? 0);
-                 if (($rawHours === null || $rawHours == 0 || abs($rawHours - $satAmt) < 2.0 || $rawHours > 72) && $satAmt > 0 && $basic > 0) {
-                     return (int)round($satAmt / ($basic / 144));
-                 }
-                 return (int)round($rawHours ?? 0);
-             })(),
+             'weekendOT'         => (int)round($parseNum($row[$colWeekendOt] ?? 0)),
              'holidayot'         => $parseNum($row[$colHolidayOt] ?? 0),
              'basic'             => $basic,
              'absentwithoutpay'  => $parseNum($row[$colAbsentWithoutPay] ?? 0),

@@ -840,22 +840,12 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                                     <td className="p-2 text-center">{(payslip.normalovertime ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td></td>
                                 </tr>
-                                {(() => {
-                                    const satOtAmt = Number(payslip.saturdayovertime ?? 0);
-                                    let satOtDesc = Number(payslip.saturday_ot_hrs ?? payslip.sat_ot_hrs ?? payslip.weekendOT ?? payslip.saturday_hours ?? 0);
-                                    const basicVal = Number(payslip.basic ?? 0);
-                                    if (satOtAmt > 0 && basicVal > 0 && (satOtDesc === 0 || Math.abs(satOtDesc - satOtAmt) < 2.0 || satOtDesc > 72)) {
-                                        satOtDesc = Math.round(satOtAmt / (basicVal / 144));
-                                    }
-                                    return (
-                                        <tr>
-                                            <td colSpan={2} className="p-2">Sat & Sun Overtime</td>
-                                            <td className="p-2 text-right">{Math.round(satOtDesc)}</td>
-                                            <td className="p-2 text-center">{satOtAmt.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                            <td></td>
-                                        </tr>
-                                    );
-                                })()}
+                                <tr>
+                                    <td colSpan={2} className="p-2">Sat & Sun Overtime</td>
+                                    <td className="p-2 text-right">{Math.round(Number(payslip.saturday_ot_hrs ?? payslip.sat_ot_hrs ?? payslip.weekendOT ?? payslip.saturday_hours ?? 0))}</td>
+                                    <td className="p-2 text-center">{(payslip.saturdayovertime ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                    <td></td>
+                                </tr>
                                 <tr>
                                     <td colSpan={2} className="p-2">Holiday Overtime</td>
                                     <td className="p-2 text-right">{payslip.holidayot ?? 0}</td>

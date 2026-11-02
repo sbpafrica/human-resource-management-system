@@ -1612,20 +1612,25 @@ class PayslipController extends Controller
                 ?? $getP('weekendOT') 
                 ?? $payslip->weekendOT 
                 ?? $payslip->saturday_hours;
-            $rawSatOt = (float)($melcomSatOt ?? 0);
-            $satOtAmt = (float)($payslip->saturdayovertime ?? 0);
-            $basicVal = (float)($payslip->basic ?? 0);
+            $satOtInt = (int)round((float)($melcomSatOt ?? 0));
+            $payslip->weekendOT        = $satOtInt;
+            $payslip->weekendOT_hours  = $satOtInt;
+            $payslip->saturday_hours   = $satOtInt;
+            $payslip->saturday_ot_hrs  = $satOtInt;
+            $payslip->sat_ot_hrs       = $satOtInt;
+        }
 
-            // In old databases, the overtime earnings amount (e.g. 308.25) was mistakenly stored in weekendOT
-            // instead of the hours from Column U (28).
-            // When rawSatOt matches satOtAmt or exceeds reasonable monthly Saturday OT hours (> 72),
-            // reverse-calculate the exact Column U hours using Melcom's statutory formula: satAmt / (basic / 144).
-            if ($satOtAmt > 0 && $basicVal > 0 && ($rawSatOt == 0 || abs($rawSatOt - $satOtAmt) < 2.0 || $rawSatOt > 72)) {
-                $satOtInt = (int)round($satOtAmt / ($basicVal / 144));
-            } else {
-                $satOtInt = (int)round($rawSatOt);
-            }
-
+        // Melcom specific attributes & Saturday OT integer format
+        $isMelcom = ($clientDb === 'melcom' || str_contains($clientSlug, 'melcom'));
+        if ($isMelcom) {
+            $melcomSatOt = $getP('Saturday OT HRS') 
+                ?? $getP('Saturday_OT_HRS') 
+                ?? $getP('saturday_ot_hrs') 
+                ?? $getP('sat_ot_hrs') 
+                ?? $getP('weekendOT') 
+                ?? $payslip->weekendOT 
+                ?? $payslip->saturday_hours;
+            $satOtInt = (int)round((float)($melcomSatOt ?? 0));
             $payslip->weekendOT        = $satOtInt;
             $payslip->weekendOT_hours  = $satOtInt;
             $payslip->saturday_hours   = $satOtInt;
