@@ -1620,6 +1620,24 @@ class PayslipController extends Controller
             $payslip->sat_ot_hrs       = $satOtInt;
         }
 
+        // Melcom specific attributes & Saturday OT integer format
+        $isMelcom = ($clientDb === 'melcom' || str_contains($clientSlug, 'melcom'));
+        if ($isMelcom) {
+            $melcomSatOt = $getP('Saturday OT HRS') 
+                ?? $getP('Saturday_OT_HRS') 
+                ?? $getP('saturday_ot_hrs') 
+                ?? $getP('sat_ot_hrs') 
+                ?? $getP('weekendOT') 
+                ?? $payslip->weekendOT 
+                ?? $payslip->saturday_hours;
+            $satOtInt = (int)round((float)($melcomSatOt ?? 0));
+            $payslip->weekendOT        = $satOtInt;
+            $payslip->weekendOT_hours  = $satOtInt;
+            $payslip->saturday_hours   = $satOtInt;
+            $payslip->saturday_ot_hrs  = $satOtInt;
+            $payslip->sat_ot_hrs       = $satOtInt;
+        }
+
         $payslip->saturdays_worked          = $getP('saturdays_worked') ?? $getP('saturdaysworked') ?? 0;
         $payslip->saturday_amount           = (float)($getP('saturday_amount') ?? $payslip->saturdayovertime ?? 0);
         $payslip->overtime_hours            = $getP('overtime_hours') ?? $getP('overtimehrs') ?? 0;

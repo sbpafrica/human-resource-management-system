@@ -115,7 +115,7 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
         staff_ids: [] as string[],
     });
 
-    const isMelcom = client.client_dbname === 'melcom';
+    const isMelcom = client.client_dbname === 'melcom' || client.client_dbname?.includes('melcom') || clientSlug?.includes('melcom');
     const isHonda = client.client_dbname === 'honda';
     const isJaykay = client.client_dbname === 'jkay';
     const isPz = client.client_dbname === 'pz';

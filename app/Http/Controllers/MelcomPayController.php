@@ -368,13 +368,11 @@ public function export(Request $request)
      $colTrust            = $mapping['trust'] ?? $findHeaderIdx(['/recover.*shop/i', '/^trust$/i']) ?? ($offset + 36 + $postGross);
      $colTotalDeduction   = $mapping['total_deductions'] ?? $findHeaderIdx(['/^total\s*deductions?/i']) ?? ($offset + 37 + $postGross);
      $colNetPay           = $mapping['net_pay'] ?? $findHeaderIdx(['/^take\s*home\s*pay/i', '/^net\s*pay/i', '/^bank\s*transfer/i']) ?? ($offset + 38 + $postGross);
-     $colTotalDeduction   = $mapping['total_deductions'] ?? ($offset + 37 + $postGross);
-     $colNetPay           = $mapping['net_pay'] ?? ($offset + 38 + $postGross);
 
      // Check for existing staff IDs
      $existingStaffIds = DB::table($tableName)->pluck('employ')->toArray();
-     $duplicateStaffIds = [];
      $validRecords = [];
+     $updatedCount = 0;
      $errors = [];
      $hasNewColsInTable = DB::getSchemaBuilder()->hasColumn($tableName, 'total_cash_emolument');
 
@@ -423,12 +421,6 @@ public function export(Request $request)
          if (is_null($netPay)) {
              $rawVal = $row[$colNetPay] ?? '';
              $errors[] = "Row {$excelRowNum}: Bank Transfer (Net Pay) must be a valid number. Found: '{$rawVal}'";
-             continue;
-         }
-
-         // Duplicate check
-         if (in_array($employ, $existingStaffIds)) {
-             $duplicateStaffIds[] = $employ;
              continue;
          }
 
@@ -482,6 +474,13 @@ public function export(Request $request)
              $data['total_assessable_income'] = $totalAssessable ?? $gross;
          }
 
+         // If already exists in table, update the record with latest values (e.g. re-upload)
+         if (in_array($employ, $existingStaffIds)) {
+             DB::table($tableName)->where('employ', $employ)->update($data);
+             $updatedCount++;
+             continue;
+         }
+
          $validRecords[] = $data;
          $existingStaffIds[] = $employ;
      }
@@ -493,12 +492,6 @@ public function export(Request $request)
  : implode(' | ', $errors);
  return redirect()->route('melcompay.index', ['month' => $selectedMonth])
  ->with('error', $errorMessage);
- }
-
- if (!empty($duplicateStaffIds)) {
- Log::error("Duplicate Staff IDs: " . implode(', ', array_unique($duplicateStaffIds)));
- return redirect()->route('melcompay.index', ['month' => $selectedMonth])
- ->with('error', 'Duplicate Staff IDs found: ' . implode(', ', array_unique($duplicateStaffIds)));
  }
 
  if (!empty($validRecords)) {
@@ -513,12 +506,15 @@ public function export(Request $request)
     });
 
     Log::info("Upload: Successfully inserted " . count($validRecords) . " records into {$tableName} using " . count($chunks) . " chunks");
-}else {
- Log::warning("Upload: No valid records to insert into {$tableName}");
+ } elseif ($updatedCount > 0) {
+    Log::info("Upload: Successfully updated {$updatedCount} records in {$tableName}");
+ } else {
+    Log::warning("Upload: No valid records to insert or update into {$tableName}");
  }
 
+ $totalProcessed = count($validRecords) + $updatedCount;
  return redirect()->route('melcompay.index', ['month' => $selectedMonth])
- ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
+ ->with('success', "Successfully processed {$totalProcessed} record(s) ({$updatedCount} updated).");
  } catch (\Exception $e) {
  Log::error('File upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
  return redirect()->route('melcompay.index', ['month' => $selectedMonth])
