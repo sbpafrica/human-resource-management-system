@@ -581,4 +581,16 @@ class PayrollAiIntegrationTest extends TestCase
         $this->assertStringContainsString('Commission Tax', $view);
         $this->assertStringContainsString('125.00', $view);
     }
+
+    public function test_twellium_kumasi_payslip_query_does_not_join_unrelated_overtime_table(): void
+    {
+        $controller = new \App\Http\Controllers\PayslipController();
+        $refMethod = new \ReflectionMethod($controller, 'getPayslipQuery');
+        $query = $refMethod->invoke($controller, 'twellium', 'employ');
+        $sql = $query->toSql();
+
+        $this->assertStringNotContainsString('twelliumovertime', $sql);
+        $this->assertStringContainsString('twellium', $sql);
+        $this->assertStringContainsString('as "b"', str_replace('`', '"', $sql));
+    }
 }

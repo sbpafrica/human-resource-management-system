@@ -293,39 +293,35 @@ class PayslipController extends Controller
 
         if (str_starts_with($tableName, 'twelliumaccra')) {
             $suffix = substr($tableName, strlen('twelliumaccra'));
-            foreach (["twelliumaccraovertime{$suffix}", "twelliumaccraover{$suffix}"] as $cand) {
-                if (Schema::hasTable($cand)) return $cand;
-            }
-        }
-
-        if (str_starts_with($tableName, 'twellium')) {
-            $suffix = substr($tableName, strlen('twellium'));
-            foreach (["twelliumovertime{$suffix}", "twelliumover{$suffix}"] as $cand) {
-                if (Schema::hasTable($cand)) return $cand;
+            if ($suffix !== '') {
+                foreach (["twelliumaccraovertime{$suffix}", "twelliumaccraover{$suffix}"] as $cand) {
+                    if (Schema::hasTable($cand)) return $cand;
+                }
             }
         }
 
         return null;
     }
 
-    private function getOvertimeJoinColumn(string $baseTable, string $otTable, string $fallbackField): string
+    private function getOvertimeJoinPair(string $baseTable, string $otTable, string $fallbackField): ?array
     {
-        if (Schema::hasColumn($baseTable, 'clock_in_id') && Schema::hasColumn($otTable, 'clock_in_id')) {
-            return 'clock_in_id';
+        // 1. Identical column present in both tables
+        $candidates = ['clock_in_id', 'ID', 'id', 'employ', 'staff_id', 'staffid', $fallbackField];
+        foreach ($candidates as $col) {
+            if (!empty($col) && Schema::hasColumn($baseTable, $col) && Schema::hasColumn($otTable, $col)) {
+                return [$col, $col];
+            }
         }
-        if (Schema::hasColumn($baseTable, 'ID') && Schema::hasColumn($otTable, 'ID')) {
-            return 'ID';
+
+        // 2. Cross-column matching
+        if (Schema::hasColumn($baseTable, 'clock_in_id') && Schema::hasColumn($otTable, 'ID')) {
+            return ['clock_in_id', 'ID'];
         }
-        if (Schema::hasColumn($baseTable, 'id') && Schema::hasColumn($otTable, 'id')) {
-            return 'id';
+        if (Schema::hasColumn($baseTable, 'ID') && Schema::hasColumn($otTable, 'clock_in_id')) {
+            return ['ID', 'clock_in_id'];
         }
-        if (Schema::hasColumn($baseTable, 'employ') && Schema::hasColumn($otTable, 'employ')) {
-            return 'employ';
-        }
-        if (Schema::hasColumn($baseTable, $fallbackField) && Schema::hasColumn($otTable, $fallbackField)) {
-            return $fallbackField;
-        }
-        return $fallbackField;
+
+        return null;
     }
 
     private function getPayslipQuery(string $tableName, string $staffIdField)
@@ -334,10 +330,13 @@ class PayslipController extends Controller
         $hasOtTable = $otTable && Schema::hasTable($otTable);
 
         if ($hasOtTable) {
-            $joinCol = $this->getOvertimeJoinColumn($tableName, $otTable, $staffIdField);
-            return DB::table("{$tableName} as b")
-                ->leftJoin("{$otTable} as o", "b.{$joinCol}", '=', "o.{$joinCol}")
-                ->select('o.*', 'b.*');
+            $joinPair = $this->getOvertimeJoinPair($tableName, $otTable, $staffIdField);
+            if ($joinPair !== null) {
+                [$baseCol, $otCol] = $joinPair;
+                return DB::table("{$tableName} as b")
+                    ->leftJoin("{$otTable} as o", "b.{$baseCol}", '=', "o.{$otCol}")
+                    ->select('o.*', 'b.*');
+            }
         }
 
         return DB::table("{$tableName} as b")->select('b.*');
