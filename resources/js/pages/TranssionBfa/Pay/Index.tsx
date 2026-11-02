@@ -1,4 +1,4 @@
-import { Head, router, useForm } from "@inertiajs/react";
+import { Head, router, useForm, Link } from "@inertiajs/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Pencil, Trash, CheckCircle, XCircle, Download, Upload, ArrowUpDown, FileSpreadsheet, Trash2 } from "lucide-react";
@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -65,6 +66,7 @@ export default function TranssionBfaPayIndex({
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
   const [search, setSearch] = useState(initialSearch);
+  const [sort, setSort] = useState(`${initialSort}:${initialOrder}`);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isDeleteMonthOpen, setIsDeleteMonthOpen] = useState(false);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
@@ -99,13 +101,15 @@ export default function TranssionBfaPayIndex({
     }
   }, [showToast, toastType]);
 
+  const [sortColumn, sortOrder] = sort.split(":");
+
   const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setData("month", e.target.value);
     uploadForm.setData("month", e.target.value);
     setSelectedIds([]);
     router.get(
       route("transsion-bfa.pay.index"),
-      { month: e.target.value, search },
+      { month: e.target.value, search, sort: sortColumn, order: sortOrder },
       { preserveState: false, preserveScroll: true }
     );
   };
@@ -113,9 +117,30 @@ export default function TranssionBfaPayIndex({
   const handleSearch = () => {
     router.get(
       route("transsion-bfa.pay.index"),
-      { month: data.month, search },
+      { month: data.month, search, sort: sortColumn, order: sortOrder },
       { preserveState: true, preserveScroll: true }
     );
+  };
+
+  const handleSortChange = (value: string) => {
+    setSort(value);
+    const [col, dir] = value.split(":");
+    router.get(
+      route("transsion-bfa.pay.index"),
+      { month: data.month, search, sort: col, order: dir },
+      { preserveState: true, preserveScroll: true }
+    );
+  };
+
+  const toggleHeaderSort = (column: string) => {
+    const nextOrder = sort === `${column}:asc` ? "desc" : "asc";
+    handleSortChange(`${column}:${nextOrder}`);
+  };
+
+  const sortIndicator = (column: string) => {
+    if (sort === `${column}:asc`) return "↑";
+    if (sort === `${column}:desc`) return "↓";
+    return "";
   };
 
   const handleDownloadTemplate = () => {
@@ -361,7 +386,7 @@ export default function TranssionBfaPayIndex({
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   {selectedIds.length > 0 && (
                     <Dialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
                       <DialogTrigger asChild>
@@ -389,13 +414,37 @@ export default function TranssionBfaPayIndex({
                     </Dialog>
                   )}
 
-                  <Input
-                    placeholder="Search by ID, name, bank, account..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                    className="w-full sm:w-64"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="search" className="text-sm whitespace-nowrap">Search:</Label>
+                    <Input
+                      id="search"
+                      placeholder="ID, name, bank, account..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                      className="w-full sm:w-56"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="sort" className="text-sm whitespace-nowrap">Sort By:</Label>
+                    <Select value={sort} onValueChange={handleSortChange}>
+                      <SelectTrigger id="sort" className="w-full sm:w-48">
+                        <SelectValue placeholder="Sort By" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="staffid:asc">Staff ID (Asc)</SelectItem>
+                        <SelectItem value="staffid:desc">Staff ID (Desc)</SelectItem>
+                        <SelectItem value="fullname:asc">Full Name (Asc)</SelectItem>
+                        <SelectItem value="fullname:desc">Full Name (Desc)</SelectItem>
+                        <SelectItem value="bankname:asc">Bank Name (Asc)</SelectItem>
+                        <SelectItem value="bankname:desc">Bank Name (Desc)</SelectItem>
+                        <SelectItem value="finalnetpay:asc">Net Pay (Asc)</SelectItem>
+                        <SelectItem value="finalnetpay:desc">Net Pay (Desc)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <Button size="sm" onClick={handleSearch}>
                     Search
                   </Button>
@@ -419,11 +468,47 @@ export default function TranssionBfaPayIndex({
                             />
                           </TableHead>
                           <TableHead className="w-12">No.</TableHead>
-                          <TableHead>Staff ID</TableHead>
-                          <TableHead>Full Name</TableHead>
-                          <TableHead>Bank Name</TableHead>
+                          <TableHead>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="-ml-3"
+                              onClick={() => toggleHeaderSort("staffid")}
+                            >
+                              Staff ID <span className="ml-1">{sortIndicator("staffid")}</span>
+                            </Button>
+                          </TableHead>
+                          <TableHead>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="-ml-3"
+                              onClick={() => toggleHeaderSort("fullname")}
+                            >
+                              Full Name <span className="ml-1">{sortIndicator("fullname")}</span>
+                            </Button>
+                          </TableHead>
+                          <TableHead>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="-ml-3"
+                              onClick={() => toggleHeaderSort("bankname")}
+                            >
+                              Bank Name <span className="ml-1">{sortIndicator("bankname")}</span>
+                            </Button>
+                          </TableHead>
                           <TableHead>Account Number</TableHead>
-                          <TableHead className="text-right">Net Pay</TableHead>
+                          <TableHead className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="-mr-3"
+                              onClick={() => toggleHeaderSort("finalnetpay")}
+                            >
+                              Net Pay <span className="ml-1">{sortIndicator("finalnetpay")}</span>
+                            </Button>
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -462,7 +547,18 @@ export default function TranssionBfaPayIndex({
                           asChild={!!link.url}
                         >
                           {link.url ? (
-                            <a href={link.url} dangerouslySetInnerHTML={{ __html: link.label }} />
+                            <Link
+                              href={link.url}
+                              preserveState
+                              preserveScroll
+                              data={{
+                                month: data.month,
+                                search,
+                                sort: sortColumn,
+                                order: sortOrder,
+                              }}
+                              dangerouslySetInnerHTML={{ __html: link.label }}
+                            />
                           ) : (
                             <span dangerouslySetInnerHTML={{ __html: link.label }} />
                           )}

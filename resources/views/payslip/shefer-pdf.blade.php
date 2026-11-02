@@ -31,6 +31,10 @@
             width: 250px;
             height: 80px;
         }
+        /* Safe styling for the tax reference rows */
+        .reference-row td {
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -173,6 +177,20 @@
         <td colspan="2" class="total">Gross Salary</td>
         <td></td>
         <td style="text-align: center;" class="total">{{ number_format((float)($payslip->gross ?? 0), 2) }}</td>
+        <td></td>
+    </tr>
+
+    <!-- NEW: Tax Reference Values (Always shows) -->
+    <tr class="reference-row">
+        <td colspan="2">Total Cash Emolument</td>
+        <td style="text-align: center; font-size: 10px;">(Gross − OT)</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->total_cash_emolument ?? 0), 2) }}</td>
+        <td></td>
+    </tr>
+    <tr class="reference-row">
+        <td colspan="2">Total Assessable Income</td>
+        <td style="text-align: center; font-size: 10px;">(Taxable Base)</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->total_assessable_income ?? 0), 2) }}</td>
         <td></td>
     </tr>
 
