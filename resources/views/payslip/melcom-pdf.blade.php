@@ -100,8 +100,8 @@
             <td>Basic Salary</td>
             <td>{{ number_format((float)($payslip->basic ?? 0), 2) }}</td>
             <td></td>
-            <td></td>
-            <td></td>
+            <td>Expected Work Days</td>
+            <td>{{ (float)($payslip->expected_work_days ?? ($payslip->legal_work_days ?? 0)) > 0 ? (int)($payslip->expected_work_days ?? $payslip->legal_work_days) : '-' }}</td>
         </tr>
 
         <!-- Table Header -->
@@ -139,7 +139,7 @@
         <!-- Saturday & Sunday Overtime -->
         <tr>
             <td colspan="2">Saturday & Sunday Overtime</td>
-            <td class="text-right">{{ $payslip->weekendOT ?? 0 }}</td>
+            <td class="text-right">{{ (int)($payslip->saturday_ot_hrs ?? ($payslip->sat_ot_hrs ?? ($payslip->weekendOT ?? ($payslip->saturday_hours ?? 0)))) }}</td>
             <td class="text-center">{{ number_format((float)($payslip->saturdayovertime ?? 0), 2) }}</td>
             <td></td>
         </tr>

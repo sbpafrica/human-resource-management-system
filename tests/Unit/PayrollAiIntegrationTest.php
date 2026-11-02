@@ -206,7 +206,13 @@ class PayrollAiIntegrationTest extends TestCase
         $this->assertEquals(5, $result['mapping']['position']);
         $this->assertEquals(7, $result['mapping']['shop']);
         $this->assertEquals(10, $result['mapping']['days_worked']);
+        $this->assertEquals(19, $result['mapping']['weekday_hours']);
+        $this->assertEquals(20, $result['mapping']['saturday_hours']);
+        $this->assertEquals(21, $result['mapping']['num_sundays_holidays']);
         $this->assertEquals(22, $result['mapping']['basic_salary']);
+        $this->assertEquals(26, $result['mapping']['weekday_overtime_amt']);
+        $this->assertEquals(27, $result['mapping']['saturday_overtime_amt']);
+        $this->assertEquals(28, $result['mapping']['sunday_holiday_overtime_amt']);
         $this->assertEquals(29, $result['mapping']['gross_salary']);
         $this->assertEquals(30, $result['mapping']['total_cash_emolument']);
         $this->assertEquals(31, $result['mapping']['total_assessable_income']);
@@ -400,12 +406,72 @@ class PayrollAiIntegrationTest extends TestCase
         $normalized = $normMethod->invoke($controller, $record, $client);
 
         $this->assertEquals(6.0, $normalized->weekdaysOT);
-        $this->assertEquals(4.0, $normalized->weekendOT);
+        $this->assertEquals(4, $normalized->weekendOT);
+        $this->assertIsInt($normalized->weekendOT);
         $this->assertEquals(450.0, $normalized->normalovertime);
         $this->assertEquals(400.0, $normalized->saturdayovertime);
         $this->assertEquals(850.0, $normalized->totalovertime);
         $this->assertEquals(123.25, $normalized->overtimetax);
         $this->assertEquals(3100.25, $normalized->net_pay);
+    }
+
+    public function test_melcom_october_2026_saturday_ot_hrs_resolution_and_integer_format(): void
+    {
+        $headers = [
+            'Sr. No', 'Sr. No', 'Emp', 'Employee', 'OUTSOURCE NAME', 'Designation', 'Join Date',
+            'Location', 'CATEGORY', 'SATURDAY OVERTIME RATE', 'Present Full days', 'Present Night days',
+            'Present Half days', 'SAT _ OFF DAYS', 'SUN _ OFF DAYS', 'Leave Taken', 'Absent days',
+            'Abesnt Hrs', 'Holidays', 'Normal OT HRS', 'Saturday OT HRS', 'Holiday OT HRS',
+            'Basic (Scale)', 'Absent without pay', 'Basic (Entitle)', 'TRANSPORT', 'Normal Overtime',
+            'Saturday Overtime', 'Holiday Overtime', "GROSS SALARY\n(AA=V+W+X+Y-Z)",
+            'TOTAL CASH EMOLUMENT', 'TOTAL ASSESSABLE INCOME', 'SSF Employer %', 'SSNIT EE 0.5%',
+            'SSNIT EE 5%', 'Taxable Income', 'PAYE', 'Total Overtime', 'OVERTIME TAX',
+            'Total Taxation', 'TO RECOVER & PAY TO SHOP/ SSNIT LOAN', 'TOTAL DEDUCTIONS', 'TAKE HOME PAY'
+        ];
+
+        // 1. AI Rule-based matcher test
+        $matcher = new \App\Services\Payroll\ColumnMatcher\RuleBasedColumnMatcher();
+        $aiRes = $matcher->match($headers, 'melcom');
+        $this->assertEquals(20, $aiRes['mapping']['saturday_hours']);
+        $this->assertEquals(19, $aiRes['mapping']['weekday_hours']);
+        $this->assertEquals(21, $aiRes['mapping']['num_sundays_holidays']);
+
+        // 2. Legacy fallback matcher test
+        $legacy = new \App\Services\Payroll\ColumnMatcher\LegacyColumnMatcher();
+        $legacyRes = $legacy->match($headers, 'melcom');
+        $this->assertEquals(20, $legacyRes['mapping']['saturday_hours']);
+
+        // 3. Normalizer integer test for Melcom
+        $client = (object)[
+            'client_dbname' => 'melcom',
+            'slug'          => 'melcom-ghana',
+            'client_name'   => 'Melcom Limited',
+        ];
+
+        $record = (object)[
+            'employ'           => '60517595',
+            'empoyeename'      => 'GEORGE KOFI EHUN',
+            'basic'            => 900.0,
+            'actualdays'       => 23,
+            'absentdays'       => 0,
+            'Saturday OT HRS'  => 48,
+            'weekendOT'        => 48,
+            'saturdayovertime' => 150.0,
+            'grosspay'         => 1050.0,
+            'netpay'           => 950.0,
+        ];
+
+        $controller = new \App\Http\Controllers\PayslipController();
+        $reflector = new \ReflectionClass($controller);
+        $normMethod = $reflector->getMethod('normalizePayslip');
+        $normMethod->setAccessible(true);
+
+        $normalized = $normMethod->invoke($controller, $record, $client);
+
+        $this->assertIsInt($normalized->weekendOT);
+        $this->assertEquals(48, $normalized->weekendOT);
+        $this->assertEquals(23, $normalized->expected_work_days);
+        $this->assertEquals(23, $normalized->legal_work_days);
     }
 
     public function test_twellium_kumasi_payslip_includes_total_cash_emolument_and_total_assessable_income(): void
@@ -713,5 +779,167 @@ class PayrollAiIntegrationTest extends TestCase
         // 3. Gross salary rendered as 1,809.15
         $this->assertStringContainsString('1,809.15', $view);
         $this->assertStringContainsString('1,505.26', $view);
+    }
+
+    public function test_shefer_payslip_normalizes_expected_work_days_descriptions_and_emoluments(): void
+    {
+        $client = (object)[
+            'client_dbname' => 'shefer',
+            'slug'          => 'shefer-plastics-ltd',
+            'short_name'    => 'Shefer Plastics',
+        ];
+
+        // Raw record structure as found in shefer table for EDWARD KOFFIE AMENU
+        $rawRecord = (object)[
+            'STAFF_ID'                        => '75490729-2',
+            'NAME'                            => 'EDWARD KOFFIE AMENU',
+            'POSITION'                        => 'HELPER',
+            'BASIC_SALARY'                    => '600.00',
+            'NUMBER_OF_DAYS_WORKED'           => 4,
+            'NO_OF_ABSENT_DAYS'               => 15,
+            'ABSENT_DAYS_DEDUCTION'           => '473.68',
+            'BASIC_SALARY_ENTITLED'           => '126.32',
+            'NORMAL_WEEKDAY_OVERTIME_HOURS'   => '0.00',
+            'NORMAL_WEEKDAY_OVERTIME_RATE'    => '1.50',
+            'WEEKDAY_OVERTIME_TOTAL'          => '0.00',
+            'SATURDAY_OVERTIME_HOURS'         => '1.00',
+            'SATURDAY_OVERTIME_RATE'          => '1.50',
+            'SATURDAY_OVERTIME_TOTAL'         => '5.63',
+            'SUNDAYS_HOLIDAYS_OVERTIME_HOURS' => '0.00',
+            'SUNDAYS_HOLIDAYS_OVERTIME_RATE'  => '2.00',
+            'SUN_HOL_OVERTIME_TOTAL'          => '0.00',
+            'TOTAL_OVERTIME_AMOUNT'           => '5.63',
+            'GROSS_SALARY'                    => '131.94',
+            'SSNIT_EE'                        => '26.95',
+            'TAXABLE_INCOME'                  => '99.37',
+            'PAYE'                            => '0.00',
+            'OVERTIME_TAX'                    => '0.28',
+            'TOTAL_TAXATION'                  => '0.28',
+            'TOTAL_DEDUCTIONS'                => '27.23',
+            'TAKE_HOME_PAY'                   => '104.71',
+            'BANK'                            => 'FNB',
+            'ACCOUNT_NUMBER'                  => '62002101111',
+            'BRANCH'                          => 'ACCRA MALL',
+            'SSNIT_NUMBER'                    => 'A160302090014',
+        ];
+
+        $controller = new \App\Http\Controllers\PayslipController();
+        $refMethod = new \ReflectionMethod($controller, 'normalizePayslip');
+        $normalized = $refMethod->invoke($controller, $rawRecord, $client, 'A160302090014');
+
+        // 1. Legal / Expected work days: 4 + 15 = 19
+        $this->assertEquals(19, $normalized->legal_work_days);
+        $this->assertEquals(19, $normalized->expected_work_days);
+
+        // 2. Days worked and absent days descriptions
+        $this->assertEquals(4, $normalized->days_worked);
+        $this->assertEquals(4, $normalized->no_of_days_worked);
+        $this->assertEquals(15, $normalized->absent_days);
+        $this->assertEquals(473.68, $normalized->absent_without_pay);
+        $this->assertEquals(473.68, $normalized->absent_deduction);
+
+        // 3. Basic entitled earned
+        $this->assertEquals(126.32, $normalized->basic_earned);
+
+        // 4. Overtime mapping
+        $this->assertEquals(1.00, $normalized->weekendOT_hours);
+        $this->assertEquals(5.63, $normalized->weekendOT_amount);
+        $this->assertEquals(5.63, $normalized->total_overtime);
+
+        // 5. Total cash emolument & Total assessable income
+        $this->assertEquals(126.31, $normalized->total_cash_emolument);
+        $this->assertEquals(99.37, $normalized->total_assessable_income);
+
+        // 6. Tax separation: PAYE is 0.00, Overtime tax is 0.28
+        $this->assertEquals(0.00, $normalized->paye);
+        $this->assertEquals(0.28, $normalized->ot_tax);
+        $this->assertEquals(104.71, $normalized->netpay);
+
+        // Render blade view
+        $view = view('payslip.shefer-pdf', [
+            'payslip'        => $normalized,
+            'formattedMonth' => 'November 2026',
+            'ssnit'          => 'A160302090014',
+            'bank'           => [
+                'bankname' => 'FNB',
+                'name'     => 'EDWARD KOFFIE AMENU',
+                'alcnum'   => '62002101111',
+                'branch'   => 'ACCRA MALL',
+            ],
+        ])->render();
+
+        $this->assertStringContainsString('Expected Work Days', $view);
+        $this->assertStringContainsString('19', $view);
+        $this->assertStringContainsString('126.32', $view);
+        $this->assertStringContainsString('473.68', $view);
+        $this->assertStringContainsString('5.63', $view);
+        $this->assertStringContainsString('126.31', $view);
+        $this->assertStringContainsString('99.37', $view);
+        $this->assertStringContainsString('(Gross - OT)', $view);
+    }
+
+    public function test_rule_based_matcher_resolves_shefer_columns(): void
+    {
+        $matcher = new \App\Services\Payroll\ColumnMatcher\RuleBasedColumnMatcher();
+
+        $headers = [
+            'Staff ID',
+            'Name',
+            'Position',
+            'Total Weekdays',
+            'Number of Days Worked',
+            'No of Absent Days',
+            'Absent Days Deduction',
+            'Basic Salary Entitled',
+            'Normal Weekday Overtime Hours',
+            'Saturday Overtime Hours',
+            'Saturday Overtime Total',
+            'Gross Salary',
+            'Total Cash Emolument',
+            'Total Assessable Income',
+            'SSNIT EE',
+            'PAYE',
+            'Overtime Tax',
+            'Take Home Pay',
+        ];
+
+        $result = $matcher->match($headers, 'shefer');
+        $mapping = $result['mapping'];
+
+        $this->assertArrayHasKey('staff_id', $mapping);
+        $this->assertEquals(0, $mapping['staff_id']);
+
+        $this->assertArrayHasKey('legalworkdays', $mapping);
+        $this->assertEquals(3, $mapping['legalworkdays']);
+
+        $this->assertArrayHasKey('days_worked', $mapping);
+        $this->assertEquals(4, $mapping['days_worked']);
+
+        $this->assertArrayHasKey('absentee_days', $mapping);
+        $this->assertEquals(5, $mapping['absentee_days']);
+
+        $this->assertArrayHasKey('absent_deductions', $mapping);
+        $this->assertEquals(6, $mapping['absent_deductions']);
+
+        $this->assertArrayHasKey('earned_basic_salary', $mapping);
+        $this->assertEquals(7, $mapping['earned_basic_salary']);
+
+        $this->assertArrayHasKey('weekday_hours', $mapping);
+        $this->assertEquals(8, $mapping['weekday_hours']);
+
+        $this->assertArrayHasKey('saturday_hours', $mapping);
+        $this->assertEquals(9, $mapping['saturday_hours']);
+
+        $this->assertArrayHasKey('saturday_overtime_amt', $mapping);
+        $this->assertEquals(10, $mapping['saturday_overtime_amt']);
+
+        $this->assertArrayHasKey('gross_salary', $mapping);
+        $this->assertEquals(11, $mapping['gross_salary']);
+
+        $this->assertArrayHasKey('total_cash_emolument', $mapping);
+        $this->assertEquals(12, $mapping['total_cash_emolument']);
+
+        $this->assertArrayHasKey('total_assessable_income', $mapping);
+        $this->assertEquals(13, $mapping['total_assessable_income']);
     }
 }

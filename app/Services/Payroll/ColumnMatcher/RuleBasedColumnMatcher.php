@@ -75,14 +75,20 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^basic\s*entitlement$/i',
         ],
         'legalworkdays' => [
-            '/^legal\s*work\s*days$/i',
-            '/^legalworkdays$/i',
+            '/^legal\s*work(ing)?\s*days$/i',
+            '/^legalwork(ing)?days$/i',
             '/^legal\s*work$/i',
             '/^legalwork$/i',
             '/^standard\s*days$/i',
             '/^work\s*days\s*in\s*month$/i',
             '/^total\s*days$/i',
             '/^totaldays$/i',
+            '/^total\s*weekdays$/i',
+            '/^totalweekdays$/i',
+            '/^total\s*working\s*days$/i',
+            '/^totalworkingdays$/i',
+            '/^totalwork$/i',
+            '/^total_work$/i',
             '/^expected\s*(work\s*)?days$/i',
             '/^expected_work_days$/i',
             '/^expecteddays$/i',
@@ -99,6 +105,10 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
         ],
         'days_worked' => [
             '/^days?\s*worked$/i',
+            '/^number\s*of\s*days\s*worked$/i',
+            '/^no\s*of\s*days\s*worked$/i',
+            '/^number_of_days_worked$/i',
+            '/^no_of_days_worked$/i',
             '/^actual\s*days$/i',
             '/^present\s*(full\s*)?days$/i',
             '/^total\s*work$/i',
@@ -109,6 +119,8 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
         ],
         'night_shifts' => [
             '/^(present\s*)?night(\s*days|\s*shifts)?$/i',
+            '/^number\s*of\s*days\s*on\s*night\s*duty$/i',
+            '/^nightdays$/i',
         ],
         'half_days' => [
             '/^(present\s*)?half\s*days$/i',
@@ -125,6 +137,9 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
         'absentee_days' => [
             '/^absent(ee)?\s*days?$/i',
             '/^days?\s*absent$/i',
+            '/^no\s*of\s*absent\s*days$/i',
+            '/^number\s*of\s*absent\s*days$/i',
+            '/^no_of_absent_days$/i',
         ],
         'absent_hrs' => [
             '/^abe?se?nt\s*hrs?$/i',
@@ -132,18 +147,26 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
         'basic_entitlement' => [
             '/^basic\s*\((entitle|entitlement)\)$/i',
             '/^basic\s*entitlement$/i',
+            '/^basic\s*salary\s*entitled$/i',
+            '/^basicsalaryentitled$/i',
+            '/^basic\s*entitled$/i',
         ],
         'holidays' => [
             '/^holidays?$/i',
         ],
         'absent_deductions' => [
             '/^absent(ee(ism)?)?\s*ded(uction)?s?$/i',
+            '/^absent\s*days\s*deductions?$/i',
+            '/^absent_days_deductions?$/i',
             '/^absence\s*deduction$/i',
             '/^absent\s*without\s*pay$/i',
         ],
         'earned_basic_salary' => [
             '/^earned\s*basic(\s*salary)?$/i',
             '/^basic\s*earned$/i',
+            '/^basic\s*salary\s*entitled$/i',
+            '/^basicsalaryentitled$/i',
+            '/^basic\s*entitled$/i',
         ],
         'transport' => [
             '/^transport(ation)?$/i',
@@ -168,6 +191,9 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^weekdays?\s*ot$/i',
             '/^normal\s*ot$/i',
             '/^(weekday|week\s*day|normal)\s*(ot\s*)?hours?$/i',
+            '/^normal\s*weekday\s*overtime\s*hours?$/i',
+            '/^normal_weekday_overtime_hours?$/i',
+            '/^weekdayot_hours?$/i',
             '/^weekday\s*hrs?$/i',
             '/^normal\s*ot\s*hrs?$/i',
             '/^normal\s*ot\s*hours?$/i',
@@ -181,11 +207,23 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^weekday(s)?\s*overtime$/i',
             '/^normal\s*ot\s*(amt|amount)?$/i',
             '/^weekday\s*overtime\s*amount$/i',
+            '/^weekday\s*overtime\s*total$/i',
+            '/^weekday_overtime_total$/i',
+            '/^weekdayot_amount$/i',
         ],
         'saturday_hours' => [
             '/^weekends?\s*ot$/i',
             '/^sat(urday)?\s*(ot\s*)?hours?$/i',
             '/^sat(urday)?\s*(ot\s*)?hrs?$/i',
+            '/^saturday\s*ot\s*hrs?$/i',
+            '/^sat\s*ot\s*hrs?$/i',
+            '/^sat\s*(and|&)\s*sun(day)?\s*overtime(\s*hrs?)?$/i',
+            '/^saturday\s*(overtime\s*)?hours?$/i',
+            '/^saturday\s*overtime\s*hrs?$/i',
+            '/^saturday_overtime_hours?$/i',
+            '/^sat_ot_hrs$/i',
+            '/^saturday_ot_hrs$/i',
+            '/^weekendot_hours?$/i',
             '/^num(ber)?\s*(of\s*)?saturdays?$/i',
             '/^saturday(s)?\s*worked$/i',
             '/^normalovertime2$/i',
@@ -196,6 +234,9 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^weekend\s*overtime(\s*amount)?$/i',
             '/^sat(urday)?\s*ot\s*(amt|amount)$/i',
             '/^sat(urday)?\s*(ot|overtime)\s*(amt|amount|total|pay)$/i',
+            '/^saturday\s*overtime\s*total$/i',
+            '/^saturday_overtime_total$/i',
+            '/^weekendot_amount$/i',
             '/^overtime2$/i',
             '/^overtime\s*2$/i',
         ],
@@ -203,6 +244,9 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^holiday\s*ot$/i',
             '/^holiday\s*(ot\s*)?hours?$/i',
             '/^holiday\s*ot\s*hrs?$/i',
+            '/^sundays?\s*(and|\/)?\s*holidays?\s*overtime\s*hours?$/i',
+            '/^sundays_holidays_overtime_hours?$/i',
+            '/^sunot_hours?$/i',
             '/^num(ber)?\s*(of\s*)?(sundays?|holidays?)(\s*(and|\/)?\s*holidays?)?$/i',
             '/^(sunday|holiday|offday)\s*(ot\s*)?hours?$/i',
             '/^sunday\s*holiday\s*hours?$/i',
@@ -214,6 +258,9 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^holiday\s*ot\s*(amt|amount)$/i',
             '/^holiday\s*otamt$/i',
             '/^holiday\s*overtime(\s*amount)?$/i',
+            '/^sun\s*hol\s*overtime\s*total$/i',
+            '/^sun_hol_overtime_total$/i',
+            '/^sunot_amount$/i',
             '/^sunday(s)?\s*holiday(s)?\s*overtime(\s*(amt|amount|total|pay))?$/i',
             '/^sundays?\s*(and|\/)\s*holidays?\s*overtime(\s*(amt|amount|total|pay))?$/i',
             '/^offday\s*holiday\s*overtime\s*(total|amount)?$/i',
@@ -402,6 +449,13 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             $mapping['overtime_amount'] = $mapping['total_overtime_amt'];
         } elseif (isset($mapping['overtime_amount']) && !isset($mapping['total_overtime_amt'])) {
             $mapping['total_overtime_amt'] = $mapping['overtime_amount'];
+        }
+
+        // Keep earned_basic_salary and basic_entitlement in sync
+        if (isset($mapping['basic_entitlement']) && !isset($mapping['earned_basic_salary'])) {
+            $mapping['earned_basic_salary'] = $mapping['basic_entitlement'];
+        } elseif (isset($mapping['earned_basic_salary']) && !isset($mapping['basic_entitlement'])) {
+            $mapping['basic_entitlement'] = $mapping['earned_basic_salary'];
         }
 
         // Fallback net_pay to net_salary if actual net pay was not distinct

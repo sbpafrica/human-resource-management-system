@@ -14,6 +14,10 @@ class LegacyColumnMatcher implements ColumnMatcherInterface
     {
         $normalizedSlug = strtolower(preg_replace('/[^a-z0-9]/', '', $clientSlug));
 
+        $hasMelcomPrefix = ($headers[2] ?? '') === 'Emp' 
+            || preg_match('/^sr\.?\s*no/i', trim($headers[0] ?? '')) 
+            || count($headers) >= 42;
+
         $mapping = match ($normalizedSlug) {
             'jaykay', 'jkay' => [
                 'staff_id'            => 0,
@@ -64,7 +68,7 @@ class LegacyColumnMatcher implements ColumnMatcherInterface
                 'net_pay'      => 8,
             ],
 
-            'melcom', 'melcomtry' => (count($headers) >= 42) ? [
+            'melcom', 'melcomtry' => $hasMelcomPrefix ? [
                 'staff_id'                    => 2,
                 'name'                        => 3,
                 'position'                    => 5,

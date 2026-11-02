@@ -95,7 +95,9 @@
     <tr>
         <td class="header">Basic Salary</td>
         <td>{{ number_format((float)($payslip->basic ?? 0), 2) }}</td>
-        <td colspan="3"></td>
+        <td></td>
+        <td class="header">Expected Work Days</td>
+        <td>{{ (float)($payslip->expected_work_days ?? ($payslip->legal_work_days ?? 0)) > 0 ? (int)($payslip->expected_work_days ?? $payslip->legal_work_days) : '-' }}</td>
     </tr>
     <tr>
         <th colspan="2" class="header" style="text-align: center;">Item</th>
@@ -107,7 +109,7 @@
     <!-- Earnings -->
     <tr>
         <td colspan="2">Basic Entitled</td>
-        <td style="text-align: right;">{{ $payslip->no_of_days_worked ?? 0 }}</td>
+        <td style="text-align: right;">{{ (float)($payslip->no_of_days_worked ?? ($payslip->days_worked ?? 0)) > 0 ? (int)($payslip->no_of_days_worked ?? $payslip->days_worked) : ($payslip->description ?? 0) }}</td>
         <td style="text-align: center;">{{ number_format((float)($payslip->basic_earned ?? 0), 2) }}</td>
         <td></td>
     </tr>
@@ -115,24 +117,24 @@
         <td colspan="2">Absent Days</td>
         <td style="text-align: right;">{{ $payslip->absent_days ?? 0 }}</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->absent_without_pay ?? 0), 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->absent_without_pay ?? ($payslip->absent_deduction ?? 0)), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2">Weekday Overtime</td>
-        <td style="text-align: right;">{{ $payslip->weekdayOT_hours ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->weekdayOT_amount ?? 0), 2) }}</td>
+        <td style="text-align: right;">{{ $payslip->weekdayOT_hours ?? ($payslip->weekday_overtime_hours ?? 0) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->weekdayOT_amount ?? ($payslip->weekday_overtime_amount ?? 0)), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Saturday Overtime</td>
-        <td style="text-align: right;">{{ $payslip->weekendOT_hours ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->weekendOT_amount ?? 0), 2) }}</td>
+        <td style="text-align: right;">{{ $payslip->weekendOT_hours ?? ($payslip->offday_holiday_overtime_hours ?? 0) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->weekendOT_amount ?? ($payslip->offday_holiday_overtime_total ?? 0)), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Sunday Overtime</td>
-        <td style="text-align: right;">{{ $payslip->sunOT_hours ?? 0 }}</td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->sunOT_amount ?? 0), 2) }}</td>
+        <td style="text-align: right;">{{ $payslip->sunOT_hours ?? ($payslip->special_day_overtime_hours ?? 0) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->sunOT_amount ?? ($payslip->special_day_overtime_amount ?? 0)), 2) }}</td>
         <td></td>
     </tr>
     <tr>
@@ -144,13 +146,13 @@
     <tr>
         <td colspan="2">Food Allowance</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->food ?? 0), 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->food ?? ($payslip->food_allowance ?? 0)), 2) }}</td>
         <td></td>
     </tr>
     <tr>
         <td colspan="2">Airtime Allowance</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->airtime ?? 0), 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->airtime ?? ($payslip->airtime_allowance ?? 0)), 2) }}</td>
         <td></td>
     </tr>
     <tr>
@@ -183,7 +185,7 @@
     <!-- NEW: Tax Reference Values (Always shows) -->
     <tr class="reference-row">
         <td colspan="2">Total Cash Emolument</td>
-        <td style="text-align: center; font-size: 10px;">(Gross − OT)</td>
+        <td style="text-align: center; font-size: 10px;">(Gross - OT)</td>
         <td style="text-align: center;">{{ number_format((float)($payslip->total_cash_emolument ?? 0), 2) }}</td>
         <td></td>
     </tr>
@@ -199,7 +201,7 @@
         <td colspan="2">SSNIT</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->ssnit_5_5_percent ?? $payslip->ssnitee ?? 0), 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->ssnit_5_5_percent ?? ($payslip->ssnitee ?? 0)), 2) }}</td>
     </tr>
     @if((float)($payslip->petra ?? $payslip->petra_5_percent ?? 0) > 0)
     <tr>
@@ -219,7 +221,7 @@
         <td colspan="2">Overtime Tax</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->ot_tax ?? 0), 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->ot_tax ?? ($payslip->overtimetax ?? 0)), 2) }}</td>
     </tr>
     <tr>
         <td colspan="2">Salary Loan</td>

@@ -229,6 +229,29 @@ public function export(Request $request)
      // Extract raw unformatted calculated values
      $allRows = $sheet->toArray(null, true, false, false);
 
+     // If active sheet does not contain payroll/salary data (e.g. attendance register only), scan other sheets
+     $hasPayrollHeaders = function(array $rows): bool {
+         foreach (array_slice($rows, 0, 10) as $r) {
+             foreach ($r as $val) {
+                 if (is_string($val) && preg_match('/(take\s*home|net\s*pay|bank\s*transfer|total\s*deduction)/i', $val)) {
+                     return true;
+                 }
+             }
+         }
+         return false;
+     };
+
+     if (!$hasPayrollHeaders($allRows)) {
+         foreach ($spreadsheet->getAllSheets() as $altSheet) {
+             $candidateRows = $altSheet->toArray(null, true, false, false);
+             if ($hasPayrollHeaders($candidateRows)) {
+                 $sheet = $altSheet;
+                 $allRows = $candidateRows;
+                 break;
+             }
+         }
+     }
+
      if (empty($allRows)) {
          return redirect()->route('melcompay.index', ['month' => $selectedMonth])
              ->with('error', 'Uploaded spreadsheet is empty.');
@@ -280,49 +303,71 @@ public function export(Request $request)
          'headerRow' => $headerRowIndex + 1,
      ]);
 
-     $offset = (count($headers) >= 42) ? 2 : 0;
+     // Detect prefix offset dynamically (e.g. when 'Sr. No' columns precede 'Emp')
+     $empColIdx = null;
+     foreach ($headers as $idx => $h) {
+         if (preg_match('/^(emp|staff(\s*id)?|employee(\s*id)?)$/i', trim($h))) {
+             $empColIdx = $idx;
+             break;
+         }
+     }
+     $offset = ($empColIdx !== null) ? $empColIdx : ((count($headers) >= 42 || (isset($headers[0]) && preg_match('/^sr\.?\s*no/i', trim($headers[0])))) ? 2 : 0);
      $hasNewColsInRow = (count($headers) - $offset >= 41);
      $postGross = $hasNewColsInRow ? 2 : 0;
 
-     $colStaffId          = $mapping['staff_id'] ?? ($offset + 0);
-     $colName             = $mapping['name'] ?? ($offset + 1);
-     $colOutsource        = $mapping['outsourcename'] ?? ($offset + 2);
-     $colPosition         = $mapping['position'] ?? ($offset + 3);
-     $colJoinDate         = $mapping['join_date'] ?? ($offset + 4);
-     $colShop             = $mapping['shop'] ?? ($offset + 5);
-     $colCategory         = $mapping['category'] ?? ($offset + 6);
-     $colSaturdayOt       = $mapping['saturday_rate'] ?? ($offset + 7);
-     $colActualDays       = $mapping['days_worked'] ?? ($offset + 8);
-     $colNight            = $mapping['night_shifts'] ?? ($offset + 9);
-     $colHalfDays         = $mapping['half_days'] ?? ($offset + 10);
-     $colSatOffDays       = $mapping['sat_off_days'] ?? ($offset + 11);
-     $colSunOffDays       = $mapping['sun_off_days'] ?? ($offset + 12);
-     $colLeaveDeduct      = $mapping['leave_deduct'] ?? ($offset + 13);
-     $colAbsentDays       = $mapping['absentee_days'] ?? ($offset + 14);
-     $colAbsentHrs        = $mapping['absent_hrs'] ?? ($offset + 15);
-     $colHoliday          = $mapping['holidays'] ?? ($offset + 16);
-     $colWeekdaysOt       = $mapping['weekday_hours'] ?? ($offset + 17);
-     $colWeekendOt        = $mapping['saturday_hours'] ?? ($offset + 18);
-     $colHolidayOt        = $mapping['num_sundays_holidays'] ?? ($offset + 19);
-     $colBasic            = $mapping['basic_salary'] ?? ($offset + 20);
-     $colAbsentWithoutPay = $mapping['absent_deductions'] ?? ($offset + 21);
-     $colBasicEntitlement = $mapping['basic_entitlement'] ?? ($offset + 22);
-     $colTransport        = $mapping['transport'] ?? ($offset + 23);
-     $colNormalOt         = $mapping['weekday_overtime_amt'] ?? ($offset + 24);
-     $colSaturdayOtAmt    = $mapping['saturday_overtime_amt'] ?? ($offset + 25);
-     $colHolidayOtAmt     = $mapping['sunday_holiday_overtime_amt'] ?? ($offset + 26);
-     $colGross            = $mapping['gross_salary'] ?? ($offset + 27);
-     $colTotalCash        = $mapping['total_cash_emolument'] ?? ($hasNewColsInRow ? $offset + 28 : null);
-     $colTotalAssessable  = $mapping['total_assessable_income'] ?? ($hasNewColsInRow ? $offset + 29 : null);
-     $colSsnitEr          = $mapping['ssnit_er'] ?? ($offset + 28 + $postGross);
-     $colSsnitEe          = $mapping['ssnit_ee'] ?? ($offset + 29 + $postGross);
-     $colSsnit            = $mapping['ssnit'] ?? ($offset + 30 + $postGross);
-     $colTaxable          = $mapping['taxable_income'] ?? ($offset + 31 + $postGross);
-     $colPaye             = $mapping['paye'] ?? ($offset + 32 + $postGross);
-     $colTotalOt          = $mapping['total_overtime_amt'] ?? ($offset + 33 + $postGross);
-     $colOtTax            = $mapping['overtime_tax'] ?? ($offset + 34 + $postGross);
-     $colTotalTax         = $mapping['total_tax'] ?? ($offset + 35 + $postGross);
-     $colTrust            = $mapping['trust'] ?? ($offset + 36 + $postGross);
+     $findHeaderIdx = function(array $patterns) use ($headers) {
+         foreach ($headers as $idx => $h) {
+             $clean = strtolower(trim(preg_replace('/[\s\xc2\xa0\n\r_]+/u', ' ', (string)$h)));
+             foreach ($patterns as $pattern) {
+                 if (preg_match($pattern, $clean)) {
+                     return $idx;
+                 }
+             }
+         }
+         return null;
+     };
+
+     $colStaffId          = $mapping['staff_id'] ?? $findHeaderIdx(['/^(emp|staff(\s*id)?)$/i']) ?? ($offset + 0);
+     $colName             = $mapping['name'] ?? $findHeaderIdx(['/^(employee|name)$/i']) ?? ($offset + 1);
+     $colOutsource        = $mapping['outsourcename'] ?? $findHeaderIdx(['/^outsource(\s*name)?$/i']) ?? ($offset + 2);
+     $colPosition         = $mapping['position'] ?? $findHeaderIdx(['/^(designation|position|title)$/i']) ?? ($offset + 3);
+     $colJoinDate         = $mapping['join_date'] ?? $findHeaderIdx(['/^join(\s*date)?$/i']) ?? ($offset + 4);
+     $colShop             = $mapping['shop'] ?? $findHeaderIdx(['/^(location|shop(\s*name)?)$/i']) ?? ($offset + 5);
+     $colCategory         = $mapping['category'] ?? $findHeaderIdx(['/^category$/i']) ?? ($offset + 6);
+     $colSaturdayOt       = $mapping['saturday_rate'] ?? $findHeaderIdx(['/^saturday\s*overtime\s*rate$/i', '/^saturday\s*ot$/i']) ?? ($offset + 7);
+     $colActualDays       = $mapping['days_worked'] ?? $findHeaderIdx(['/^present\s*full\s*days$/i', '/^actual\s*days$/i', '/^days?\s*worked$/i']) ?? ($offset + 8);
+     $colNight            = $mapping['night_shifts'] ?? $findHeaderIdx(['/^present\s*night\s*days$/i', '/^night$/i']) ?? ($offset + 9);
+     $colHalfDays         = $mapping['half_days'] ?? $findHeaderIdx(['/^present\s*half\s*days$/i', '/^half\s*days$/i']) ?? ($offset + 10);
+     $colSatOffDays       = $mapping['sat_off_days'] ?? $findHeaderIdx(['/^sat\s*off\s*days$/i']) ?? ($offset + 11);
+     $colSunOffDays       = $mapping['sun_off_days'] ?? $findHeaderIdx(['/^sun\s*off\s*days$/i']) ?? ($offset + 12);
+     $colLeaveDeduct      = $mapping['leave_deduct'] ?? $findHeaderIdx(['/^leave\s*taken$/i', '/^leave\s*deduct$/i']) ?? ($offset + 13);
+     $colAbsentDays       = $mapping['absentee_days'] ?? $findHeaderIdx(['/^absent\s*days$/i']) ?? ($offset + 14);
+     $colAbsentHrs        = $mapping['absent_hrs'] ?? $findHeaderIdx(['/^abse?nt\s*hrs$/i']) ?? ($offset + 15);
+     $colHoliday          = $mapping['holidays'] ?? $findHeaderIdx(['/^holidays?$/i']) ?? ($offset + 16);
+     $colWeekdaysOt       = $mapping['weekday_hours'] ?? $findHeaderIdx(['/^normal\s*ot\s*hrs?$/i', '/^weekdays?\s*ot$/i']) ?? ($offset + 17);
+     $colWeekendOt        = $findHeaderIdx(['/^saturday\s*ot\s*hrs?$/i', '/^sat\s*ot\s*hrs?$/i', '/^sat\s*(and|&)\s*sun\s*ot\s*hrs?$/i']) ?? $mapping['saturday_hours'] ?? $findHeaderIdx(['/^weekend\s*ot$/i', '/^saturday\s*overtime\s*hours?$/i']) ?? ($offset + 18);
+     $colHolidayOt        = $mapping['num_sundays_holidays'] ?? $findHeaderIdx(['/^holiday\s*ot\s*hrs?$/i', '/^holiday\s*ot$/i']) ?? ($offset + 19);
+     $colBasic            = $mapping['basic_salary'] ?? $findHeaderIdx(['/^basic\s*\(scale\)$/i', '/^basic$/i']) ?? ($offset + 20);
+     $colAbsentWithoutPay = $mapping['absent_deductions'] ?? $findHeaderIdx(['/^absent\s*without\s*pay$/i', '/^absent\s*deduction$/i']) ?? ($offset + 21);
+     $colBasicEntitlement = $mapping['basic_entitlement'] ?? $findHeaderIdx(['/^basic\s*\(entitle\)$/i', '/^basic\s*entitlement$/i']) ?? ($offset + 22);
+     $colTransport        = $mapping['transport'] ?? $findHeaderIdx(['/^transport$/i']) ?? ($offset + 23);
+     $colNormalOt         = $mapping['weekday_overtime_amt'] ?? $findHeaderIdx(['/^normal\s*overtime$/i']) ?? ($offset + 24);
+     $colSaturdayOtAmt    = $mapping['saturday_overtime_amt'] ?? $findHeaderIdx(['/^saturday\s*overtime$/i']) ?? ($offset + 25);
+     $colHolidayOtAmt     = $mapping['sunday_holiday_overtime_amt'] ?? $findHeaderIdx(['/^holiday\s*overtime$/i', '/^holiday\s*ot\s*amt$/i']) ?? ($offset + 26);
+     $colGross            = $mapping['gross_salary'] ?? $findHeaderIdx(['/^gross\s*salary/i', '/^gross$/i']) ?? ($offset + 27);
+     $colTotalCash        = $mapping['total_cash_emolument'] ?? $findHeaderIdx(['/^total\s*cash\s*emolument/i']) ?? ($hasNewColsInRow ? $offset + 28 : null);
+     $colTotalAssessable  = $mapping['total_assessable_income'] ?? $findHeaderIdx(['/^total\s*assessable\s*income/i']) ?? ($hasNewColsInRow ? $offset + 29 : null);
+     $colSsnitEr          = $mapping['ssnit_er'] ?? $findHeaderIdx(['/^ssf\s*employer/i', '/^ssnit\s*er/i']) ?? ($offset + 28 + $postGross);
+     $colSsnitEe          = $mapping['ssnit_ee'] ?? $findHeaderIdx(['/^ssnit\s*ee\s*5%/i', '/^ssnit\s*ee/i']) ?? ($offset + 29 + $postGross);
+     $colSsnit            = $mapping['ssnit'] ?? $findHeaderIdx(['/^ssnit$/i']) ?? ($offset + 30 + $postGross);
+     $colTaxable          = $mapping['taxable_income'] ?? $findHeaderIdx(['/^taxable\s*income/i', '/^taxable$/i']) ?? ($offset + 31 + $postGross);
+     $colPaye             = $mapping['paye'] ?? $findHeaderIdx(['/^paye$/i']) ?? ($offset + 32 + $postGross);
+     $colTotalOt          = $mapping['total_overtime_amt'] ?? $findHeaderIdx(['/^total\s*overtime/i']) ?? ($offset + 33 + $postGross);
+     $colOtTax            = $mapping['overtime_tax'] ?? $findHeaderIdx(['/^overtime\s*tax/i']) ?? ($offset + 34 + $postGross);
+     $colTotalTax         = $mapping['total_tax'] ?? $findHeaderIdx(['/^total\s*taxation/i', '/^total\s*tax/i']) ?? ($offset + 35 + $postGross);
+     $colTrust            = $mapping['trust'] ?? $findHeaderIdx(['/recover.*shop/i', '/^trust$/i']) ?? ($offset + 36 + $postGross);
+     $colTotalDeduction   = $mapping['total_deductions'] ?? $findHeaderIdx(['/^total\s*deductions?/i']) ?? ($offset + 37 + $postGross);
+     $colNetPay           = $mapping['net_pay'] ?? $findHeaderIdx(['/^take\s*home\s*pay/i', '/^net\s*pay/i', '/^bank\s*transfer/i']) ?? ($offset + 38 + $postGross);
      $colTotalDeduction   = $mapping['total_deductions'] ?? ($offset + 37 + $postGross);
      $colNetPay           = $mapping['net_pay'] ?? ($offset + 38 + $postGross);
 
@@ -406,7 +451,7 @@ public function export(Request $request)
              'absenthrs'         => $parseNum($row[$colAbsentHrs] ?? 0),
              'holiday'           => $parseNum($row[$colHoliday] ?? 0),
              'weekdaysOT'        => $parseNum($row[$colWeekdaysOt] ?? 0),
-             'weekendOT'         => $parseNum($row[$colWeekendOt] ?? 0),
+             'weekendOT'         => (int)round($parseNum($row[$colWeekendOt] ?? 0)),
              'holidayot'         => $parseNum($row[$colHolidayOt] ?? 0),
              'basic'             => $basic,
              'absentwithoutpay'  => $parseNum($row[$colAbsentWithoutPay] ?? 0),

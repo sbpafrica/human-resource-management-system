@@ -43,21 +43,21 @@ The standard internal fields are:
 - "position": Job title, designation, department, or shop
 - "join_date": Date of employment
 - "basic_salary": Fixed monthly base salary or basic pay
-- "legalworkdays": Standard, statutory, or expected work days in the month (e.g. Legal Working Days, Total Days, Expected Work Days, Expected Days)
+- "legalworkdays": Standard, statutory, or expected work days in the month (e.g. Legal Working Days, Total Weekdays, Expected Work Days, Expected Days, Total Days, Total Work)
 - "daily_rate": Daily pay rate, daily wage, or daily tonnage rate (e.g. Daily Rate, Daily Wage, Rate/Day)
-- "days_worked": Actual days worked in the month (e.g. Total Work, Days Worked, Total1, Actual Days, Days)
-- "absentee_days": Number of days absent (e.g. Absent Days)
-- "absent_deductions": Deduction amount for unexcused absence (e.g. Absent Without Pay)
-- "earned_basic_salary": Basic salary earned based on actual days worked
+- "days_worked": Actual days worked in the month (e.g. Total Work, Days Worked, Number of Days Worked, Present Full Days, Total1, Actual Days, Days)
+- "absentee_days": Number of days absent (e.g. Absent Days, No of Absent Days)
+- "absent_deductions": Deduction amount for unexcused absence (e.g. Absent Without Pay, Absent Days Deduction)
+- "earned_basic_salary": Basic salary earned based on actual days worked (e.g. Basic Salary Entitled, Basic Earned, Basic Entitle)
 - "saturdays_worked": Days or count of Saturday work
-- "saturday_rate": Saturday pay rate or multiplier (e.g. Saturday OT = 1.0 or 1.5), DISTINCT from Saturday Overtime amount or Weekend OT hours
+- "saturday_rate": Saturday pay rate or multiplier (e.g. Saturday OT = 1.0 or 1.5, Saturday Overtime Rate), DISTINCT from Saturday Overtime amount or Weekend OT hours
 - "saturday_amount": Total earnings for Saturday work
 - "total_days_amount": Total base earnings from days worked
 - "weekday_hours": Normal weekday overtime hours worked (e.g. Weekdays OT, Normal OT Hrs)
 - "weekday_overtime_amt": Normal weekday overtime pay amount (e.g. Normal Overtime, Weekday Overtime Amt)
-- "saturday_hours": Saturday or weekend overtime hours worked (e.g. Weekend OT, Saturday OT Hrs)
+- "saturday_hours": Saturday or weekend overtime hours worked (e.g. "Saturday OT HRS", "Weekend OT", "Sat OT Hrs", "Sat & Sun Overtime Hours")
 - "saturday_overtime_amt": Saturday or weekend overtime pay amount (e.g. Saturday Overtime, Weekend Overtime Amt)
-- "num_sundays_holidays": Sunday or public holiday overtime hours worked (e.g. Holiday OT), DISTINCT from Sun Off Days
+- "num_sundays_holidays": Sunday or public holiday overtime hours worked (e.g. Holiday OT, Holiday OT HRS), DISTINCT from Sun Off Days
 - "sunday_holiday_overtime_amt": Sunday and holiday overtime pay amount (e.g. Holiday OT Amt, Sunday Holiday Overtime)
 - "overtimerefund": Overtime adjustment or refund amount
 - "total_overtime_amt": Total cumulative overtime pay amount (e.g. Total Overtime)
@@ -67,6 +67,8 @@ The standard internal fields are:
 - "night_allowance": Night shift allowance
 - "totalovertime": Cumulative overtime earnings
 - "gross_salary": Gross earnings before statutory deductions (Total Gross, Gross Salary, Total Earn)
+- "total_cash_emolument": Total cash emoluments before or excluding overtime (e.g. Total Cash Emolument, Cash Emoluments)
+- "total_assessable_income": Total assessable income or taxable base for GRA PAYE (e.g. Total Assessable Income, Assessable Income)
 - "ssnit_ee": Social Security Tier 1 Employee 5.5% deduction (SSNIT EE, SSF EE)
 - "petra": Petra Tier 2 Employee 5.0% provident fund / pension deduction
 - "trust": Shop trust or welfare recovery deduction (Trust), DISTINCT from Petra

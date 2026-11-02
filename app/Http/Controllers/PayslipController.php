@@ -320,6 +320,15 @@ class PayslipController extends Controller
         if (Schema::hasColumn($baseTable, 'ID') && Schema::hasColumn($otTable, 'clock_in_id')) {
             return ['ID', 'clock_in_id'];
         }
+        if (Schema::hasColumn($baseTable, 'employ') && Schema::hasColumn($otTable, 'ID')) {
+            return ['employ', 'ID'];
+        }
+        if (Schema::hasColumn($baseTable, 'ID') && Schema::hasColumn($otTable, 'employ')) {
+            return ['ID', 'employ'];
+        }
+        if (Schema::hasColumn($baseTable, 'employ') && Schema::hasColumn($otTable, 'STAFF')) {
+            return ['employ', 'STAFF'];
+        }
 
         return null;
     }
@@ -797,23 +806,11 @@ class PayslipController extends Controller
             ?? null;
     
         // ---------- BASIC & WORK DAYS ----------
-        $legalWorkDays = $getP('legal_work_days')
-            ?? $getP('legalworkdays')
-            ?? $getP('legalwork')
-            ?? $getP('expected_work_days')
-            ?? $getP('expected_days')
-            ?? $getP('expecteddays')
-            ?? $getP('totaldays')
-            ?? $getP('total_days')
-            ?? $getP('lwork')
-            ?? null;
-        $payslip->legal_work_days    = is_numeric($legalWorkDays) ? (float)$legalWorkDays : $legalWorkDays;
-        $payslip->expected_work_days = $payslip->legal_work_days;
-
         $daysWorked = $getP('days_worked')
             ?? $getP('daysworked')
             ?? $getP('number_of_days_worked')
             ?? $getP('numberofdaysworked')
+            ?? $getP('no_of_days_worked')
             ?? $getP('noofdayspresent')
             ?? $getP('actual_days')
             ?? $getP('actualdays')
@@ -833,6 +830,7 @@ class PayslipController extends Controller
         $payslip->workdays           = $payslip->days_worked;
         $payslip->actualdays         = $payslip->days_worked;
         $payslip->total_hours_worked = $payslip->days_worked;
+        $payslip->no_of_days_worked  = $payslip->days_worked;
         $payslip->week               = $getP('week') ?? $payslip->days_worked;
 
         $absentDays = $getP('absent_days')
@@ -852,10 +850,63 @@ class PayslipController extends Controller
             ?? $getP('absent_days_deductions')
             ?? $getP('absent_days_deduction')
             ?? $getP('absentwithoutpay')
+            ?? $getP('absent_without_pay')
             ?? 0
         );
-        $payslip->absent_deduction  = $absentDeduction;
-        $payslip->absent_deductions = $absentDeduction;
+        $payslip->absent_deduction   = $absentDeduction;
+        $payslip->absent_deductions  = $absentDeduction;
+        $payslip->absent_without_pay = $absentDeduction;
+
+        $legalWorkDays = $getP('legal_work_days')
+            ?? $getP('legalworkdays')
+            ?? $getP('legalwork')
+            ?? $getP('legal_working_days')
+            ?? $getP('legalworkingdays')
+            ?? $getP('expected_work_days')
+            ?? $getP('expected_days')
+            ?? $getP('expecteddays')
+            ?? $getP('total_weekdays')
+            ?? $getP('totalweekdays')
+            ?? $getP('total_working_days')
+            ?? $getP('totaldays')
+            ?? $getP('total_days')
+            ?? $getP('lwork')
+            ?? null;
+
+        // Fallback A: if days worked exists, legal/expected work days is days_worked + absent_days (e.g. Shefer 4 worked + 15 absent = 19, or 22 worked + 0 absent = 22)
+        if (($legalWorkDays === null || (float)$legalWorkDays == 0) && (float)$payslip->days_worked > 0) {
+            $absentCount = (float)($payslip->absent_days ?? 0);
+            $legalWorkDays = (float)$payslip->days_worked + $absentCount;
+        }
+
+        // Fallback B: If basic_earned == basic and daily rate > 0
+        if (($legalWorkDays === null || (float)$legalWorkDays == 0) && (float)($payslip->basic ?? 0) > 0 && (float)($payslip->rate ?? 0) > 0) {
+            $calcDays = round((float)$payslip->basic / (float)$payslip->rate);
+            if ($calcDays >= 15 && $calcDays <= 31) {
+                $legalWorkDays = $calcDays;
+            }
+        }
+
+        // Fallback C: Default standard monthly work days (22) if basic salary exists
+        if (($legalWorkDays === null || (float)$legalWorkDays == 0) && (float)($payslip->basic ?? 0) > 0) {
+            $legalWorkDays = 22;
+        }
+
+        $payslip->legal_work_days    = is_numeric($legalWorkDays) ? (float)$legalWorkDays : $legalWorkDays;
+        $payslip->expected_work_days = $payslip->legal_work_days;
+
+        // If days_worked was not provided/0 but full basic salary was earned and no absences:
+        if ((float)$payslip->days_worked == 0 && (float)($payslip->basic_earned ?? 0) > 0 && (float)($payslip->basic_earned ?? 0) >= (float)($payslip->basic ?? 0) && (float)$payslip->absent_days == 0 && (float)$payslip->legal_work_days > 0) {
+            $payslip->days_worked        = (float)$payslip->legal_work_days;
+            $payslip->workdays           = $payslip->days_worked;
+            $payslip->actualdays         = $payslip->days_worked;
+            $payslip->total_hours_worked = $payslip->days_worked;
+            $payslip->no_of_days_worked  = $payslip->days_worked;
+        }
+
+        if (empty($payslip->description) && (float)$payslip->days_worked > 0) {
+            $payslip->description = (int)$payslip->days_worked;
+        }
 
         $rate = (float)(
             $getP('daily_rate') 
@@ -876,10 +927,12 @@ class PayslipController extends Controller
             ?? $getP('basicsalaryearned') 
             ?? $getP('basicsalaryearnedghc') 
             ?? $getP('basic_earned') 
+            ?? $getP('basic_salary_entitled')
+            ?? $getP('basicsalaryentitled')
+            ?? $getP('basic_entitled')
+            ?? $getP('basicentitled')
             ?? $getP('basicentitlement')
             ?? $getP('total2') 
-            ?? $getP('base_salary') 
-            ?? $getP('basesalary') 
             ?? null;
 
         $rawBasic = $getP('base_salary') 
@@ -1001,6 +1054,9 @@ class PayslipController extends Controller
                 ?? $getP('weekdayhours')
                 ?? $getP('weekday_overtime_hours')
                 ?? $getP('weekdayovertimehours')
+                ?? $getP('weekdayOT_hours')
+                ?? $getP('normal_weekday_overtime_hours')
+                ?? $getP('normalweekdayovertimehours')
                 ?? $getP('weekdayovertimehr')
                 ?? $getP('weekdayovertimehrs')
                 ?? $getP('overtimehr')
@@ -1018,6 +1074,9 @@ class PayslipController extends Controller
                 ?? $getP('totoffday')
                 ?? $getP('saturday_hours')
                 ?? $getP('saturdayhours')
+                ?? $getP('saturday_overtime_hours')
+                ?? $getP('saturdayovertimehours')
+                ?? $getP('weekendOT_hours')
                 ?? $getP('num_saturdays')
                 ?? $getP('numsaturdays')
                 ?? $getP('weekendovertimehr')
@@ -1041,6 +1100,9 @@ class PayslipController extends Controller
                 ?? $getP('numsundaysholidays')
                 ?? $getP('sundays_holiday_overtime')
                 ?? $getP('sundaysholidayovertime')
+                ?? $getP('sundays_holidays_overtime_hours')
+                ?? $getP('sundaysholidaysovertimehours')
+                ?? $getP('sunOT_hours')
                 ?? $getP('sunday_hours')
                 ?? $getP('sundayhours')
                 ?? $getP('offday_holiday_overtime_hours')
@@ -1076,7 +1138,9 @@ class PayslipController extends Controller
                 ?? $getP('weekday_overtime_amount')
                 ?? $getP('weekdayovertimeamount') 
                 ?? $getP('weekdayovertimeamountghc') 
+                ?? $getP('weekday_overtime_total')
                 ?? $getP('weekdayovertimetotal')
+                ?? $getP('weekdayOT_amount')
                 ?? $getP('normalot') 
                 ?? $getP('normalotamt') 
                 ?? $getP('weekdayotamt1')
@@ -1102,6 +1166,9 @@ class PayslipController extends Controller
                 ?? $getP('saturdayovertimeamt')
                 ?? $getP('saturdays_overtime')
                 ?? $getP('saturdaysovertime')
+                ?? $getP('saturday_overtime_total')
+                ?? $getP('saturdayovertimetotal')
+                ?? $getP('weekendOT_amount')
                 ?? $getP('weekendovertimetotal')
                 ?? $getP('weekendovertimeamount') 
                 ?? $getP('weekendovertimeamountghc') 
@@ -1122,6 +1189,9 @@ class PayslipController extends Controller
                 ?? $getP('sundayholidayovertimeamt')
                 ?? $getP('sundays_holidays_overtime')
                 ?? $getP('sundaysholidaysovertime')
+                ?? $getP('sun_hol_overtime_total')
+                ?? $getP('sunholovertimetotal')
+                ?? $getP('sunOT_amount')
                 ?? $getP('offday_holiday_overtime_total')
                 ?? $getP('offdayholidayovertimetotal')
                 ?? $getP('special_day_overtime_amount')
@@ -1188,19 +1258,27 @@ class PayslipController extends Controller
         $payslip->special_day_overtime_amount   = (float)$holidayOtAmt;
         $payslip->total_overtime_amount         = (float)$totalOvertime;
 
+        // Shefer alias support
+        $payslip->weekdayOT_hours               = $normalOtHrs;
+        $payslip->weekdayOT_amount              = (float)$normalOtAmt;
+        $payslip->weekendOT_hours               = $saturdayOtHrs;
+        $payslip->weekendOT_amount              = (float)$saturdayOtAmt;
+        $payslip->sunOT_hours                   = $holidayOtHrs;
+        $payslip->sunOT_amount                  = (float)$holidayOtAmt;
+
         // ---------- DEDUCTIONS ----------
         $payslip->paye = (float) (
             $payslip->paye
-            ?? $getP('totaltaxdeductions') 
-            ?? $getP('totaltaxdeduction') 
-            ?? $getP('totaltax') 
-            ?? $getP('total_taxation') 
             ?? $getP('paye') 
             ?? $getP('payeghc') 
             ?? $getP('itsalaries') 
             ?? $getP('its')
             ?? $getP('its2')
             ?? $getP('irpp')
+            ?? $getP('totaltaxdeductions') 
+            ?? $getP('totaltaxdeduction') 
+            ?? $getP('totaltax') 
+            ?? $getP('total_taxation') 
             ?? 0
         );
 
@@ -1269,11 +1347,14 @@ class PayslipController extends Controller
 
         $payslip->overtimetax = (float) (
             $getP('overtime_tax_ghc')
+            ?? $getP('overtime_tax')
             ?? $getP('overtimetax')
+            ?? $getP('ot_tax')
             ?? $getP('ottax')
             ?? 0
         );
-        $payslip->ottax = $payslip->overtimetax;
+        $payslip->ottax  = $payslip->overtimetax;
+        $payslip->ot_tax = $payslip->overtimetax;
 
         $totalDeductionsVal = $payslip->totaldeductions
             ?? $getP('total_deductions')
@@ -1477,6 +1558,7 @@ class PayslipController extends Controller
             ?? null;
 
         $isTwelliumKumasi = ($clientDb === 'twellium' || str_contains($clientSlug, 'twellium-industrial-company-ghana') || str_contains($clientSlug, 'twellium'));
+        $isShefer = ($clientDb === 'shefer' || str_contains($clientSlug, 'shefer') || str_contains($clientSlug, 'sheferplastics'));
 
         if ($totalCash !== null && is_numeric($totalCash)) {
             $payslip->total_cash_emolument = round((float)$totalCash, 2);
@@ -1489,6 +1571,10 @@ class PayslipController extends Controller
                 + (float)($payslip->allowance ?? 0),
                 2
             );
+        } elseif ($isShefer) {
+            $totalOtVal = (float)($payslip->total_overtime ?? ($payslip->totalovertime ?? 0));
+            $grossValCalc = (float)($payslip->grosspay ?? ($payslip->gross ?? 0));
+            $payslip->total_cash_emolument = round(max(0, $grossValCalc - $totalOtVal), 2);
         } else {
             $payslip->total_cash_emolument = null;
         }
@@ -1497,8 +1583,41 @@ class PayslipController extends Controller
             $payslip->total_assessable_income = round((float)$totalAssessable, 2);
         } elseif ($isTwelliumKumasi && $payslip->total_cash_emolument !== null) {
             $payslip->total_assessable_income = round((float)$payslip->total_cash_emolument - (float)($payslip->deduction ?? 0), 2);
+        } elseif ($isShefer) {
+            $taxableIncome = $getP('taxable_income') ?? $getP('taxableincome') ?? $getP('taxable');
+            $payslip->total_assessable_income = ($taxableIncome !== null && is_numeric($taxableIncome))
+                ? round((float)$taxableIncome, 2)
+                : (float)($payslip->taxable ?? ($payslip->total_cash_emolument ?? 0));
         } else {
             $payslip->total_assessable_income = null;
+        }
+
+        // Shefer specific attributes & allowances
+        $payslip->no_of_days_worked  = $payslip->days_worked;
+        $payslip->absent_without_pay = (float)($payslip->absent_deduction ?? ($payslip->absent_deductions ?? 0));
+        $payslip->fixedot            = (float)($getP('fixedot') ?? $getP('fixed_overtime') ?? 0);
+        $payslip->food               = (float)($getP('food') ?? $getP('food_allowance') ?? 0);
+        $payslip->airtime            = (float)($getP('airtime') ?? $getP('airtime_allowance') ?? 0);
+        $payslip->medical            = (float)($getP('medical') ?? $getP('medical_allowance') ?? 0);
+        $payslip->responseallo       = (float)($getP('responseallo') ?? $getP('responsibility_allowance') ?? $getP('response_allowance') ?? 0);
+        $payslip->salaryloan         = (float)($getP('salaryloan') ?? $getP('salary_loan') ?? $getP('loan') ?? 0);
+
+        // Melcom specific attributes & Saturday OT integer format
+        $isMelcom = ($clientDb === 'melcom' || str_contains($clientSlug, 'melcom'));
+        if ($isMelcom) {
+            $melcomSatOt = $getP('Saturday OT HRS') 
+                ?? $getP('Saturday_OT_HRS') 
+                ?? $getP('saturday_ot_hrs') 
+                ?? $getP('sat_ot_hrs') 
+                ?? $getP('weekendOT') 
+                ?? $payslip->weekendOT 
+                ?? $payslip->saturday_hours;
+            $satOtInt = (int)round((float)($melcomSatOt ?? 0));
+            $payslip->weekendOT        = $satOtInt;
+            $payslip->weekendOT_hours  = $satOtInt;
+            $payslip->saturday_hours   = $satOtInt;
+            $payslip->saturday_ot_hrs  = $satOtInt;
+            $payslip->sat_ot_hrs       = $satOtInt;
         }
 
         $payslip->saturdays_worked          = $getP('saturdays_worked') ?? $getP('saturdaysworked') ?? 0;
