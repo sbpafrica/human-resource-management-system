@@ -177,9 +177,9 @@
     </tr>
 
     <tr>
-        <td colspan="2">Commission</td>
+        <td colspan="2">Commission Earned</td>
         <td></td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->commission ?? 0), 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->commission_earned ?? $payslip->commission ?? $payslip->bonus ?? 0), 2) }}</td>
         <td></td>
     </tr>
 
@@ -187,14 +187,14 @@
         <td colspan="2">Commission Tax</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">{{ number_format((float)($payslip->commissiontax ?? 0), 2) }}</td>
+        <td style="text-align: center;">{{ number_format((float)($payslip->commission_tax ?? $payslip->commissiontax ?? $payslip->bonustax ?? 0), 2) }}</td>
     </tr>
 
     <!-- Total -->
     <tr>
         <td colspan="3" class="total">Total</td>
         <td style="text-align: center;" class="total">
-            {{ number_format((float)($payslip->actualbasic ?? 0) + (float)($payslip->monthlykpi ?? 0) + (float)($payslip->overtime ?? 0) + (float)($payslip->transport ?? 0) + (float)($payslip->commission ?? 0) + (float)($payslip->endyearmonth ?? 0), 2) }}
+            {{ number_format((float)($payslip->actualbasic ?? 0) + (float)($payslip->monthlykpi ?? 0) + (float)($payslip->overtime ?? 0) + (float)($payslip->transport ?? 0) + (float)($payslip->commission_earned ?? $payslip->commission ?? $payslip->bonus ?? 0) + (float)($payslip->endyearmonth ?? 0), 2) }}
         </td>
         <td style="text-align: center;" class="total">
             {{ number_format((float)($payslip->totaldeduction ?? 0), 2) }}

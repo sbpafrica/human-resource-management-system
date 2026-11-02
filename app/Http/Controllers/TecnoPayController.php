@@ -173,7 +173,7 @@ public function export(Request $request)
             $sheet->setCellValueExplicit("F{$row}", $r->code ?? '',    DataType::TYPE_STRING);
 
             $sheet->setCellValue("G{$row}", $r->branch ?? '');
-            $sheet->setCellValue("H{$row}", $r->netpay ? (float)$r->netpay : '');
+            $sheet->setCellValue("H{$row}", ($r->netpay !== null && $r->netpay !== '') ? number_format((float)$r->netpay, 2, '.', '') : '');
 
             $row++;
         }

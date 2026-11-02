@@ -743,7 +743,7 @@ class CivBungePayController extends Controller
             foreach ($records as $r) {
                 $sheet->setCellValue("A{$row}", $r->id);
                 $sheet->setCellValue("B{$row}", $r->fullname ?? '');
-                $sheet->setCellValue("C{$row}", $r->netpay ?? '');
+                $sheet->setCellValue("C{$row}", ($r->netpay !== null && $r->netpay !== '') ? number_format((float)$r->netpay, 2, '.', '') : '');
                 $row++;
             }
 

@@ -286,7 +286,7 @@ class OlamfoodPayController extends Controller
                 $sheet->setCellValue("Q{$row}", $r->taxable_income ?? '');
                 $sheet->setCellValue("R{$row}", $r->paye ?? '');
                 $sheet->setCellValue("S{$row}", $r->total_deduction ?? '');
-                $sheet->setCellValue("T{$row}", $r->netpay ?? '');
+                $sheet->setCellValue("T{$row}", ($r->netpay !== null && $r->netpay !== '') ? number_format((float)$r->netpay, 2, '.', '') : '');
                 $row++;
             }
 

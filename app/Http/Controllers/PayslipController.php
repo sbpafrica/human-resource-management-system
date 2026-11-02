@@ -275,6 +275,73 @@ class PayslipController extends Controller
         return [$staffIdCol, $nameCol];
     }
 
+    private function resolveOvertimeTable(string $tableName): ?string
+    {
+        if (str_starts_with($tableName, 'twelliumaccrabasic')) {
+            $suffix = substr($tableName, strlen('twelliumaccrabasic'));
+            foreach (["twelliumaccraovertime{$suffix}", "twelliumaccraover{$suffix}"] as $cand) {
+                if (Schema::hasTable($cand)) return $cand;
+            }
+        }
+
+        if (str_starts_with($tableName, 'twelliumbasic')) {
+            $suffix = substr($tableName, strlen('twelliumbasic'));
+            foreach (["twelliumovertime{$suffix}", "twelliumover{$suffix}"] as $cand) {
+                if (Schema::hasTable($cand)) return $cand;
+            }
+        }
+
+        if (str_starts_with($tableName, 'twelliumaccra')) {
+            $suffix = substr($tableName, strlen('twelliumaccra'));
+            if ($suffix !== '') {
+                foreach (["twelliumaccraovertime{$suffix}", "twelliumaccraover{$suffix}"] as $cand) {
+                    if (Schema::hasTable($cand)) return $cand;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function getOvertimeJoinPair(string $baseTable, string $otTable, string $fallbackField): ?array
+    {
+        // 1. Identical column present in both tables
+        $candidates = ['clock_in_id', 'ID', 'id', 'employ', 'staff_id', 'staffid', $fallbackField];
+        foreach ($candidates as $col) {
+            if (!empty($col) && Schema::hasColumn($baseTable, $col) && Schema::hasColumn($otTable, $col)) {
+                return [$col, $col];
+            }
+        }
+
+        // 2. Cross-column matching
+        if (Schema::hasColumn($baseTable, 'clock_in_id') && Schema::hasColumn($otTable, 'ID')) {
+            return ['clock_in_id', 'ID'];
+        }
+        if (Schema::hasColumn($baseTable, 'ID') && Schema::hasColumn($otTable, 'clock_in_id')) {
+            return ['ID', 'clock_in_id'];
+        }
+
+        return null;
+    }
+
+    private function getPayslipQuery(string $tableName, string $staffIdField)
+    {
+        $otTable = $this->resolveOvertimeTable($tableName);
+        $hasOtTable = $otTable && Schema::hasTable($otTable);
+
+        if ($hasOtTable) {
+            $joinPair = $this->getOvertimeJoinPair($tableName, $otTable, $staffIdField);
+            if ($joinPair !== null) {
+                [$baseCol, $otCol] = $joinPair;
+                return DB::table("{$tableName} as b")
+                    ->leftJoin("{$otTable} as o", "b.{$baseCol}", '=', "o.{$otCol}")
+                    ->select('o.*', 'b.*');
+            }
+        }
+
+        return DB::table("{$tableName} as b")->select('b.*');
+    }
+
     private function resolvePayslipView($client): string
     {
         $dbName    = strtolower((string)($client->client_dbname ?? ''));
@@ -629,6 +696,25 @@ class PayslipController extends Controller
             return null;
         };
 
+        $toNum = function($val, $default = 0.0) {
+            if ($val === null || $val === '' || $val === '-') {
+                return $default;
+            }
+            if (is_numeric($val)) {
+                return (float)$val;
+            }
+            if (is_string($val)) {
+                $clean = preg_replace('/[^\d.-]/', '', str_replace(',', '', trim($val)));
+                if (is_numeric($clean)) {
+                    return (float)$clean;
+                }
+            }
+            return $default;
+        };
+        $getNum = function($key, $default = 0.0) use ($getP, $toNum) {
+            return $toNum($getP($key), $default);
+        };
+
         // ---------- EMPLOYEE DETAILS ----------
         $payslip->name = $getP('name') 
             ?? $getP('names') 
@@ -717,6 +803,8 @@ class PayslipController extends Controller
             ?? $getP('expected_work_days')
             ?? $getP('expected_days')
             ?? $getP('expecteddays')
+            ?? $getP('totaldays')
+            ?? $getP('total_days')
             ?? $getP('lwork')
             ?? null;
         $payslip->legal_work_days    = is_numeric($legalWorkDays) ? (float)$legalWorkDays : $legalWorkDays;
@@ -730,18 +818,22 @@ class PayslipController extends Controller
             ?? $getP('actual_days')
             ?? $getP('actualdays')
             ?? $getP('actualwork')
+            ?? $getP('totalwork')
+            ?? $getP('total_work')
             ?? $getP('work_days')
             ?? $getP('workdays')
             ?? $getP('total_hours_worked')
+            ?? $getP('totalhoursworked')
             ?? $getP('week')
             ?? $getP('noofdays')
             ?? $getP('total1')
             ?? $getP('total_weekdays')
             ?? 0;
-        $payslip->days_worked = is_numeric($daysWorked) ? (float)$daysWorked : $daysWorked;
-        $payslip->workdays    = $payslip->days_worked;
-        $payslip->actualdays  = $payslip->days_worked;
-        $payslip->week        = $getP('week') ?? $payslip->days_worked;
+        $payslip->days_worked        = is_numeric($daysWorked) ? (float)$daysWorked : $daysWorked;
+        $payslip->workdays           = $payslip->days_worked;
+        $payslip->actualdays         = $payslip->days_worked;
+        $payslip->total_hours_worked = $payslip->days_worked;
+        $payslip->week               = $getP('week') ?? $payslip->days_worked;
 
         $absentDays = $getP('absent_days')
             ?? $getP('absentee_days')
@@ -768,13 +860,16 @@ class PayslipController extends Controller
         $rate = (float)(
             $getP('daily_rate') 
             ?? $getP('dailyrate') 
+            ?? $getP('dailywage')
+            ?? $getP('daily_wage')
             ?? $getP('rate') 
             ?? $getP('rate_ghc') 
             ?? $getP('weekdayrate')
             ?? 0
         );
-        $payslip->rate = $rate;
-        $payslip->daily_rate = $rate;
+        $payslip->rate = round($rate, 2);
+        $payslip->daily_rate = round($rate, 2);
+        $payslip->dailywage  = round($rate, 2);
 
         $basicEarned = $getP('earned_basic_salary')
             ?? $getP('earnedbasicsalary')
@@ -833,13 +928,19 @@ class PayslipController extends Controller
         $payslip->amount          = (float)($getP('amount') ?? 0);
         $payslip->weekdayhr       = (float)($getP('weekdayhr') ?? 0);
         $payslip->weekdaytonage   = (float)($getP('weekdaytonage') ?? 0);
-        $payslip->weekdayrate     = (float)($getP('weekdayrate') ?? 0);
-        $payslip->weekdayothr     = (float)($getP('weekdayothr') ?? 0);
-        $payslip->weekdayotrate   = (float)($getP('weekdayotrate') ?? 0);
-        $payslip->weekdayotamt1   = (float)($getP('weekdayotamt1') ?? 0);
-        $payslip->weekendhr       = (float)($getP('weekendhr') ?? 0);
-        $payslip->weekendtonage   = (float)($getP('weekendtonage') ?? 0);
-        $payslip->weekendrate     = (float)($getP('weekendrate') ?? 0);
+        $payslip->weekdayrate                   = round((float)($getP('weekdayrate') ?? $getP('weekday_rate') ?? 0), 2);
+        $payslip->weekdayothr                   = (float)($getP('weekdayothr') ?? 0);
+        $payslip->weekdayotrate                 = round((float)($getP('weekdayotrate') ?? $getP('weekday_overtime_rate') ?? $getP('weekday_ot_rate') ?? $getP('normal_overtime_rate') ?? 0), 2);
+        $payslip->weekdayotamt1                 = round((float)($getP('weekdayotamt1') ?? 0), 2);
+        $payslip->weekendhr                     = (float)($getP('weekendhr') ?? 0);
+        $payslip->weekendtonage                 = (float)($getP('weekendtonage') ?? 0);
+        $payslip->weekendrate                   = round((float)($getP('weekendrate') ?? $getP('weekend_rate') ?? $getP('saturday_rate') ?? $getP('saturdayrate') ?? 0), 2);
+        $payslip->weekday_rate                  = $payslip->weekdayrate;
+        $payslip->weekday_overtime_rate         = $payslip->weekdayotrate;
+        $payslip->saturday_rate                 = $payslip->weekendrate;
+        $payslip->offday_holiday_overtime_rate  = round((float)($getP('offday_holiday_overtime_rate') ?? $getP('offdayholidayovertimerate') ?? $payslip->saturday_rate), 2);
+        $payslip->special_day_overtime_rate     = round((float)($getP('special_day_overtime_rate') ?? $getP('specialdayovertimerate') ?? $getP('holiday_rate') ?? $getP('holidayrate') ?? 0), 2);
+        $payslip->overtime_rate                 = round((float)($getP('overtime_rate') ?? $getP('overtimerate') ?? $payslip->weekday_overtime_rate), 2);
         $payslip->total1          = (float)($getP('total1') ?? 0);
         $payslip->total2          = (float)($getP('total2') ?? 0);
         $payslip->totalamount     = (float)($getP('totalamount') ?? 0);
@@ -876,140 +977,179 @@ class PayslipController extends Controller
                     ?: ($payslip->fuel_and_rent_allowance + $payslip->transport + $payslip->nightallowance + $payslip->medical + $payslip->leave1)))
         );
 
-        // ---------- OVERTIME HOURS MAPPING ----------
-        $normalOtHrs = $getP('weekday_hours')
-            ?? $getP('weekdayhours')
-            ?? $getP('weekday_overtime_hours')
-            ?? $getP('weekdayovertimehours')
-            ?? $getP('weekdayovertimehr')
-            ?? $getP('weekdayovertimehrs')
-            ?? $getP('overtimehr')
-            ?? $getP('weekdaysOT') 
-            ?? $getP('Normal OT HRS') 
-            ?? $getP('normal_ot_hrs') 
-            ?? $getP('normalOThrs') 
-            ?? $getP('otworkdays') 
-            ?? $getP('weekdayothr')
-            ?? $getP('normal_ot_days') 
-            ?? 0;
+        // ---------- OVERTIME HOURS & AMOUNTS MAPPING ----------
+        $isTwelliumKumasi = ($clientDb === 'twellium' || str_contains($clientSlug, 'twellium-industrial-company-ghana') || ($clientDb !== 'twelliumaccra' && str_contains($clientSlug, 'twellium') && !str_contains($clientSlug, 'accra')));
+        $hasTwelliumKumasiOt = (
+            $getP('normalovertime2') !== null 
+            || $getP('overtime2') !== null 
+            || ($isTwelliumKumasi && $getP('normalovertime') !== null && $getP('overtime') !== null)
+        );
 
-        $saturdayOtHrs = $getP('saturday_hours')
-            ?? $getP('saturdayhours')
-            ?? $getP('num_saturdays')
-            ?? $getP('numsaturdays')
-            ?? $getP('weekendovertimehr')
-            ?? $getP('weekendovertimehrs')
-            ?? $getP('overtimeweekend')
-            ?? $getP('weekendOT') 
-            ?? $getP('Saturday OT HRS') 
-            ?? $getP('saturday_ot_hrs') 
-            ?? $getP('saturdayOThrs') 
-            ?? $getP('weekendOThrs') 
-            ?? $getP('weekendhr')
-            ?? $getP('weekendtonage')
-            ?? $getP('sat')
-            ?? 0;
+        if ($hasTwelliumKumasiOt) {
+            $normalOtHrs   = (float)($getP('normalovertime') ?? 0);
+            $normalOtAmt   = (float)($getP('overtime') ?? 0);
+            $saturdayOtHrs = (float)($getP('normalovertime2') ?? 0);
+            $saturdayOtAmt = (float)($getP('overtime2') ?? 0);
+            $holidayOtHrs  = (float)($getP('special_day_overtime_hours') ?? 0);
+            $holidayOtAmt  = (float)($getP('special_day_overtime_amount') ?? 0);
+        } else {
+            $normalOtHrs = $getP('weekdaysOT') 
+                ?? $getP('weekdays_ot') 
+                ?? $getP('TOTO_WORKDAY')
+                ?? $getP('totoworkday')
+                ?? $getP('weekday_hours')
+                ?? $getP('weekdayhours')
+                ?? $getP('weekday_overtime_hours')
+                ?? $getP('weekdayovertimehours')
+                ?? $getP('weekdayovertimehr')
+                ?? $getP('weekdayovertimehrs')
+                ?? $getP('overtimehr')
+                ?? $getP('Normal OT HRS') 
+                ?? $getP('normal_ot_hrs') 
+                ?? $getP('normalOThrs') 
+                ?? $getP('otworkdays') 
+                ?? $getP('weekdayothr')
+                ?? $getP('normal_ot_days') 
+                ?? 0;
 
-        $holidayOtHrs = $getP('num_sundays_holidays')
-            ?? $getP('numsundaysholidays')
-            ?? $getP('sundays_holiday_overtime')
-            ?? $getP('sundaysholidayovertime')
-            ?? $getP('sunday_hours')
-            ?? $getP('sundayhours')
-            ?? $getP('offday_holiday_overtime_hours')
-            ?? $getP('offdayholidayovertimehours')
-            ?? $getP('special_day_overtime_hours')
-            ?? $getP('specialdayovertimehours')
-            ?? $getP('holidayovertimehr')
-            ?? $getP('holidayovertimehrs')
-            ?? $getP('holiday') 
-            ?? $getP('Holiday OT HRS') 
-            ?? $getP('holiday_ot_hrs') 
-            ?? $getP('holidayOThrs') 
-            ?? $getP('otweekend') 
-            ?? $getP('holidayot')
-            ?? 0;
+            $saturdayOtHrs = $getP('weekendOT') 
+                ?? $getP('weekend_ot') 
+                ?? $getP('TOT_OFFDAY')
+                ?? $getP('totoffday')
+                ?? $getP('saturday_hours')
+                ?? $getP('saturdayhours')
+                ?? $getP('num_saturdays')
+                ?? $getP('numsaturdays')
+                ?? $getP('weekendovertimehr')
+                ?? $getP('weekendovertimehrs')
+                ?? $getP('overtimeweekend')
+                ?? $getP('Saturday OT HRS') 
+                ?? $getP('saturday_ot_hrs') 
+                ?? $getP('saturdayOThrs') 
+                ?? $getP('weekendOThrs') 
+                ?? $getP('weekendhr')
+                ?? $getP('weekendtonage')
+                ?? $getP('sat')
+                ?? 0;
+
+            $holidayOtHrs = $getP('holidayot')
+                ?? $getP('holiday_ot')
+                ?? $getP('Holiday OT')
+                ?? $getP('TOTALSPECIAL')
+                ?? $getP('totalspecial')
+                ?? $getP('num_sundays_holidays')
+                ?? $getP('numsundaysholidays')
+                ?? $getP('sundays_holiday_overtime')
+                ?? $getP('sundaysholidayovertime')
+                ?? $getP('sunday_hours')
+                ?? $getP('sundayhours')
+                ?? $getP('offday_holiday_overtime_hours')
+                ?? $getP('offdayholidayovertimehours')
+                ?? $getP('special_day_overtime_hours')
+                ?? $getP('specialdayovertimehours')
+                ?? $getP('holidayovertimehr')
+                ?? $getP('holidayovertimehrs')
+                ?? $getP('Holiday OT HRS') 
+                ?? $getP('holiday_ot_hrs') 
+                ?? $getP('holidayOThrs') 
+                ?? $getP('otweekend') 
+                ?? 0;
+        }
 
         $payslip->weekdaysOT       = $normalOtHrs;
         $payslip->weekendOT        = $saturdayOtHrs;
         $payslip->holiday          = $holidayOtHrs;
+        $payslip->holidayot        = $holidayOtHrs;
         $payslip->sat              = $saturdayOtHrs;
 
-        // ---------- OVERTIME AMOUNTS MAPPING ----------
-        $normalOtAmt = $getP('weekday_overtime_amt')
-            ?? $getP('weekdayovertimeamt')
-            ?? $getP('weekdays_overtime')
-            ?? $getP('weekdaysovertime')
-            ?? $getP('weekday_overtime_amount')
-            ?? $getP('weekdayovertimeamount') 
-            ?? $getP('weekdayovertimeamountghc') 
-            ?? $getP('weekdayovertimetotal')
-            ?? $getP('overtimetotal')
-            ?? $getP('normalovertime') 
-            ?? $getP('Normal Overtime') 
-            ?? $getP('normal_overtime') 
-            ?? $getP('normalot') 
-            ?? $getP('normalotamt') 
-            ?? $getP('weekdayotamt1')
-            ?? 0;
+        if (!$hasTwelliumKumasiOt) {
+            // ---------- OVERTIME AMOUNTS MAPPING ----------
+            $normalOtAmt = $getP('normalovertime') 
+                ?? $getP('Normal Overtime') 
+                ?? $getP('normal_overtime') 
+                ?? $getP('WORKDAYOT')
+                ?? $getP('workdayot')
+                ?? $getP('weekday_overtime_amt')
+                ?? $getP('weekdayovertimeamt')
+                ?? $getP('weekdays_overtime')
+                ?? $getP('weekdaysovertime')
+                ?? $getP('weekday_overtime_amount')
+                ?? $getP('weekdayovertimeamount') 
+                ?? $getP('weekdayovertimeamountghc') 
+                ?? $getP('weekdayovertimetotal')
+                ?? $getP('normalot') 
+                ?? $getP('normalotamt') 
+                ?? $getP('weekdayotamt1')
+                ?? $getP('otworkingday')
+                ?? 0;
 
-        // Fallback calculation if monetary normal overtime value is absent
-        if (($normalOtAmt == 0 || $normalOtAmt === null) && $payslip->weekdaysOT > 0) {
-            $basicForCalc = $payslip->basic ?? 0;
-            if ($basicForCalc > 0) {
-                $roundedBasic = ceil($basicForCalc * 100) / 100;
-                $normalOtAmt = ($roundedBasic / 216) * $payslip->weekdaysOT * 1.25;
-                $normalOtAmt = round($normalOtAmt, 2);
+            // Fallback calculation if monetary normal overtime value is absent
+            if (($normalOtAmt == 0 || $normalOtAmt === null) && $payslip->weekdaysOT > 0) {
+                $basicForCalc = $payslip->basic ?? 0;
+                if ($basicForCalc > 0) {
+                    $roundedBasic = ceil($basicForCalc * 100) / 100;
+                    $normalOtAmt = ($roundedBasic / 216) * $payslip->weekdaysOT * 1.25;
+                    $normalOtAmt = round($normalOtAmt, 2);
+                }
             }
+
+            $saturdayOtAmt = $getP('saturdayovertime') 
+                ?? $getP('Saturday Overtime') 
+                ?? $getP('saturday_overtime') 
+                ?? $getP('OFFDAY_HOLIDAYOT')
+                ?? $getP('offdayholidayot')
+                ?? $getP('saturday_overtime_amt')
+                ?? $getP('saturdayovertimeamt')
+                ?? $getP('saturdays_overtime')
+                ?? $getP('saturdaysovertime')
+                ?? $getP('weekendovertimetotal')
+                ?? $getP('weekendovertimeamount') 
+                ?? $getP('weekendovertimeamountghc') 
+                ?? $getP('overtimetotal2')
+                ?? $getP('satOT')
+                ?? $getP('satot')
+                ?? ($getP('weekendhr') !== null || $getP('weekendtonage') !== null ? $getP('amount') : null)
+                ?? $getP('weekendot') 
+                ?? $getP('otholiday')
+                ?? 0;
+
+            $holidayOtAmt = $getP('holidayotamt') 
+                ?? $getP('Holiday OT Amt') 
+                ?? $getP('holiday_ot_amt') 
+                ?? $getP('SPECIALDAYOT')
+                ?? $getP('specialdayot')
+                ?? $getP('sunday_holiday_overtime_amt')
+                ?? $getP('sundayholidayovertimeamt')
+                ?? $getP('sundays_holidays_overtime')
+                ?? $getP('sundaysholidaysovertime')
+                ?? $getP('offday_holiday_overtime_total')
+                ?? $getP('offdayholidayovertimetotal')
+                ?? $getP('special_day_overtime_amount')
+                ?? $getP('specialdayovertimeamount')
+                ?? $getP('holidayovertimetotal')
+                ?? $getP('holidayovertimeamount') 
+                ?? $getP('holidayovertimeamountghc') 
+                ?? $getP('Holiday Overtime') 
+                ?? 0;
         }
-
-        $saturdayOtAmt = $getP('saturday_overtime_amt')
-            ?? $getP('saturdayovertimeamt')
-            ?? $getP('saturdays_overtime')
-            ?? $getP('saturdaysovertime')
-            ?? $getP('weekendovertimetotal')
-            ?? $getP('weekendovertimeamount') 
-            ?? $getP('weekendovertimeamountghc') 
-            ?? $getP('overtimetotal2')
-            ?? $getP('saturdayovertime') 
-            ?? $getP('Saturday Overtime') 
-            ?? $getP('saturday_overtime') 
-            ?? $getP('satOT')
-            ?? $getP('satot')
-            ?? ($getP('weekendhr') !== null || $getP('weekendtonage') !== null ? $getP('amount') : null)
-            ?? $getP('weekendot') 
-            ?? 0;
-
-        $holidayOtAmt = $getP('sunday_holiday_overtime_amt')
-            ?? $getP('sundayholidayovertimeamt')
-            ?? $getP('sundays_holidays_overtime')
-            ?? $getP('sundaysholidaysovertime')
-            ?? $getP('offday_holiday_overtime_total')
-            ?? $getP('offdayholidayovertimetotal')
-            ?? $getP('special_day_overtime_amount')
-            ?? $getP('specialdayovertimeamount')
-            ?? $getP('holidayovertimetotal')
-            ?? $getP('holidayovertimeamount') 
-            ?? $getP('holidayovertimeamountghc') 
-            ?? $getP('holidayotamt') 
-            ?? $getP('Holiday Overtime') 
-            ?? $getP('holidayot') 
-            ?? 0;
 
         $overtimeRefund = $getP('overtimerefund')
             ?? $getP('overtime_refund')
             ?? 0;
 
-        $explicitTotalOt = $getP('total_overtime_amt')
-            ?? $getP('totalovertimeamt')
+        $explicitTotalOt = $getP('totalovertime')
+            ?? $getP('Total Overtime')
             ?? $getP('total_overtime')
-            ?? $getP('totalovertime')
+            ?? $getP('TOT_OTAMT')
+            ?? $getP('tototamt')
+            ?? $getP('total_overtime_amt')
+            ?? $getP('totalovertimeamt')
             ?? $getP('total_overtime_amount')
             ?? $getP('totalovertimeamount')
             ?? $getP('totalovertimeamountghc')
             ?? $getP('overtime_amount')
             ?? $getP('overtimeamount')
-            ?? $getP('overtime')
+            ?? (!$hasTwelliumKumasiOt ? $getP('overtime') : null)
             ?? $getP('ot_amount')
             ?? null;
 
@@ -1019,9 +1159,16 @@ class PayslipController extends Controller
             : $componentTotal;
 
         $payslip->normalovertime              = (float)$normalOtAmt;
+        $payslip->normal_overtime             = (float)$normalOtAmt;
         $payslip->saturdayovertime            = (float)$saturdayOtAmt;
+        $payslip->saturday_overtime           = (float)$saturdayOtAmt;
         $payslip->holidayotamt                = (float)$holidayOtAmt;
+        $payslip->holiday_ot_amt              = (float)$holidayOtAmt;
         $payslip->satOT                       = (float)$saturdayOtAmt;
+        $payslip->totalovertime               = (float)$totalOvertime;
+        $payslip->total_overtime              = (float)$totalOvertime;
+        $payslip->total_overtime_amt          = (float)$totalOvertime;
+        $payslip->overtime                    = (float)$totalOvertime;
 
         // Canonical overtime attributes for Twellium Accra & all payslip viewers
         $payslip->weekday_hours               = $normalOtHrs;
@@ -1031,14 +1178,14 @@ class PayslipController extends Controller
         $payslip->num_sundays_holidays        = $holidayOtHrs;
         $payslip->sunday_holiday_overtime_amt = (float)$holidayOtAmt;
         $payslip->overtimerefund              = (float)$overtimeRefund;
-        $payslip->total_overtime_amt          = (float)$totalOvertime;
-        $payslip->overtime                    = (float)$totalOvertime;
 
         // Kumasi / Ghana alias support
         $payslip->weekday_overtime_hours        = $normalOtHrs;
         $payslip->weekday_overtime_amount       = (float)$normalOtAmt;
-        $payslip->offday_holiday_overtime_hours = $holidayOtHrs;
-        $payslip->offday_holiday_overtime_total = (float)$holidayOtAmt;
+        $payslip->offday_holiday_overtime_hours = $saturdayOtHrs;
+        $payslip->offday_holiday_overtime_total = (float)$saturdayOtAmt;
+        $payslip->special_day_overtime_hours    = $holidayOtHrs;
+        $payslip->special_day_overtime_amount   = (float)$holidayOtAmt;
         $payslip->total_overtime_amount         = (float)$totalOvertime;
 
         // ---------- DEDUCTIONS ----------
@@ -1059,7 +1206,9 @@ class PayslipController extends Controller
 
         $payslip->ssnitee = (float) (
             $payslip->ssnitee
+            ?? $getP('ssnit_ee')
             ?? $getP('ssnitee') 
+            ?? $getP('ssnit') 
             ?? $getP('ps_pension_salarie')
             ?? $getP('pspensionsalarie')
             ?? $getP('cnss')
@@ -1159,8 +1308,7 @@ class PayslipController extends Controller
         $payslip->totaldeduction   = $payslip->totaldeductions;
 
         // ---------- TOTALS (GROSS & NET) ----------
-        $netVal = (float) (
-            $payslip->netpay
+        $rawNet = $payslip->netpay
             ?? $getP('take_home_pay') 
             ?? $getP('takehomepay') 
             ?? $getP('takehome') 
@@ -1175,11 +1323,10 @@ class PayslipController extends Controller
             ?? $getP('actualnetpay') 
             ?? $getP('finalnetpay')
             ?? $getP('nap')
-            ?? 0
-        );
+            ?? 0;
+        $netVal = $toNum($rawNet);
 
-        $grossVal = (float) (
-            $payslip->grosspay
+        $rawGross = $payslip->grosspay
             ?? $getP('gross_salary') 
             ?? $getP('grosssalary') 
             ?? $getP('gross_salaries')
@@ -1193,8 +1340,9 @@ class PayslipController extends Controller
             ?? $getP('grossnew')
             ?? $getP('totalearn')
             ?? $getP('gross')
-            ?? 0
-        );
+            ?? $getP('total')
+            ?? 0;
+        $grossVal = $toNum($rawGross);
 
         // For OFI BWH (olambwh), true gross is totalamount + f&tamount
         if ($grossVal == 0 && $getP('totalamount') !== null && ($getP('f&tamount') !== null || $getP('ftamount') !== null)) {
@@ -1266,9 +1414,20 @@ class PayslipController extends Controller
             $netVal = max(0, round($payslip->grosspay - $payslip->totaldeductions, 2));
         }
 
-        $payslip->netpay        = round($netVal, 2);
-        $payslip->take_home_pay = $payslip->netpay;
-        $payslip->takehome      = $payslip->netpay;
+        $payslip->netpay           = round($netVal, 2);
+        $payslip->take_home_pay    = $payslip->netpay;
+        $payslip->takehome         = $payslip->netpay;
+        $payslip->takehomepay      = $payslip->netpay;
+        $payslip->net_pay          = $payslip->netpay;
+        $payslip->banktransfer     = $payslip->netpay;
+        $payslip->finalnetpay      = $payslip->netpay;
+        $payslip->formatted_netpay = number_format($payslip->netpay, 2, '.', ',');
+        $payslip->salary           = $payslip->basic ?? 0;
+        $payslip->new_basic        = $payslip->basic ?? 0;
+        $payslip->gross            = $payslip->grosspay;
+        $payslip->gross_salary     = $payslip->grosspay;
+        $payslip->grosssalary      = $payslip->grosspay;
+        $payslip->totaldeduct      = $payslip->totaldeductions;
 
         // ---------- BANK & EXTRA INFO ----------
         $payslip->trust         = (float)($getP('trust') ?? 0);
@@ -1291,7 +1450,9 @@ class PayslipController extends Controller
         // Cross-template compatibility aliases for Jay Kay and custom templates
         $payslip->basic_salary              = (float)($getP('basic_salary') ?? $payslip->BASIC_SALARY_GHC ?? $payslip->basic);
         $payslip->earned_basic_salary       = (float)($getP('earned_basic_salary') ?? $payslip->basic_earned);
-        $payslip->days_worked               = $getP('days_worked') ?? $getP('daysworked') ?? $payslip->workdays;
+        $payslip->days_worked               = $payslip->days_worked ?: ($getP('days_worked') ?? $getP('daysworked') ?? $payslip->workdays);
+        $payslip->workdays                  = $payslip->days_worked;
+        $payslip->total_hours_worked        = $payslip->days_worked;
         $payslip->gross_salary              = $payslip->grosspay;
         $payslip->take_home_pay             = $payslip->netpay;
         $payslip->ssnit_ee                  = $payslip->ssnitee;
@@ -1300,13 +1461,64 @@ class PayslipController extends Controller
         $payslip->surcharge_or_student_loan = $payslip->otherdeduction;
         $payslip->absentee_days             = $getP('absentee_days') ?? $getP('absent_days') ?? $getP('absentdays') ?? 0;
         $payslip->absent_deductions         = (float)($getP('absent_deductions') ?? $getP('absentdeductions') ?? $getP('absentee_deductions') ?? 0);
+        $payslip->food_allowance            = (float)($getP('food_allowance') ?? $getP('foodallowance') ?? 0);
         $payslip->night_allowance           = (float)($getP('night_allowance') ?? $payslip->nightallowance ?? 0);
+        $payslip->refund                    = (float)($getP('refund') ?? 0);
+
+        $totalCash = $getP('total_cash_emolument')
+            ?? $getP('totalcashemolument')
+            ?? $getP('total_cash')
+            ?? $getP('cash_emolument')
+            ?? null;
+
+        $totalAssessable = $getP('total_assessable_income')
+            ?? $getP('totalassessableincome')
+            ?? $getP('assessable_income')
+            ?? null;
+
+        $isTwelliumKumasi = ($clientDb === 'twellium' || str_contains($clientSlug, 'twellium-industrial-company-ghana') || str_contains($clientSlug, 'twellium'));
+
+        if ($totalCash !== null && is_numeric($totalCash)) {
+            $payslip->total_cash_emolument = round((float)$totalCash, 2);
+        } elseif ($isTwelliumKumasi) {
+            $payslip->total_cash_emolument = round(
+                (float)($payslip->basic_earned ?? 0)
+                + (float)($payslip->food_allowance ?? 0)
+                + (float)($payslip->night_allowance ?? 0)
+                + (float)($payslip->refund ?? 0)
+                + (float)($payslip->allowance ?? 0),
+                2
+            );
+        } else {
+            $payslip->total_cash_emolument = null;
+        }
+
+        if ($totalAssessable !== null && is_numeric($totalAssessable)) {
+            $payslip->total_assessable_income = round((float)$totalAssessable, 2);
+        } elseif ($isTwelliumKumasi && $payslip->total_cash_emolument !== null) {
+            $payslip->total_assessable_income = round((float)$payslip->total_cash_emolument - (float)($payslip->deduction ?? 0), 2);
+        } else {
+            $payslip->total_assessable_income = null;
+        }
+
         $payslip->saturdays_worked          = $getP('saturdays_worked') ?? $getP('saturdaysworked') ?? 0;
         $payslip->saturday_amount           = (float)($getP('saturday_amount') ?? $payslip->saturdayovertime ?? 0);
         $payslip->overtime_hours            = $getP('overtime_hours') ?? $getP('overtimehrs') ?? 0;
         $payslip->overtime_amount           = (float)($getP('overtime_amount') ?? $payslip->overtime ?? 0);
-        $payslip->commission                = (float)($getP('commission') ?? 0);
-        $payslip->commissiontax             = (float)($getP('commissiontax') ?? $getP('commission_tax') ?? 0);
+        $commEarned = $getP('commission_earned') ?? $getP('commissionearned') ?? $getP('commission') ?? $getP('bonus') ?? 0;
+        $commTax    = $getP('commission_tax') ?? $getP('commissiontax') ?? $getP('bonustax') ?? 0;
+        $commFinal  = $getP('commission_final') ?? $getP('commissionfinal') ?? $getP('bonusfinal') ?? 0;
+
+        $payslip->commission_earned = (float)$commEarned;
+        $payslip->commission        = (float)$commEarned;
+        $payslip->bonus             = (float)$commEarned;
+
+        $payslip->commission_tax    = (float)$commTax;
+        $payslip->commissiontax     = (float)$commTax;
+        $payslip->bonustax          = (float)$commTax;
+
+        $payslip->commission_final  = (float)$commFinal;
+        $payslip->bonusfinal        = (float)$commFinal;
 
         // Transsion BFA / Burkina Faso statutory deductions & payroll items
         $isTransburkina = str_contains($client->client_dbname ?? '', 'transburkina') 
@@ -1468,18 +1680,9 @@ class PayslipController extends Controller
 
         [$staffIdField, $nameField] = $this->detectColumns($tableName, $client);
 
-        $otTable = str_starts_with($tableName, 'twelliumaccrabasic')
-            ? ('twelliumaccraovertime' . substr($tableName, strlen('twelliumaccrabasic')))
-            : null;
-        $hasOtTable = $otTable && Schema::hasTable($otTable);
-
-        $payslip = $hasOtTable
-            ? DB::table("{$tableName} as b")
-                ->leftJoin("{$otTable} as o", 'b.clock_in_id', '=', 'o.clock_in_id')
-                ->select('b.*', 'o.weekday_hours', 'o.num_saturdays', 'o.saturday_hours', 'o.num_sundays_holidays', 'o.sundays_holiday_overtime', 'o.overtimerefund', 'o.weekdays_overtime', 'o.saturdays_overtime', 'o.sundays_holidays_overtime', 'o.total_overtime')
-                ->where("b.{$staffIdField}", $staffId)
-                ->first()
-            : DB::table($tableName)->where($staffIdField, $staffId)->first();
+        $payslip = $this->getPayslipQuery($tableName, $staffIdField)
+            ->where("b.{$staffIdField}", $staffId)
+            ->first();
 
         if (!$payslip) {
             $employees = DB::table($tableName)
@@ -1562,30 +1765,15 @@ class PayslipController extends Controller
 
             [$staffIdField, $nameField] = $this->detectColumns($tableName, $client);
 
-            $otTable = str_starts_with($tableName, 'twelliumaccrabasic')
-                ? ('twelliumaccraovertime' . substr($tableName, strlen('twelliumaccrabasic')))
-                : null;
-            $hasOtTable = $otTable && Schema::hasTable($otTable);
-
-            $payslip = $hasOtTable
-                ? DB::table("{$tableName} as b")
-                    ->leftJoin("{$otTable} as o", 'b.clock_in_id', '=', 'o.clock_in_id')
-                    ->select('b.*', 'o.weekday_hours', 'o.num_saturdays', 'o.saturday_hours', 'o.num_sundays_holidays', 'o.sundays_holiday_overtime', 'o.overtimerefund', 'o.weekdays_overtime', 'o.saturdays_overtime', 'o.sundays_holidays_overtime', 'o.total_overtime')
-                    ->where("b.{$staffIdField}", $staffId)
-                    ->first()
-                : DB::table($tableName)->where($staffIdField, $staffId)->first();
+            $payslip = $this->getPayslipQuery($tableName, $staffIdField)
+                ->where("b.{$staffIdField}", $staffId)
+                ->first();
 
             if (!$payslip) {
                 // Fallback: search with trimmed / lowercase staff ID
-                $payslip = $hasOtTable
-                    ? DB::table("{$tableName} as b")
-                        ->leftJoin("{$otTable} as o", 'b.clock_in_id', '=', 'o.clock_in_id')
-                        ->select('b.*', 'o.weekday_hours', 'o.num_saturdays', 'o.saturday_hours', 'o.num_sundays_holidays', 'o.sundays_holiday_overtime', 'o.overtimerefund', 'o.weekdays_overtime', 'o.saturdays_overtime', 'o.sundays_holidays_overtime', 'o.total_overtime')
-                        ->whereRaw("TRIM(LOWER(b.`{$staffIdField}`)) = ?", [trim(strtolower($staffId))])
-                        ->first()
-                    : DB::table($tableName)
-                        ->whereRaw("TRIM(LOWER(`{$staffIdField}`)) = ?", [trim(strtolower($staffId))])
-                        ->first();
+                $payslip = $this->getPayslipQuery($tableName, $staffIdField)
+                    ->whereRaw("TRIM(LOWER(b.`{$staffIdField}`)) = ?", [trim(strtolower($staffId))])
+                    ->first();
             }
 
             if (!$payslip) {
@@ -1669,8 +1857,8 @@ class PayslipController extends Controller
 
             $view = $this->resolvePayslipView($client);
 
-            $payslips = DB::table($tableName)
-                ->whereIn($staffIdField, $staffIds)
+            $payslips = $this->getPayslipQuery($tableName, $staffIdField)
+                ->whereIn("b.{$staffIdField}", $staffIds)
                 ->get()
                 ->keyBy($staffIdField);
 
@@ -2000,19 +2188,10 @@ class PayslipController extends Controller
                     return response()->json(['error' => 'No employees selected'], 400);
                 }
 
-                $otTable = str_starts_with($tableName, 'twelliumaccrabasic')
-                    ? ('twelliumaccraovertime' . substr($tableName, strlen('twelliumaccrabasic')))
-                    : null;
-                $hasOtTable = $otTable && Schema::hasTable($otTable);
-
-                $payslips = $hasOtTable
-                    ? DB::table("{$tableName} as b")
-                        ->leftJoin("{$otTable} as o", 'b.clock_in_id', '=', 'o.clock_in_id')
-                        ->select('b.*', 'o.weekday_hours', 'o.num_saturdays', 'o.saturday_hours', 'o.num_sundays_holidays', 'o.sundays_holiday_overtime', 'o.overtimerefund', 'o.weekdays_overtime', 'o.saturdays_overtime', 'o.sundays_holidays_overtime', 'o.total_overtime')
-                        ->whereIn("b.{$staffIdField}", $staffIds)
-                        ->get()
-                        ->keyBy($staffIdField)
-                    : DB::table($tableName)->whereIn($staffIdField, $staffIds)->get()->keyBy($staffIdField);
+                $payslips = $this->getPayslipQuery($tableName, $staffIdField)
+                    ->whereIn("b.{$staffIdField}", $staffIds)
+                    ->get()
+                    ->keyBy($staffIdField);
                 $ssnits   = DB::table('ssnit')->whereIn('staffid', $staffIds)->pluck('ssnit1a', 'staffid');
                 $banks    = DB::table('bankdetails')->whereIn('employid', $staffIds)->get()->keyBy('employid');
 
@@ -2049,21 +2228,88 @@ class PayslipController extends Controller
                     }
 
                     $bulkView = $this->resolveBulkPayslipView($client);
-                    $chunks   = array_chunk($preparedData, 3);
 
-                    $pdf = Pdf::loadView($bulkView, [
-                        'chunks'         => $chunks,
-                        'formattedMonth' => $formattedMonth,
-                        'logoData'       => $cachedLogoData,
-                        'client'         => $client,
-                    ])->setOptions([
-                        'isRemoteEnabled' => false,
-                        'isFontSubsettingEnabled' => false,
-                        'defaultFont' => 'Helvetica',
-                    ])->setPaper('a4', 'portrait');
+                    // For up to 90 employees (30 pages): generate a single 3-per-page bulk PDF directly
+                    if (count($preparedData) <= 90) {
+                        $chunks = array_chunk($preparedData, 3);
+                        $pdf = Pdf::loadView($bulkView, [
+                            'chunks'         => $chunks,
+                            'formattedMonth' => $formattedMonth,
+                            'logoData'       => $cachedLogoData,
+                            'client'         => $client,
+                        ])->setOptions([
+                            'isRemoteEnabled' => false,
+                            'isFontSubsettingEnabled' => false,
+                            'defaultFont' => 'Helvetica',
+                        ])->setPaper('a4', 'portrait');
 
-                    $filename = "{$safeShort}_Bulk_Payslips_{$month}.pdf";
-                    return $pdf->download($filename);
+                        $filename = "{$safeShort}_Bulk_Payslips_{$month}.pdf";
+                        return $pdf->download($filename);
+                    }
+
+                    // For large employee sets (> 90 employees): batch into safe-sized 3-per-page PDFs
+                    // and package into a ZIP to guarantee memory safety (< 90MB peak RAM) and 0 timeout crashes on cPanel
+                    $tempDir = storage_path('app/tmp/bulk_pdf_' . uniqid());
+                    if (!is_dir($tempDir)) {
+                        @mkdir($tempDir, 0775, true);
+                    }
+                    $zipPath = storage_path('app/tmp/bulk_payslips_' . uniqid() . '.zip');
+                    $zip     = new ZipArchive();
+                    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                        return response()->json(['error' => 'Cannot create temporary ZIP file.'], 500);
+                    }
+
+                    $bulkBatches = array_chunk($preparedData, 60);
+                    $tempFiles   = [];
+                    $batchNum    = 1;
+
+                    try {
+                        foreach ($bulkBatches as $batchItems) {
+                            $startIdx    = ($batchNum - 1) * 60 + 1;
+                            $endIdx      = $startIdx + count($batchItems) - 1;
+                            $batchChunks = array_chunk($batchItems, 3);
+
+                            $pdf = Pdf::loadView($bulkView, [
+                                'chunks'         => $batchChunks,
+                                'formattedMonth' => $formattedMonth,
+                                'logoData'       => $cachedLogoData,
+                                'client'         => $client,
+                            ])->setOptions([
+                                'isRemoteEnabled' => false,
+                                'isFontSubsettingEnabled' => false,
+                                'defaultFont' => 'Helvetica',
+                            ])->setPaper('a4', 'portrait');
+
+                            $partFileName = "{$safeShort}_Bulk_Payslips_{$month}_Part{$batchNum}_Staff_{$startIdx}_to_{$endIdx}.pdf";
+                            $partFilePath = $tempDir . DIRECTORY_SEPARATOR . $partFileName;
+
+                            file_put_contents($partFilePath, $pdf->output());
+                            $zip->addFile($partFilePath, $partFileName);
+                            $tempFiles[] = $partFilePath;
+
+                            unset($pdf);
+                            gc_collect_cycles();
+                            $batchNum++;
+                        }
+                        $zip->close();
+                    } finally {
+                        foreach ($tempFiles as $f) {
+                            if (file_exists($f)) @unlink($f);
+                        }
+                        if (is_dir($tempDir)) @rmdir($tempDir);
+                    }
+
+                    if (!file_exists($zipPath) || filesize($zipPath) === 0) {
+                        if (file_exists($zipPath)) @unlink($zipPath);
+                        return response()->json(['error' => 'No bulk payslip files could be created.'], 500);
+                    }
+
+                    return response()->download($zipPath, "{$safeShort}_Bulk_Payslips_{$month}.zip", [
+                        'Content-Type'        => 'application/zip',
+                        'Content-Disposition' => "attachment; filename=\"{$safeShort}_Bulk_Payslips_{$month}.zip\"",
+                        'Cache-Control'       => 'no-store, no-cache, must-revalidate, max-age=0',
+                        'Pragma'              => 'no-cache',
+                    ])->deleteFileAfterSend(true);
                 }
 
                 $tempDir = storage_path('app/tmp/bulk_' . uniqid());
@@ -2209,7 +2455,10 @@ class PayslipController extends Controller
             [$staffIdField] = $this->detectColumns($tableName, $client);
             $view           = $this->resolvePayslipView($client);
 
-            $payslips = DB::table($tableName)->whereIn($staffIdField, $staffIds)->get()->keyBy($staffIdField);
+            $payslips = $this->getPayslipQuery($tableName, $staffIdField)
+                ->whereIn("b.{$staffIdField}", $staffIds)
+                ->get()
+                ->keyBy($staffIdField);
             $ssnits   = DB::table('ssnit')->whereIn('staffid', $staffIds)->pluck('ssnit1a', 'staffid');
             $banks    = DB::table('bankdetails')->whereIn('employid', $staffIds)->get()->keyBy('employid');
 

@@ -15,13 +15,16 @@
         }
         th, td {
             border: 1px solid #ccc;
-            padding: 8px;
+            padding: 6px 8px;
             text-align: left;
         }
         .header {
             font-weight: bold;
         }
         .total {
+            font-weight: bold;
+        }
+        .bold {
             font-weight: bold;
         }
         .net-pay {
@@ -159,6 +162,30 @@
         <td></td>
     </tr>
     @endif
+    @if((float)($payslip->food_allowance ?? 0) > 0)
+    <tr>
+        <td colspan="2">Food Allowance</td>
+        <td></td>
+        <td style="text-align: center;">{{ number_format((float)$payslip->food_allowance, 2) }}</td>
+        <td></td>
+    </tr>
+    @endif
+    @if((float)($payslip->night_allowance ?? 0) > 0)
+    <tr>
+        <td colspan="2">Night Allowance</td>
+        <td></td>
+        <td style="text-align: center;">{{ number_format((float)$payslip->night_allowance, 2) }}</td>
+        <td></td>
+    </tr>
+    @endif
+    @if((float)($payslip->refund ?? 0) > 0)
+    <tr>
+        <td colspan="2">Refund</td>
+        <td></td>
+        <td style="text-align: center;">{{ number_format((float)$payslip->refund, 2) }}</td>
+        <td></td>
+    </tr>
+    @endif
     <tr>
         <td colspan="2">Allowance</td>
         <td></td>
@@ -171,15 +198,36 @@
         <td style="text-align: center;">{{ number_format((float)($payslip->risk_allowance ?? 0), 2) }}</td>
         <td></td>
     </tr>
+    @if(isset($payslip->total_cash_emolument) && $payslip->total_cash_emolument !== null)
+    <tr>
+        <td colspan="2" class="bold">Total Cash Emolument</td>
+        <td></td>
+        <td style="text-align: center;" class="bold">{{ number_format((float)$payslip->total_cash_emolument, 2) }}</td>
+        <td></td>
+    </tr>
+    @endif
+    @if(isset($payslip->total_assessable_income) && $payslip->total_assessable_income !== null)
+    <tr>
+        <td colspan="2" class="bold">Total Assessable Income</td>
+        <td></td>
+        <td style="text-align: center;" class="bold">{{ number_format((float)$payslip->total_assessable_income, 2) }}</td>
+        <td></td>
+    </tr>
+    @endif
     <tr>
         <td colspan="2" class="total">Gross Salary</td>
         <td></td>
         <td style="text-align: center;" class="total">
             {{ number_format(
-                (float)($payslip->basic_earned ?? 0) +
-                $effectiveOvertimeForTotal +
-                (float)($payslip->allowance ?? 0) +
-                (float)($payslip->risk_allowance ?? 0), 2) }}
+                (float)($payslip->gross_salary ?? $payslip->grosspay ?? (
+                    (float)($payslip->basic_earned ?? 0) +
+                    $effectiveOvertimeForTotal +
+                    (float)($payslip->allowance ?? 0) +
+                    (float)($payslip->risk_allowance ?? 0) +
+                    (float)($payslip->food_allowance ?? 0) +
+                    (float)($payslip->night_allowance ?? 0) +
+                    (float)($payslip->refund ?? 0)
+                )), 2) }}
         </td>
         <td></td>
     </tr>
@@ -223,10 +271,15 @@
         <td></td>
         <td style="text-align: center;" class="total">
             {{ number_format(
-                (float)($payslip->basic_earned ?? 0) +
-                $effectiveOvertimeForTotal +
-                (float)($payslip->allowance ?? 0) +
-                (float)($payslip->risk_allowance ?? 0), 2) }}
+                (float)($payslip->gross_salary ?? $payslip->grosspay ?? (
+                    (float)($payslip->basic_earned ?? 0) +
+                    $effectiveOvertimeForTotal +
+                    (float)($payslip->allowance ?? 0) +
+                    (float)($payslip->risk_allowance ?? 0) +
+                    (float)($payslip->food_allowance ?? 0) +
+                    (float)($payslip->night_allowance ?? 0) +
+                    (float)($payslip->refund ?? 0)
+                )), 2) }}
         </td>
         <td style="text-align: center;" class="total">{{ number_format((float)($payslip->total_deductions ?? 0), 2) }}</td>
     </tr>

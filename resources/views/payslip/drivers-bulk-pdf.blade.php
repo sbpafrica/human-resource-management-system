@@ -116,7 +116,7 @@
                     </tr>
                     <tr>
                         <td class="bold">Basic</td>
-                        <td class="bold">{{ number_format((float)($payslip->new_basic ?: ($payslip->salary ?: ($payslip->basic ?? 0))), 2) }}</td>
+                        <td class="bold">{{ number_format((float)($payslip->new_basic ?? $payslip->salary ?? $payslip->basic ?? 0), 2) }}</td>
                         <td></td>
                         <td class="bold"></td>
                         <td class="bold"></td>

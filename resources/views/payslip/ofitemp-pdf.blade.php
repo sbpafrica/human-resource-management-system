@@ -98,7 +98,7 @@
         </tr>
         <tr>
             <td>Daily Rate</td>
-            <td>GHS {{ number_format((float)($payslip->rate ?: ($payslip->BASIC_SALARY_GHC ?: 0)), 2) }}</td>
+            <td>GHS {{ number_format((float)($payslip->rate ?? $payslip->BASIC_SALARY_GHC ?? 0), 2) }}</td>
             <td></td>
             <td>Days Worked</td>
             <td>{{ $payslip->workdays ?? $payslip->noofdays ?? $payslip->total1 ?? 0 }}</td>
@@ -116,7 +116,7 @@
         <tr>
             <td colspan="2">Basic Salary Earned</td>
             <td class="text-right">{{ (int)($payslip->workdays ?? $payslip->noofdays ?? $payslip->total1 ?? 0) }} days</td>
-            <td class="text-center">{{ number_format((float)($payslip->BASIC_SALARY_EARNED_GHC ?: ($payslip->basic_earned ?: ($payslip->basic ?: ($payslip->total2 ?: 0)))), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->BASIC_SALARY_EARNED_GHC ?? $payslip->basic_earned ?? $payslip->basic ?? $payslip->total2 ?? 0), 2) }}</td>
             <td></td>
         </tr>
 
@@ -142,7 +142,7 @@
         <tr>
             <td colspan="2">Transport Allowance</td>
             <td class="text-right">{{ (int)($payslip->workdays ?? $payslip->noofdays ?? 0) }} days</td>
-            <td class="text-center">{{ number_format((float)($payslip->transport ?: ($payslip->allowance ?: 0)), 2) }}</td>
+            <td class="text-center">{{ number_format((float)($payslip->transport ?? $payslip->allowance ?? 0), 2) }}</td>
             <td></td>
         </tr>
 
@@ -161,7 +161,7 @@
             <td colspan="2" style="font-weight: bold;">Gross Salary</td>
             <td></td>
             <td class="text-center" style="font-weight: bold;">
-                {{ number_format((float)($payslip->grosspay ?: ($payslip->totalamount ?: 0)), 2) }}
+                {{ number_format((float)($payslip->grosspay ?? $payslip->totalamount ?? 0), 2) }}
             </td>
             <td></td>
         </tr>
@@ -209,7 +209,7 @@
         <tr>
             <td colspan="3" class="total">Total</td>
             <td class="total text-center">
-                {{ number_format((float)($payslip->grosspay ?: ($payslip->totalamount ?: 0)), 2) }}
+                {{ number_format((float)($payslip->grosspay ?? $payslip->totalamount ?? 0), 2) }}
             </td>
             <td class="total text-center">
                 {{ number_format($totalDeductionsCalculated, 2) }}
@@ -246,7 +246,7 @@
             <td>{{ $displayName }}</td>
             <td></td>
             <td colspan="2" class="net-pay">
-                GHS {{ number_format((float)($payslip->netpay ?: ($payslip->takehome ?: 0)), 2) }}
+                GHS {{ number_format((float)($payslip->netpay ?? $payslip->takehome ?? 0), 2) }}
             </td>
         </tr>
         <tr>

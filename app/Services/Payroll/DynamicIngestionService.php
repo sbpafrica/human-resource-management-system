@@ -90,6 +90,8 @@ class DynamicIngestionService
 
             $basicSalary = isset($cols['basic_salary'], $row[$cols['basic_salary']]) && is_numeric($row[$cols['basic_salary']])
                 ? (float) $row[$cols['basic_salary']] : null;
+            $legalWorkDays = isset($cols['legalworkdays'], $row[$cols['legalworkdays']]) && is_numeric($row[$cols['legalworkdays']])
+                ? (float) $row[$cols['legalworkdays']] : null;
             $dailyRate = isset($cols['daily_rate'], $row[$cols['daily_rate']]) && is_numeric($row[$cols['daily_rate']])
                 ? (float) $row[$cols['daily_rate']] : null;
             $daysWorked = isset($cols['days_worked'], $row[$cols['days_worked']]) && is_numeric($row[$cols['days_worked']])
@@ -138,6 +140,8 @@ class DynamicIngestionService
                 'name'                        => $name,
                 'position'                    => isset($cols['position'], $row[$cols['position']]) ? trim((string) $row[$cols['position']]) : null,
                 'basic_salary'                => $basicSalary,
+                'legalworkdays'               => $legalWorkDays,
+                'expected_work_days'          => $legalWorkDays,
                 'daily_rate'                  => $dailyRate,
                 'days_worked'                 => $daysWorked,
                 'overtime_amount'             => $effectiveOvertime,

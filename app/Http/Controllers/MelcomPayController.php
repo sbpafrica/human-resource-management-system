@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Melcompay;
+use App\Services\Payroll\ColumnMatcher\HybridColumnMatcher;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -204,161 +205,241 @@ public function export(Request $request)
     }
 }
 
- public function upload(Request $request)
+ public function upload(Request $request, HybridColumnMatcher $columnMatcher)
  {
  $request->validate([
- 'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
- 'month' => ['required', 'date_format:Y-m'],
+     'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:51200'],
+     'month' => ['required', 'date_format:Y-m'],
  ]);
 
  try {
- $selectedMonth = $request->input('month');
- session(['selected_month' => $selectedMonth]);
- $date = Carbon::createFromFormat('Y-m', $selectedMonth);
- $tableName = 'melcom' . strtolower($date->format('F')) . $date->format('y');
+     $selectedMonth = $request->input('month');
+     session(['selected_month' => $selectedMonth]);
+     $date = Carbon::createFromFormat('Y-m', $selectedMonth);
+     $tableName = 'melcom' . strtolower($date->format('F')) . $date->format('y');
 
- // Create table if it doesn't exist
- MelcomPay::createTableIfNotExists($tableName);
+     // Create table if it doesn't exist
+     MelcomPay::createTableIfNotExists($tableName);
 
- $file = $request->file('file');
- $reader = new XlsxReader();
- $spreadsheet = $reader->load($file->getRealPath());
- $sheet = $spreadsheet->getActiveSheet();
- $rows = $sheet->toArray();
- array_shift($rows); // Remove header row
+     $file = $request->file('file');
+     $reader = new XlsxReader();
+     $reader->setReadDataOnly(true);
+     $spreadsheet = $reader->load($file->getRealPath());
+     $sheet = $spreadsheet->getActiveSheet();
+     // Extract raw unformatted calculated values
+     $allRows = $sheet->toArray(null, true, false, false);
 
- // Check for existing staff IDs
- $existingStaffIds = DB::table($tableName)->pluck('employ')->toArray();
- $duplicateStaffIds = [];
- $validRecords = [];
- $errors = [];
+     if (empty($allRows)) {
+         return redirect()->route('melcompay.index', ['month' => $selectedMonth])
+             ->with('error', 'Uploaded spreadsheet is empty.');
+     }
 
- foreach ($rows as $index => $row) {
-    if (count($row) < 39) {
-        $errors[] = "Row " . ($index + 2) . ": Expected 39 columns, found " . count($row);
-        continue;
-    }
+     // Robust number cleaner handling commas, currency symbols, and spaces
+     $parseNum = function ($val, $default = 0.0) {
+         if ($val === null || $val === '') return $default;
+         if (is_numeric($val)) return (float)$val;
+         $clean = preg_replace('/[^\d\.\-]/', '', (string)$val);
+         return (is_numeric($clean) && $clean !== '' && $clean !== '-' && $clean !== '.') ? (float)$clean : $default;
+     };
 
-    // === DIRECT MAPPING FROM EXCEL (39 COLUMNS) ===
-    $employ             = trim($row[0] ?? '')  ?: null;   // Staff ID
-    $empoyeename        = trim($row[1] ?? '')  ?: null;   // Name
-    $outsourcename      = trim($row[2] ?? '')  ?: null;   // Outsourcing Company
-    $designation        = trim($row[3] ?? '')  ?: null;   // Position
-    $joindate           = trim($row[4] ?? '')  ?: null;   // Join Date
-    $shopname           = trim($row[5] ?? '')  ?: null;   // Shop/Branch
-    $category           = trim($row[6] ?? '')  ?: null;   // Staff Category
-    $saturdayot         = $row[7] ?? 0;
-    $actualdays         = is_numeric($row[8]  ?? '') ? (float)$row[8]  : null;
-    $night              = is_numeric($row[9]  ?? '') ? (float)$row[9]  : 0;
-    $halfdays           = is_numeric($row[10] ?? '') ? (float)$row[10] : 0;
-    $satoffdays         = is_numeric($row[11] ?? '') ? (float)$row[11] : 0;
-    $sunoffdays         = is_numeric($row[12] ?? '') ? (float)$row[12] : 0;
-    $leavededuct        = is_numeric($row[13] ?? '') ? (float)$row[13] : 0;
-    $absentdays         = is_numeric($row[14] ?? '') ? (float)$row[14] : 0;
-    $absenthrs          = is_numeric($row[15] ?? '') ? (float)$row[15] : 0;
-    $holiday            = is_numeric($row[16] ?? '') ? (float)$row[16] : 0;
-    $weekdaysOT         = is_numeric($row[17] ?? '') ? (float)$row[17] : 0;
-    $weekendOT          = is_numeric($row[18] ?? '') ? (float)$row[18] : 0;
-    $holidayot          = is_numeric($row[19] ?? '') ? (float)$row[19] : 0;
-    $basic              = is_numeric($row[20] ?? '') ? (float)$row[20] : null;
-    $absentwithoutpay   = is_numeric($row[21] ?? '') ? (float)$row[21] : 0;
-    $basicentitlement   = is_numeric($row[22] ?? '') ? (float)$row[22] : null;
-    $transport          = is_numeric($row[23] ?? '') ? (float)$row[23] : 0;
-    // Excel column 25 (index 24) = Normal Overtime.
-    $normalovertime     = is_numeric($row[24] ?? '') ? (float)$row[24] : 0;
-    $saturdayovertime   = is_numeric($row[25] ?? '') ? (float)$row[25] : 0;
-    $holidayotamt       = is_numeric($row[26] ?? '') ? (float)$row[26] : 0;
-    $gross              = is_numeric($row[27] ?? '') ? (float)$row[27] : null;
-    $ssniter              = is_numeric($row[28] ?? '') ? (float)$row[28] : 0;
-     $ssnitee              = is_numeric($row[29] ?? '') ? (float)$row[29] : 0;
-      $ssnit              = is_numeric($row[30] ?? '') ? (float)$row[30] : 0;
-    $taxable          = is_numeric($row[31] ?? '') ? (float)$row[31] : 0;
-    $paye               = is_numeric($row[32] ?? '') ? (float)$row[32] : 0;
-    $totalovertime      = is_numeric($row[33] ?? '') ? (float)$row[33] : 0;
-    $overtimetax        = is_numeric($row[34] ?? '') ? (float)$row[34] : 0;
-    $totaltax           = is_numeric($row[35] ?? '') ? (float)$row[35] : 0;
-    $trust              = is_numeric($row[36] ?? '') ? (float)$row[36] : 0;
-    $totaldeduction     = is_numeric($row[37] ?? '') ? (float)$row[37] : 0;
+     // Auto-detect the actual header row (scanning first 10 rows for core payroll headers)
+     $headerRowIndex = null;
+     $headers = [];
 
-    // Excel column 39 (index 38) = Bank Transfer / Net Pay.
-    $rawBankTransfer    = $row[38] ?? null;
-    $banktransfer       = is_numeric($rawBankTransfer)
-        ? (float)$rawBankTransfer
-        : null;
+     foreach ($allRows as $rIdx => $r) {
+         if ($rIdx > 10) break;
+         $matchCount = 0;
+         foreach ($r as $cellVal) {
+             if (!is_string($cellVal)) continue;
+             $norm = strtolower(trim(preg_replace('/[\s\xc2\xa0]+/u', ' ', $cellVal)));
+             if (preg_match('/^(emp|staff(\s*id)?|employee|name|basic|gross|take\s*home|net(\s*pay)?|outsourcename|designation|shop|location)/i', $norm)) {
+                 $matchCount++;
+             }
+         }
+         if ($matchCount >= 2) {
+             $headerRowIndex = $rIdx;
+             $headers = array_map(fn($h) => trim(preg_replace('/[\s\xc2\xa0]+/u', ' ', (string)$h)), $r);
+             break;
+         }
+     }
 
-    // === VALIDATION ===
-    if (empty($employ)) {
-        $errors[] = "Row " . ($index + 2) . ": Staff ID is required.";
-        continue;
-    }
+     if ($headerRowIndex === null) {
+         $headerRowIndex = 0;
+         $headers = array_map(fn($h) => trim(preg_replace('/[\s\xc2\xa0]+/u', ' ', (string)$h)), $allRows[0]);
+     }
 
-    if (empty($empoyeename)) {
-        $errors[] = "Row " . ($index + 2) . ": Name is required.";
-        continue;
-    }
+     $dataRows = array_slice($allRows, $headerRowIndex + 1);
 
-    if (is_null($basic) || is_null($gross)) {
-        $errors[] = "Row " . ($index + 2) . ": Basic and Gross Pay are required.";
-        continue;
-    }
+     // Run Hybrid AI Matcher (Grok AI -> Rule-Based -> Legacy Fallback)
+     $sampleData = array_slice($dataRows, 0, 5);
+     $matchResult = $columnMatcher->match($headers, 'melcom', $sampleData);
+     $mapping = $matchResult['mapping'] ?? [];
 
-    if (is_null($banktransfer)) {
-        $errors[] = "Row " . ($index + 2) . ": Bank Transfer (Net Pay) must be a valid number. Found: '$rawBankTransfer'";
-        continue;
-    }
+     Log::info("Melcom upload: AI column matcher matched with confidence {$matchResult['confidence']} via {$matchResult['tier']}", [
+         'mapping' => $mapping,
+         'headerRow' => $headerRowIndex + 1,
+     ]);
 
-    // Duplicate check
-    if (in_array($employ, $existingStaffIds)) {
-        $errors[] = "Row " . ($index + 2) . ": Duplicate Staff ID: $employ";
-        continue;
-    }
+     $offset = (count($headers) >= 42) ? 2 : 0;
+     $hasNewColsInRow = (count($headers) - $offset >= 41);
+     $postGross = $hasNewColsInRow ? 2 : 0;
 
-    // === FINAL DATA ARRAY - 100% MATCH ===
-    $data = [
-        'employ'            => $employ,
-        'empoyeename'       => $empoyeename,
-        'outsourcename'     => $outsourcename,
-        'designation'       => $designation,
-        'joindate'          => $joindate,
-        'shopname'          => $shopname,
-        'category'          => $category,
-        'saturdayot'        => $saturdayot,
-        'actualdays'        => $actualdays,
-        'night'             => $night,
-        'halfdays'          => $halfdays,
-        'satoffdays'       => $satoffdays,
-        'sunoffdays'       => $sunoffdays,
-        'leavededuct'       => $leavededuct,
-        'absentdays'        => $absentdays,
-        'absenthrs'          => $absenthrs,
-        'holiday'           => $holiday,
-        'weekdaysOT'        => $weekdaysOT,
-        'weekendOT'         => $weekendOT,
-        'holidayot'         => $holidayot,
-        'basic'             => $basic,
-        'absentwithoutpay'  => $absentwithoutpay,
-        'basicentitlement'  => $basicentitlement,
-        'transport'         => $transport,
-        'normalovertime'    => $normalovertime,
-        'saturdayovertime'  => $saturdayovertime,
-        'holidayotamt'      => $holidayotamt,
-        'gross'             => $gross,
-        'ssniter'             => $ssniter,
-        'ssnitee'             => $ssnitee,
-        'ssnit'             => $ssnit,
-        'taxable'          => $taxable,
-        'paye'              => $paye,
-        'totalovertime'     => $totalovertime,
-        'overtimetax'       => $overtimetax,
-        'totaltax'          => $totaltax,
-        'trust'             => $trust,
-        'totaldeduction'    => $totaldeduction,
-        'banktransfer'      => $banktransfer,
-    ];
+     $colStaffId          = $mapping['staff_id'] ?? ($offset + 0);
+     $colName             = $mapping['name'] ?? ($offset + 1);
+     $colOutsource        = $mapping['outsourcename'] ?? ($offset + 2);
+     $colPosition         = $mapping['position'] ?? ($offset + 3);
+     $colJoinDate         = $mapping['join_date'] ?? ($offset + 4);
+     $colShop             = $mapping['shop'] ?? ($offset + 5);
+     $colCategory         = $mapping['category'] ?? ($offset + 6);
+     $colSaturdayOt       = $mapping['saturday_rate'] ?? ($offset + 7);
+     $colActualDays       = $mapping['days_worked'] ?? ($offset + 8);
+     $colNight            = $mapping['night_shifts'] ?? ($offset + 9);
+     $colHalfDays         = $mapping['half_days'] ?? ($offset + 10);
+     $colSatOffDays       = $mapping['sat_off_days'] ?? ($offset + 11);
+     $colSunOffDays       = $mapping['sun_off_days'] ?? ($offset + 12);
+     $colLeaveDeduct      = $mapping['leave_deduct'] ?? ($offset + 13);
+     $colAbsentDays       = $mapping['absentee_days'] ?? ($offset + 14);
+     $colAbsentHrs        = $mapping['absent_hrs'] ?? ($offset + 15);
+     $colHoliday          = $mapping['holidays'] ?? ($offset + 16);
+     $colWeekdaysOt       = $mapping['weekday_hours'] ?? ($offset + 17);
+     $colWeekendOt        = $mapping['saturday_hours'] ?? ($offset + 18);
+     $colHolidayOt        = $mapping['num_sundays_holidays'] ?? ($offset + 19);
+     $colBasic            = $mapping['basic_salary'] ?? ($offset + 20);
+     $colAbsentWithoutPay = $mapping['absent_deductions'] ?? ($offset + 21);
+     $colBasicEntitlement = $mapping['basic_entitlement'] ?? ($offset + 22);
+     $colTransport        = $mapping['transport'] ?? ($offset + 23);
+     $colNormalOt         = $mapping['weekday_overtime_amt'] ?? ($offset + 24);
+     $colSaturdayOtAmt    = $mapping['saturday_overtime_amt'] ?? ($offset + 25);
+     $colHolidayOtAmt     = $mapping['sunday_holiday_overtime_amt'] ?? ($offset + 26);
+     $colGross            = $mapping['gross_salary'] ?? ($offset + 27);
+     $colTotalCash        = $mapping['total_cash_emolument'] ?? ($hasNewColsInRow ? $offset + 28 : null);
+     $colTotalAssessable  = $mapping['total_assessable_income'] ?? ($hasNewColsInRow ? $offset + 29 : null);
+     $colSsnitEr          = $mapping['ssnit_er'] ?? ($offset + 28 + $postGross);
+     $colSsnitEe          = $mapping['ssnit_ee'] ?? ($offset + 29 + $postGross);
+     $colSsnit            = $mapping['ssnit'] ?? ($offset + 30 + $postGross);
+     $colTaxable          = $mapping['taxable_income'] ?? ($offset + 31 + $postGross);
+     $colPaye             = $mapping['paye'] ?? ($offset + 32 + $postGross);
+     $colTotalOt          = $mapping['total_overtime_amt'] ?? ($offset + 33 + $postGross);
+     $colOtTax            = $mapping['overtime_tax'] ?? ($offset + 34 + $postGross);
+     $colTotalTax         = $mapping['total_tax'] ?? ($offset + 35 + $postGross);
+     $colTrust            = $mapping['trust'] ?? ($offset + 36 + $postGross);
+     $colTotalDeduction   = $mapping['total_deductions'] ?? ($offset + 37 + $postGross);
+     $colNetPay           = $mapping['net_pay'] ?? ($offset + 38 + $postGross);
 
-    $validRecords[] = $data;
-    $existingStaffIds[] = $employ;
-}
+     // Check for existing staff IDs
+     $existingStaffIds = DB::table($tableName)->pluck('employ')->toArray();
+     $duplicateStaffIds = [];
+     $validRecords = [];
+     $errors = [];
+     $hasNewColsInTable = DB::getSchemaBuilder()->hasColumn($tableName, 'total_cash_emolument');
+
+     foreach ($dataRows as $index => $row) {
+         $excelRowNum = $headerRowIndex + 2 + $index;
+
+         // Skip empty rows
+         if (empty(array_filter($row, fn($v) => !is_null($v) && trim((string)$v) !== ''))) {
+             continue;
+         }
+
+         $employ = trim((string)($row[$colStaffId] ?? ''));
+         $empName = trim((string)($row[$colName] ?? ''));
+
+         // Skip blank/summary/footer rows
+         if (empty($employ) && (empty($empName) || is_numeric($empName))) {
+             continue;
+         }
+         if (in_array(strtolower($employ), ['total', 'totals', 'grand total', 'subtotal', 'count', 'emp', 'staff id', 'sr. no', 'sr.no'])) {
+             continue;
+         }
+         if (in_array(strtolower($empName), ['total', 'totals', 'grand total', 'subtotal', 'count', 'employee', 'name'])) {
+             continue;
+         }
+
+         // === VALIDATION ===
+         if (empty($employ)) {
+             $errors[] = "Row {$excelRowNum}: Staff ID is required.";
+             continue;
+         }
+
+         if (empty($empName)) {
+             $errors[] = "Row {$excelRowNum}: Name is required.";
+             continue;
+         }
+
+         $basic = $parseNum($row[$colBasic] ?? null, null);
+         $gross = $parseNum($row[$colGross] ?? null, null);
+         $netPay = $parseNum($row[$colNetPay] ?? null, null);
+
+         if (is_null($basic) || is_null($gross)) {
+             $errors[] = "Row {$excelRowNum}: Basic and Gross Pay are required.";
+             continue;
+         }
+
+         if (is_null($netPay)) {
+             $rawVal = $row[$colNetPay] ?? '';
+             $errors[] = "Row {$excelRowNum}: Bank Transfer (Net Pay) must be a valid number. Found: '{$rawVal}'";
+             continue;
+         }
+
+         // Duplicate check
+         if (in_array($employ, $existingStaffIds)) {
+             $duplicateStaffIds[] = $employ;
+             continue;
+         }
+
+         $data = [
+             'employ'            => $employ,
+             'empoyeename'       => $empName,
+             'outsourcename'     => trim((string)($row[$colOutsource] ?? '')) ?: null,
+             'designation'       => trim((string)($row[$colPosition] ?? '')) ?: null,
+             'joindate'          => trim((string)($row[$colJoinDate] ?? '')) ?: null,
+             'shopname'          => trim((string)($row[$colShop] ?? '')) ?: null,
+             'category'          => trim((string)($row[$colCategory] ?? '')) ?: null,
+             'saturdayot'        => $parseNum($row[$colSaturdayOt] ?? 0),
+             'actualdays'        => $parseNum($row[$colActualDays] ?? null, null),
+             'night'             => $parseNum($row[$colNight] ?? 0),
+             'halfdays'          => $parseNum($row[$colHalfDays] ?? 0),
+             'satoffdays'        => $parseNum($row[$colSatOffDays] ?? 0),
+             'sunoffdays'        => $parseNum($row[$colSunOffDays] ?? 0),
+             'leavededuct'       => $parseNum($row[$colLeaveDeduct] ?? 0),
+             'absentdays'        => $parseNum($row[$colAbsentDays] ?? 0),
+             'absenthrs'         => $parseNum($row[$colAbsentHrs] ?? 0),
+             'holiday'           => $parseNum($row[$colHoliday] ?? 0),
+             'weekdaysOT'        => $parseNum($row[$colWeekdaysOt] ?? 0),
+             'weekendOT'         => $parseNum($row[$colWeekendOt] ?? 0),
+             'holidayot'         => $parseNum($row[$colHolidayOt] ?? 0),
+             'basic'             => $basic,
+             'absentwithoutpay'  => $parseNum($row[$colAbsentWithoutPay] ?? 0),
+             'basicentitlement'  => $parseNum($row[$colBasicEntitlement] ?? null, $basic),
+             'transport'         => $parseNum($row[$colTransport] ?? 0),
+             'normalovertime'    => $parseNum($row[$colNormalOt] ?? 0),
+             'saturdayovertime'  => $parseNum($row[$colSaturdayOtAmt] ?? 0),
+             'holidayotamt'      => $parseNum($row[$colHolidayOtAmt] ?? 0),
+             'gross'             => $gross,
+             'ssniter'           => $parseNum($row[$colSsnitEr] ?? 0),
+             'ssnitee'           => $parseNum($row[$colSsnitEe] ?? 0),
+             'ssnit'             => $parseNum($row[$colSsnit] ?? 0),
+             'taxable'           => $parseNum($row[$colTaxable] ?? 0),
+             'paye'              => $parseNum($row[$colPaye] ?? 0),
+             'totalovertime'     => $parseNum($row[$colTotalOt] ?? 0),
+             'overtimetax'       => $parseNum($row[$colOtTax] ?? 0),
+             'totaltax'          => $parseNum($row[$colTotalTax] ?? 0),
+             'trust'             => $parseNum($row[$colTrust] ?? 0),
+             'totaldeduction'    => $parseNum($row[$colTotalDeduction] ?? 0),
+             'banktransfer'      => $netPay,
+         ];
+
+         if ($hasNewColsInTable) {
+             $totalCash = $colTotalCash !== null ? $parseNum($row[$colTotalCash] ?? null, null) : null;
+             $totalAssessable = $colTotalAssessable !== null ? $parseNum($row[$colTotalAssessable] ?? null, null) : null;
+
+             $data['total_cash_emolument'] = $totalCash ?? $gross;
+             $data['total_assessable_income'] = $totalAssessable ?? $gross;
+         }
+
+         $validRecords[] = $data;
+         $existingStaffIds[] = $employ;
+     }
 
  if (!empty($errors)) {
  Log::error("Upload errors: " . implode(' | ', $errors));
@@ -459,6 +540,8 @@ public function export(Request $request)
         'Saturday Overtime',  // saturdayovertime
         'Holiday OT Amt',     // holidayotamt
         'Gross',              // gross
+        'Total Cash Emolument',    // total_cash_emolument
+        'Total Assessable Income', // total_assessable_income
         'SSNIT ER',              // ssnit (employee contribution)
          'SSNIT EE',              // ssnit (employee contribution)
           'SSNIT',              // ssnit (employee contribution)
@@ -508,6 +591,8 @@ public function export(Request $request)
         400.00,         // Saturday Overtime
         0.00,           // Holiday OT Amt
         3950.00,        // Gross
+        3950.00,        // Total Cash Emolument
+        3950.00,        // Total Assessable Income
         247.50,         // SSNIT (13.5%)
         247.50,         // SSNIT (13.5%)
         247.50,         // SSNIT (13.5%)
