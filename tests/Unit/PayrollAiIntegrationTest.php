@@ -472,6 +472,25 @@ class PayrollAiIntegrationTest extends TestCase
         $this->assertEquals(48, $normalized->weekendOT);
         $this->assertEquals(23, $normalized->expected_work_days);
         $this->assertEquals(23, $normalized->legal_work_days);
+
+        // 4. Test Melcom old database record where weekendOT was mistakenly stored as 308.25 (earnings) instead of 28 (Column U)
+        $oldDbRecord = (object)[
+            'employ'           => 'SBP5155',
+            'empoyeename'      => 'AHULU EBENEZER',
+            'basic'            => 1585.30,
+            'actualdays'       => 23,
+            'absentdays'       => 1,
+            'weekendOT'        => 308.25, // Stored in old DB as earnings amount
+            'saturdayovertime' => 308.25,
+            'grosspay'         => 1978.45,
+            'netpay'           => 1683.09,
+        ];
+
+        $oldDbNormalized = $normMethod->invoke($controller, $oldDbRecord, $client);
+        $this->assertIsInt($oldDbNormalized->weekendOT);
+        $this->assertEquals(28, $oldDbNormalized->weekendOT);
+        $this->assertEquals(28, $oldDbNormalized->saturday_ot_hrs);
+        $this->assertEquals(308.25, $oldDbNormalized->saturdayovertime);
     }
 
     public function test_twellium_kumasi_payslip_includes_total_cash_emolument_and_total_assessable_income(): void
