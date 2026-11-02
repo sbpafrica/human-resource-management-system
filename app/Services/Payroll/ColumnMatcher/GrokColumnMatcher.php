@@ -43,9 +43,9 @@ The standard internal fields are:
 - "position": Job title, designation, department, or shop
 - "join_date": Date of employment
 - "basic_salary": Fixed monthly base salary or basic pay
-- "legalworkdays": Standard or statutory work days in the month
-- "daily_rate": Daily pay rate or daily tonnage rate
-- "days_worked": Actual days worked in the month (e.g. Total1, Actual Days, Days)
+- "legalworkdays": Standard, statutory, or expected work days in the month (e.g. Legal Working Days, Total Days, Expected Work Days, Expected Days)
+- "daily_rate": Daily pay rate, daily wage, or daily tonnage rate (e.g. Daily Rate, Daily Wage, Rate/Day)
+- "days_worked": Actual days worked in the month (e.g. Total Work, Days Worked, Total1, Actual Days, Days)
 - "absentee_days": Number of days absent (e.g. Absent Days)
 - "absent_deductions": Deduction amount for unexcused absence (e.g. Absent Without Pay)
 - "earned_basic_salary": Basic salary earned based on actual days worked

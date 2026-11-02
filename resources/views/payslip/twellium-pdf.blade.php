@@ -219,13 +219,15 @@
         <td></td>
         <td style="text-align: center;" class="total">
             {{ number_format(
-                (float)($payslip->basic_earned ?? 0) +
-                $effectiveOvertimeForTotal +
-                (float)($payslip->allowance ?? 0) +
-                (float)($payslip->risk_allowance ?? 0) +
-                (float)($payslip->food_allowance ?? 0) +
-                (float)($payslip->night_allowance ?? 0) +
-                (float)($payslip->refund ?? 0), 2) }}
+                (float)($payslip->gross_salary ?? $payslip->grosspay ?? (
+                    (float)($payslip->basic_earned ?? 0) +
+                    $effectiveOvertimeForTotal +
+                    (float)($payslip->allowance ?? 0) +
+                    (float)($payslip->risk_allowance ?? 0) +
+                    (float)($payslip->food_allowance ?? 0) +
+                    (float)($payslip->night_allowance ?? 0) +
+                    (float)($payslip->refund ?? 0)
+                )), 2) }}
         </td>
         <td></td>
     </tr>
@@ -269,10 +271,15 @@
         <td></td>
         <td style="text-align: center;" class="total">
             {{ number_format(
-                (float)($payslip->basic_earned ?? 0) +
-                $effectiveOvertimeForTotal +
-                (float)($payslip->allowance ?? 0) +
-                (float)($payslip->risk_allowance ?? 0), 2) }}
+                (float)($payslip->gross_salary ?? $payslip->grosspay ?? (
+                    (float)($payslip->basic_earned ?? 0) +
+                    $effectiveOvertimeForTotal +
+                    (float)($payslip->allowance ?? 0) +
+                    (float)($payslip->risk_allowance ?? 0) +
+                    (float)($payslip->food_allowance ?? 0) +
+                    (float)($payslip->night_allowance ?? 0) +
+                    (float)($payslip->refund ?? 0)
+                )), 2) }}
         </td>
         <td style="text-align: center;" class="total">{{ number_format((float)($payslip->total_deductions ?? 0), 2) }}</td>
     </tr>

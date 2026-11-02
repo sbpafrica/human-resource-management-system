@@ -1657,15 +1657,19 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
     <td></td>
     <td className="p-2 text-center font-bold">
         {(
-            Number(payslip.basic_earned ?? 0) +
-            Number(payslip.weekday_overtime_amount ?? 0) +
-            Number(payslip.offday_holiday_overtime_total ?? 0) +
-            Number(payslip.special_day_overtime_amount ?? 0) +
-            Number(payslip.allowance ?? 0) +
-            Number(payslip.risk_allowance ?? 0) +
-            Number(payslip.food_allowance ?? 0) +
-            Number(payslip.night_allowance ?? 0) +
-            Number(payslip.refund ?? 0)
+            Number(payslip.gross_salary ?? payslip.grosspay ?? 0) > 0
+                ? Number(payslip.gross_salary ?? payslip.grosspay)
+                : (
+                    Number(payslip.basic_earned ?? 0) +
+                    Number(payslip.weekday_overtime_amount ?? 0) +
+                    Number(payslip.offday_holiday_overtime_total ?? 0) +
+                    Number(payslip.special_day_overtime_amount ?? 0) +
+                    Number(payslip.allowance ?? 0) +
+                    Number(payslip.risk_allowance ?? 0) +
+                    Number(payslip.food_allowance ?? 0) +
+                    Number(payslip.night_allowance ?? 0) +
+                    Number(payslip.refund ?? 0)
+                )
         ).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
     </td>
     <td></td>
@@ -1707,12 +1711,16 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
     <td></td>
     <td className="p-2 text-center font-bold">
         {(
-            Number(payslip.basic_earned ?? 0) +
-            Number(payslip.weekday_overtime_amount ?? 0) +
-            Number(payslip.offday_holiday_overtime_total ?? 0) +
-            Number(payslip.special_day_overtime_amount ?? 0) +
-            Number(payslip.allowance ?? 0) +
-            Number(payslip.risk_allowance ?? 0)
+            Number(payslip.gross_salary ?? payslip.grosspay ?? 0) > 0
+                ? Number(payslip.gross_salary ?? payslip.grosspay)
+                : (
+                    Number(payslip.basic_earned ?? 0) +
+                    Number(payslip.weekday_overtime_amount ?? 0) +
+                    Number(payslip.offday_holiday_overtime_total ?? 0) +
+                    Number(payslip.special_day_overtime_amount ?? 0) +
+                    Number(payslip.allowance ?? 0) +
+                    Number(payslip.risk_allowance ?? 0)
+                )
         ).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
     </td>
     <td className="p-2 text-center font-bold">

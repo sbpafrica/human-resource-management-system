@@ -593,4 +593,125 @@ class PayrollAiIntegrationTest extends TestCase
         $this->assertStringContainsString('twellium', $sql);
         $this->assertStringContainsString('as "b"', str_replace('`', '"', $sql));
     }
+
+    public function test_rule_based_matcher_resolves_twellium_kumasi_columns(): void
+    {
+        $headers = [
+            'EMPLOY',
+            'NAME',
+            'TITLE',
+            'DEPARTMENT',
+            'BANKNAME',
+            'ACCNO',
+            'TOTALDAYS',
+            'TOTALWORK',
+            'DAILYWAGE',
+            'BASIC',
+            'NORMALOVERTIME',
+            'OVERTIME',
+            'NORMALOVERTIME2',
+            'OVERTIME2',
+            'TOTAL',
+            'SSNIT',
+            'TOTALTAX',
+            'TOTALDEDUCTION',
+            'NETPAY',
+        ];
+
+        $matcher = new RuleBasedColumnMatcher();
+        $result = $matcher->match($headers, 'twellium');
+
+        $this->assertEquals(0, $result['mapping']['staff_id']);
+        $this->assertEquals(1, $result['mapping']['name']);
+        $this->assertEquals(2, $result['mapping']['position']);
+        $this->assertEquals(6, $result['mapping']['legalworkdays']);
+        $this->assertEquals(7, $result['mapping']['days_worked']);
+        $this->assertEquals(8, $result['mapping']['daily_rate']);
+        $this->assertEquals(9, $result['mapping']['basic_salary']);
+        $this->assertEquals(12, $result['mapping']['saturday_hours']);
+        $this->assertEquals(13, $result['mapping']['saturday_overtime_amt']);
+        $this->assertEquals(14, $result['mapping']['gross_salary']);
+        $this->assertEquals(15, $result['mapping']['ssnit_ee']);
+        $this->assertEquals(16, $result['mapping']['paye']);
+        $this->assertEquals(17, $result['mapping']['total_deductions']);
+        $this->assertEquals(18, $result['mapping']['net_pay']);
+    }
+
+    public function test_twellium_kumasi_payslip_normalizes_expected_days_and_overtime_descriptions(): void
+    {
+        $client = (object)[
+            'client_dbname' => 'twellium',
+            'slug'          => 'twellium-industrial-company-ghana',
+            'short_name'    => 'Twellium Kumasi',
+        ];
+
+        $rawRecord = (object)[
+            'employ'          => 'SBPTWLM07',
+            'name'            => 'ADDO KWAYISSI EMMANUEL',
+            'title'           => 'ELECTRICAL ENGINEER',
+            'department'      => 'KAASE',
+            'bankname'        => 'ECOBANK',
+            'accno'           => '1441000123456',
+            'totaldays'       => 22,
+            'totalwork'       => 22,
+            'dailywage'       => 74.8,
+            'basic'           => 1645.53,
+            'normalovertime'  => 1,
+            'overtime'        => 14.02,
+            'normalovertime2' => 8,
+            'overtime2'       => 149.59,
+            'total'           => 1809.15,
+            'ssnit'           => 90.50,
+            'totaltax'        => 213.39,
+            'totaldeduction'  => 303.89,
+            'netpay'          => 1505.26,
+        ];
+
+        $controller = new \App\Http\Controllers\PayslipController();
+        $refMethod = new \ReflectionMethod($controller, 'normalizePayslip');
+        $normalized = $refMethod->invoke($controller, $rawRecord, $client, 'F019002080210');
+
+        $this->assertEquals(22, $normalized->legal_work_days);
+        $this->assertEquals(22, $normalized->expected_work_days);
+        $this->assertEquals(22, $normalized->days_worked);
+        $this->assertEquals(22, $normalized->total_hours_worked);
+        $this->assertEquals(74.8, $normalized->daily_rate);
+        $this->assertEquals(1645.53, $normalized->basic);
+        $this->assertEquals(1.0, $normalized->weekday_overtime_hours);
+        $this->assertEquals(14.02, $normalized->weekday_overtime_amount);
+        $this->assertEquals(8.0, $normalized->offday_holiday_overtime_hours);
+        $this->assertEquals(149.59, $normalized->offday_holiday_overtime_total);
+        $this->assertEquals(163.61, $normalized->total_overtime_amount);
+        $this->assertEquals(1809.15, $normalized->gross_salary);
+        $this->assertEquals(90.50, $normalized->ssnit_ee);
+        $this->assertEquals(213.39, $normalized->paye);
+        $this->assertEquals(303.89, $normalized->total_deductions);
+        $this->assertEquals(1505.26, $normalized->netpay);
+
+        $view = view('payslip.twellium-pdf', [
+            'payslip'        => $normalized,
+            'formattedMonth' => 'November 2026',
+            'ssnit'          => 'F019002080210',
+            'bank'           => [
+                'bankname' => 'ECOBANK',
+                'name'     => 'ADDO KWAYISSI EMMANUEL',
+                'alcnum'   => '1441000123456',
+                'branch'   => 'Kaase',
+            ],
+        ])->render();
+
+        // 1. Expected work days must show 22
+        $this->assertStringContainsString('Expected Work Days', $view);
+        $this->assertStringContainsString('22', $view);
+
+        // 2. Overtime hours and amounts rendered properly
+        $this->assertStringContainsString('Weekday Overtime', $view);
+        $this->assertStringContainsString('14.02', $view);
+        $this->assertStringContainsString('Offday/Holiday Overtime', $view);
+        $this->assertStringContainsString('149.59', $view);
+
+        // 3. Gross salary rendered as 1,809.15
+        $this->assertStringContainsString('1,809.15', $view);
+        $this->assertStringContainsString('1,505.26', $view);
+    }
 }

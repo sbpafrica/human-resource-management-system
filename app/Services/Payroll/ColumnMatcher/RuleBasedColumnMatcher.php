@@ -17,6 +17,7 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^badge(\s*no)?$/i',
             '/^matricule$/i',
             '/^emp$/i',
+            '/^employ$/i',
             '/^emp(loyee)?\s*(no|num|number|\#)?$/i',
             '/^staff\s*(no|num|number|\#)?$/i',
             '/^em\s*id$/i',
@@ -33,6 +34,7 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^position$/i',
             '/^designation$/i',
             '/^job\s*title$/i',
+            '/^title$/i',
             '/^department$/i',
             '/^shop$/i',
             '/^role$/i',
@@ -74,8 +76,17 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
         ],
         'legalworkdays' => [
             '/^legal\s*work\s*days$/i',
+            '/^legalworkdays$/i',
+            '/^legal\s*work$/i',
+            '/^legalwork$/i',
             '/^standard\s*days$/i',
             '/^work\s*days\s*in\s*month$/i',
+            '/^total\s*days$/i',
+            '/^totaldays$/i',
+            '/^expected\s*(work\s*)?days$/i',
+            '/^expected_work_days$/i',
+            '/^expecteddays$/i',
+            '/^lwork$/i',
         ],
         'daily_rate' => [
             '/^daily\s*rate$/i',
@@ -83,12 +94,15 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^rate\s*amount$/i',
             '/^tonnage\s*rate$/i',
             '/^taux\s*journalier$/i',
+            '/^daily\s*wage$/i',
+            '/^dailywage$/i',
         ],
         'days_worked' => [
             '/^days?\s*worked$/i',
             '/^actual\s*days$/i',
             '/^present\s*(full\s*)?days$/i',
-            '/^total\s*days$/i',
+            '/^total\s*work$/i',
+            '/^totalwork$/i',
             '/^work(ing)?\s*days$/i',
             '/^total1$/i',
             '/^jours?\s*travaill[eé]s?$/i',
@@ -174,12 +188,16 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^sat(urday)?\s*(ot\s*)?hrs?$/i',
             '/^num(ber)?\s*(of\s*)?saturdays?$/i',
             '/^saturday(s)?\s*worked$/i',
+            '/^normalovertime2$/i',
+            '/^normal\s*overtime\s*2$/i',
         ],
         'saturday_overtime_amt' => [
             '/^saturday(s)?\s*overtime$/i',
             '/^weekend\s*overtime(\s*amount)?$/i',
             '/^sat(urday)?\s*ot\s*(amt|amount)$/i',
             '/^sat(urday)?\s*(ot|overtime)\s*(amt|amount|total|pay)$/i',
+            '/^overtime2$/i',
+            '/^overtime\s*2$/i',
         ],
         'num_sundays_holidays' => [
             '/^holiday\s*ot$/i',
@@ -238,6 +256,8 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
             '/^total\s*(earn(ings?)?|gross)$/i',
             '/^totalearn$/i',
             '/^salaire\s*brut$/i',
+            '/^total$/i',
+            '/^total\s*salary$/i',
         ],
         'total_cash_emolument' => [
             '/^total\s*cash\s*emolument(s)?$/i',
@@ -387,6 +407,11 @@ class RuleBasedColumnMatcher implements ColumnMatcherInterface
         // Fallback net_pay to net_salary if actual net pay was not distinct
         if (!isset($mapping['net_pay']) && isset($mapping['net_salary'])) {
             $mapping['net_pay'] = $mapping['net_salary'];
+        }
+
+        // Fallback paye to total_tax if distinct PAYE was not found
+        if (!isset($mapping['paye']) && isset($mapping['total_tax'])) {
+            $mapping['paye'] = $mapping['total_tax'];
         }
 
         // Calculate confidence score based on essential payroll field matches

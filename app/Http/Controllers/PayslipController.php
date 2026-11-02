@@ -803,6 +803,8 @@ class PayslipController extends Controller
             ?? $getP('expected_work_days')
             ?? $getP('expected_days')
             ?? $getP('expecteddays')
+            ?? $getP('totaldays')
+            ?? $getP('total_days')
             ?? $getP('lwork')
             ?? null;
         $payslip->legal_work_days    = is_numeric($legalWorkDays) ? (float)$legalWorkDays : $legalWorkDays;
@@ -816,18 +818,22 @@ class PayslipController extends Controller
             ?? $getP('actual_days')
             ?? $getP('actualdays')
             ?? $getP('actualwork')
+            ?? $getP('totalwork')
+            ?? $getP('total_work')
             ?? $getP('work_days')
             ?? $getP('workdays')
             ?? $getP('total_hours_worked')
+            ?? $getP('totalhoursworked')
             ?? $getP('week')
             ?? $getP('noofdays')
             ?? $getP('total1')
             ?? $getP('total_weekdays')
             ?? 0;
-        $payslip->days_worked = is_numeric($daysWorked) ? (float)$daysWorked : $daysWorked;
-        $payslip->workdays    = $payslip->days_worked;
-        $payslip->actualdays  = $payslip->days_worked;
-        $payslip->week        = $getP('week') ?? $payslip->days_worked;
+        $payslip->days_worked        = is_numeric($daysWorked) ? (float)$daysWorked : $daysWorked;
+        $payslip->workdays           = $payslip->days_worked;
+        $payslip->actualdays         = $payslip->days_worked;
+        $payslip->total_hours_worked = $payslip->days_worked;
+        $payslip->week               = $getP('week') ?? $payslip->days_worked;
 
         $absentDays = $getP('absent_days')
             ?? $getP('absentee_days')
@@ -854,6 +860,8 @@ class PayslipController extends Controller
         $rate = (float)(
             $getP('daily_rate') 
             ?? $getP('dailyrate') 
+            ?? $getP('dailywage')
+            ?? $getP('daily_wage')
             ?? $getP('rate') 
             ?? $getP('rate_ghc') 
             ?? $getP('weekdayrate')
@@ -861,6 +869,7 @@ class PayslipController extends Controller
         );
         $payslip->rate = round($rate, 2);
         $payslip->daily_rate = round($rate, 2);
+        $payslip->dailywage  = round($rate, 2);
 
         $basicEarned = $getP('earned_basic_salary')
             ?? $getP('earnedbasicsalary')
@@ -968,68 +977,84 @@ class PayslipController extends Controller
                     ?: ($payslip->fuel_and_rent_allowance + $payslip->transport + $payslip->nightallowance + $payslip->medical + $payslip->leave1)))
         );
 
-        // ---------- OVERTIME HOURS MAPPING ----------
-        $normalOtHrs = $getP('weekdaysOT') 
-            ?? $getP('weekdays_ot') 
-            ?? $getP('TOTO_WORKDAY')
-            ?? $getP('totoworkday')
-            ?? $getP('weekday_hours')
-            ?? $getP('weekdayhours')
-            ?? $getP('weekday_overtime_hours')
-            ?? $getP('weekdayovertimehours')
-            ?? $getP('weekdayovertimehr')
-            ?? $getP('weekdayovertimehrs')
-            ?? $getP('overtimehr')
-            ?? $getP('Normal OT HRS') 
-            ?? $getP('normal_ot_hrs') 
-            ?? $getP('normalOThrs') 
-            ?? $getP('otworkdays') 
-            ?? $getP('weekdayothr')
-            ?? $getP('normal_ot_days') 
-            ?? 0;
+        // ---------- OVERTIME HOURS & AMOUNTS MAPPING ----------
+        $isTwelliumKumasi = ($clientDb === 'twellium' || str_contains($clientSlug, 'twellium-industrial-company-ghana') || ($clientDb !== 'twelliumaccra' && str_contains($clientSlug, 'twellium') && !str_contains($clientSlug, 'accra')));
+        $hasTwelliumKumasiOt = (
+            $getP('normalovertime2') !== null 
+            || $getP('overtime2') !== null 
+            || ($isTwelliumKumasi && $getP('normalovertime') !== null && $getP('overtime') !== null)
+        );
 
-        $saturdayOtHrs = $getP('weekendOT') 
-            ?? $getP('weekend_ot') 
-            ?? $getP('TOT_OFFDAY')
-            ?? $getP('totoffday')
-            ?? $getP('saturday_hours')
-            ?? $getP('saturdayhours')
-            ?? $getP('num_saturdays')
-            ?? $getP('numsaturdays')
-            ?? $getP('weekendovertimehr')
-            ?? $getP('weekendovertimehrs')
-            ?? $getP('overtimeweekend')
-            ?? $getP('Saturday OT HRS') 
-            ?? $getP('saturday_ot_hrs') 
-            ?? $getP('saturdayOThrs') 
-            ?? $getP('weekendOThrs') 
-            ?? $getP('weekendhr')
-            ?? $getP('weekendtonage')
-            ?? $getP('sat')
-            ?? 0;
+        if ($hasTwelliumKumasiOt) {
+            $normalOtHrs   = (float)($getP('normalovertime') ?? 0);
+            $normalOtAmt   = (float)($getP('overtime') ?? 0);
+            $saturdayOtHrs = (float)($getP('normalovertime2') ?? 0);
+            $saturdayOtAmt = (float)($getP('overtime2') ?? 0);
+            $holidayOtHrs  = (float)($getP('special_day_overtime_hours') ?? 0);
+            $holidayOtAmt  = (float)($getP('special_day_overtime_amount') ?? 0);
+        } else {
+            $normalOtHrs = $getP('weekdaysOT') 
+                ?? $getP('weekdays_ot') 
+                ?? $getP('TOTO_WORKDAY')
+                ?? $getP('totoworkday')
+                ?? $getP('weekday_hours')
+                ?? $getP('weekdayhours')
+                ?? $getP('weekday_overtime_hours')
+                ?? $getP('weekdayovertimehours')
+                ?? $getP('weekdayovertimehr')
+                ?? $getP('weekdayovertimehrs')
+                ?? $getP('overtimehr')
+                ?? $getP('Normal OT HRS') 
+                ?? $getP('normal_ot_hrs') 
+                ?? $getP('normalOThrs') 
+                ?? $getP('otworkdays') 
+                ?? $getP('weekdayothr')
+                ?? $getP('normal_ot_days') 
+                ?? 0;
 
-        $holidayOtHrs = $getP('holidayot')
-            ?? $getP('holiday_ot')
-            ?? $getP('Holiday OT')
-            ?? $getP('TOTALSPECIAL')
-            ?? $getP('totalspecial')
-            ?? $getP('num_sundays_holidays')
-            ?? $getP('numsundaysholidays')
-            ?? $getP('sundays_holiday_overtime')
-            ?? $getP('sundaysholidayovertime')
-            ?? $getP('sunday_hours')
-            ?? $getP('sundayhours')
-            ?? $getP('offday_holiday_overtime_hours')
-            ?? $getP('offdayholidayovertimehours')
-            ?? $getP('special_day_overtime_hours')
-            ?? $getP('specialdayovertimehours')
-            ?? $getP('holidayovertimehr')
-            ?? $getP('holidayovertimehrs')
-            ?? $getP('Holiday OT HRS') 
-            ?? $getP('holiday_ot_hrs') 
-            ?? $getP('holidayOThrs') 
-            ?? $getP('otweekend') 
-            ?? 0;
+            $saturdayOtHrs = $getP('weekendOT') 
+                ?? $getP('weekend_ot') 
+                ?? $getP('TOT_OFFDAY')
+                ?? $getP('totoffday')
+                ?? $getP('saturday_hours')
+                ?? $getP('saturdayhours')
+                ?? $getP('num_saturdays')
+                ?? $getP('numsaturdays')
+                ?? $getP('weekendovertimehr')
+                ?? $getP('weekendovertimehrs')
+                ?? $getP('overtimeweekend')
+                ?? $getP('Saturday OT HRS') 
+                ?? $getP('saturday_ot_hrs') 
+                ?? $getP('saturdayOThrs') 
+                ?? $getP('weekendOThrs') 
+                ?? $getP('weekendhr')
+                ?? $getP('weekendtonage')
+                ?? $getP('sat')
+                ?? 0;
+
+            $holidayOtHrs = $getP('holidayot')
+                ?? $getP('holiday_ot')
+                ?? $getP('Holiday OT')
+                ?? $getP('TOTALSPECIAL')
+                ?? $getP('totalspecial')
+                ?? $getP('num_sundays_holidays')
+                ?? $getP('numsundaysholidays')
+                ?? $getP('sundays_holiday_overtime')
+                ?? $getP('sundaysholidayovertime')
+                ?? $getP('sunday_hours')
+                ?? $getP('sundayhours')
+                ?? $getP('offday_holiday_overtime_hours')
+                ?? $getP('offdayholidayovertimehours')
+                ?? $getP('special_day_overtime_hours')
+                ?? $getP('specialdayovertimehours')
+                ?? $getP('holidayovertimehr')
+                ?? $getP('holidayovertimehrs')
+                ?? $getP('Holiday OT HRS') 
+                ?? $getP('holiday_ot_hrs') 
+                ?? $getP('holidayOThrs') 
+                ?? $getP('otweekend') 
+                ?? 0;
+        }
 
         $payslip->weekdaysOT       = $normalOtHrs;
         $payslip->weekendOT        = $saturdayOtHrs;
@@ -1037,74 +1062,76 @@ class PayslipController extends Controller
         $payslip->holidayot        = $holidayOtHrs;
         $payslip->sat              = $saturdayOtHrs;
 
-        // ---------- OVERTIME AMOUNTS MAPPING ----------
-        $normalOtAmt = $getP('normalovertime') 
-            ?? $getP('Normal Overtime') 
-            ?? $getP('normal_overtime') 
-            ?? $getP('WORKDAYOT')
-            ?? $getP('workdayot')
-            ?? $getP('weekday_overtime_amt')
-            ?? $getP('weekdayovertimeamt')
-            ?? $getP('weekdays_overtime')
-            ?? $getP('weekdaysovertime')
-            ?? $getP('weekday_overtime_amount')
-            ?? $getP('weekdayovertimeamount') 
-            ?? $getP('weekdayovertimeamountghc') 
-            ?? $getP('weekdayovertimetotal')
-            ?? $getP('normalot') 
-            ?? $getP('normalotamt') 
-            ?? $getP('weekdayotamt1')
-            ?? $getP('otworkingday')
-            ?? 0;
+        if (!$hasTwelliumKumasiOt) {
+            // ---------- OVERTIME AMOUNTS MAPPING ----------
+            $normalOtAmt = $getP('normalovertime') 
+                ?? $getP('Normal Overtime') 
+                ?? $getP('normal_overtime') 
+                ?? $getP('WORKDAYOT')
+                ?? $getP('workdayot')
+                ?? $getP('weekday_overtime_amt')
+                ?? $getP('weekdayovertimeamt')
+                ?? $getP('weekdays_overtime')
+                ?? $getP('weekdaysovertime')
+                ?? $getP('weekday_overtime_amount')
+                ?? $getP('weekdayovertimeamount') 
+                ?? $getP('weekdayovertimeamountghc') 
+                ?? $getP('weekdayovertimetotal')
+                ?? $getP('normalot') 
+                ?? $getP('normalotamt') 
+                ?? $getP('weekdayotamt1')
+                ?? $getP('otworkingday')
+                ?? 0;
 
-        // Fallback calculation if monetary normal overtime value is absent
-        if (($normalOtAmt == 0 || $normalOtAmt === null) && $payslip->weekdaysOT > 0) {
-            $basicForCalc = $payslip->basic ?? 0;
-            if ($basicForCalc > 0) {
-                $roundedBasic = ceil($basicForCalc * 100) / 100;
-                $normalOtAmt = ($roundedBasic / 216) * $payslip->weekdaysOT * 1.25;
-                $normalOtAmt = round($normalOtAmt, 2);
+            // Fallback calculation if monetary normal overtime value is absent
+            if (($normalOtAmt == 0 || $normalOtAmt === null) && $payslip->weekdaysOT > 0) {
+                $basicForCalc = $payslip->basic ?? 0;
+                if ($basicForCalc > 0) {
+                    $roundedBasic = ceil($basicForCalc * 100) / 100;
+                    $normalOtAmt = ($roundedBasic / 216) * $payslip->weekdaysOT * 1.25;
+                    $normalOtAmt = round($normalOtAmt, 2);
+                }
             }
+
+            $saturdayOtAmt = $getP('saturdayovertime') 
+                ?? $getP('Saturday Overtime') 
+                ?? $getP('saturday_overtime') 
+                ?? $getP('OFFDAY_HOLIDAYOT')
+                ?? $getP('offdayholidayot')
+                ?? $getP('saturday_overtime_amt')
+                ?? $getP('saturdayovertimeamt')
+                ?? $getP('saturdays_overtime')
+                ?? $getP('saturdaysovertime')
+                ?? $getP('weekendovertimetotal')
+                ?? $getP('weekendovertimeamount') 
+                ?? $getP('weekendovertimeamountghc') 
+                ?? $getP('overtimetotal2')
+                ?? $getP('satOT')
+                ?? $getP('satot')
+                ?? ($getP('weekendhr') !== null || $getP('weekendtonage') !== null ? $getP('amount') : null)
+                ?? $getP('weekendot') 
+                ?? $getP('otholiday')
+                ?? 0;
+
+            $holidayOtAmt = $getP('holidayotamt') 
+                ?? $getP('Holiday OT Amt') 
+                ?? $getP('holiday_ot_amt') 
+                ?? $getP('SPECIALDAYOT')
+                ?? $getP('specialdayot')
+                ?? $getP('sunday_holiday_overtime_amt')
+                ?? $getP('sundayholidayovertimeamt')
+                ?? $getP('sundays_holidays_overtime')
+                ?? $getP('sundaysholidaysovertime')
+                ?? $getP('offday_holiday_overtime_total')
+                ?? $getP('offdayholidayovertimetotal')
+                ?? $getP('special_day_overtime_amount')
+                ?? $getP('specialdayovertimeamount')
+                ?? $getP('holidayovertimetotal')
+                ?? $getP('holidayovertimeamount') 
+                ?? $getP('holidayovertimeamountghc') 
+                ?? $getP('Holiday Overtime') 
+                ?? 0;
         }
-
-        $saturdayOtAmt = $getP('saturdayovertime') 
-            ?? $getP('Saturday Overtime') 
-            ?? $getP('saturday_overtime') 
-            ?? $getP('OFFDAY_HOLIDAYOT')
-            ?? $getP('offdayholidayot')
-            ?? $getP('saturday_overtime_amt')
-            ?? $getP('saturdayovertimeamt')
-            ?? $getP('saturdays_overtime')
-            ?? $getP('saturdaysovertime')
-            ?? $getP('weekendovertimetotal')
-            ?? $getP('weekendovertimeamount') 
-            ?? $getP('weekendovertimeamountghc') 
-            ?? $getP('overtimetotal2')
-            ?? $getP('satOT')
-            ?? $getP('satot')
-            ?? ($getP('weekendhr') !== null || $getP('weekendtonage') !== null ? $getP('amount') : null)
-            ?? $getP('weekendot') 
-            ?? $getP('otholiday')
-            ?? 0;
-
-        $holidayOtAmt = $getP('holidayotamt') 
-            ?? $getP('Holiday OT Amt') 
-            ?? $getP('holiday_ot_amt') 
-            ?? $getP('SPECIALDAYOT')
-            ?? $getP('specialdayot')
-            ?? $getP('sunday_holiday_overtime_amt')
-            ?? $getP('sundayholidayovertimeamt')
-            ?? $getP('sundays_holidays_overtime')
-            ?? $getP('sundaysholidaysovertime')
-            ?? $getP('offday_holiday_overtime_total')
-            ?? $getP('offdayholidayovertimetotal')
-            ?? $getP('special_day_overtime_amount')
-            ?? $getP('specialdayovertimeamount')
-            ?? $getP('holidayovertimetotal')
-            ?? $getP('holidayovertimeamount') 
-            ?? $getP('holidayovertimeamountghc') 
-            ?? $getP('Holiday Overtime') 
-            ?? 0;
 
         $overtimeRefund = $getP('overtimerefund')
             ?? $getP('overtime_refund')
@@ -1122,7 +1149,7 @@ class PayslipController extends Controller
             ?? $getP('totalovertimeamountghc')
             ?? $getP('overtime_amount')
             ?? $getP('overtimeamount')
-            ?? $getP('overtime')
+            ?? (!$hasTwelliumKumasiOt ? $getP('overtime') : null)
             ?? $getP('ot_amount')
             ?? null;
 
@@ -1179,7 +1206,9 @@ class PayslipController extends Controller
 
         $payslip->ssnitee = (float) (
             $payslip->ssnitee
+            ?? $getP('ssnit_ee')
             ?? $getP('ssnitee') 
+            ?? $getP('ssnit') 
             ?? $getP('ps_pension_salarie')
             ?? $getP('pspensionsalarie')
             ?? $getP('cnss')
@@ -1311,6 +1340,7 @@ class PayslipController extends Controller
             ?? $getP('grossnew')
             ?? $getP('totalearn')
             ?? $getP('gross')
+            ?? $getP('total')
             ?? 0;
         $grossVal = $toNum($rawGross);
 
@@ -1420,7 +1450,9 @@ class PayslipController extends Controller
         // Cross-template compatibility aliases for Jay Kay and custom templates
         $payslip->basic_salary              = (float)($getP('basic_salary') ?? $payslip->BASIC_SALARY_GHC ?? $payslip->basic);
         $payslip->earned_basic_salary       = (float)($getP('earned_basic_salary') ?? $payslip->basic_earned);
-        $payslip->days_worked               = $getP('days_worked') ?? $getP('daysworked') ?? $payslip->workdays;
+        $payslip->days_worked               = $payslip->days_worked ?: ($getP('days_worked') ?? $getP('daysworked') ?? $payslip->workdays);
+        $payslip->workdays                  = $payslip->days_worked;
+        $payslip->total_hours_worked        = $payslip->days_worked;
         $payslip->gross_salary              = $payslip->grosspay;
         $payslip->take_home_pay             = $payslip->netpay;
         $payslip->ssnit_ee                  = $payslip->ssnitee;
