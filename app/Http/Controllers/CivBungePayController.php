@@ -82,6 +82,9 @@ class CivBungePayController extends Controller
                 // Column might have been added concurrently
             }
         }
+    
+        // Auto-attach any custom columns configured in PayrollColumn registry
+        \App\Models\PayrollColumn::ensureColumnsForTable($tableName);
     }
 
     private function extractBankRowsFromSheet(array $sheetRows, array &$bankRows): void

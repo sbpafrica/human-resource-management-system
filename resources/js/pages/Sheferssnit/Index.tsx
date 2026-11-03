@@ -269,8 +269,8 @@ export default function SheferssnitPay({ records, selectedMonth, formattedMonth,
                                                 <div className="text-sm text-muted-foreground">Other Name: {record.othername}</div>
                                                 <div className="text-sm text-muted-foreground">SSNIT Number: {record.ssnit_number}</div>
                                                 <div className="text-sm text-muted-foreground">GH Card Number: {record.gh_card_number}</div>
-                                                <div className="text-sm text-muted-foreground">Basic: {record.basic_earned != null ? record.basic_earned : "N/A"}</div>
-                                                <div className="text-sm text-muted-foreground">SSNIT Amount: {record.ssnit_amount != null ? record.ssnit_amount : "N/A"}</div>
+                                                <div className="text-sm text-muted-foreground">Basic: {record.basic_earned != null ? Number(record.basic_earned).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</div>
+                                                <div className="text-sm text-muted-foreground">SSNIT Amount: {record.ssnit_amount != null ? Number(record.ssnit_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</div>
                                             </div>
                                         </div>
                                     ))}
@@ -320,8 +320,8 @@ export default function SheferssnitPay({ records, selectedMonth, formattedMonth,
                                                     <TableCell>{record.othername}</TableCell>
                                                     <TableCell>{record.ssnit_number}</TableCell>
                                                     <TableCell>{record.gh_card_number}</TableCell>
-                                                    <TableCell>{record.basic_earned != null ? record.basic_earned : "N/A"}</TableCell>
-                                                    <TableCell>{record.ssnit_amount != null ? record.ssnit_amount : "N/A"}</TableCell>
+                                                    <TableCell>{record.basic_earned != null ? Number(record.basic_earned).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</TableCell>
+                                                    <TableCell>{record.ssnit_amount != null ? Number(record.ssnit_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</TableCell>
                                                 </TableRow>
                                             ))}
                                         </TableBody>

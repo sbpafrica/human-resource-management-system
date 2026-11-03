@@ -347,7 +347,7 @@ export default function AvaraPay({ records, selectedMonth, formattedMonth, total
                         <div className="text-sm text-muted-foreground">Account: {record.ACCOUNT || ""}</div>
                         <div className="text-sm text-muted-foreground">Branch Code: {record.CODE || ""}</div>
                         <div className="text-sm text-muted-foreground">Branch: {record.BRANCH_BD || ""}</div>
-                        <div className="text-sm text-muted-foreground">Take Home Pay: {record.TAKE_HOME_PAY_GHC != null ? record.TAKE_HOME_PAY_GHC : ""}</div>
+                        <div className="text-sm text-muted-foreground">Take Home Pay: {record.TAKE_HOME_PAY_GHC != null ? Number(record.TAKE_HOME_PAY_GHC).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</div>
                       </div>
                     </div>
                   ))}
@@ -396,7 +396,7 @@ export default function AvaraPay({ records, selectedMonth, formattedMonth, total
                           <TableCell>{record.ACCOUNT || ""}</TableCell>
                           <TableCell>{record.CODE || ""}</TableCell>
                           <TableCell>{record.BRANCH_BD || ""}</TableCell>
-                          <TableCell>{record.TAKE_HOME_PAY_GHC != null ? record.TAKE_HOME_PAY_GHC : ""}</TableCell>
+                          <TableCell>{record.TAKE_HOME_PAY_GHC != null ? Number(record.TAKE_HOME_PAY_GHC).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

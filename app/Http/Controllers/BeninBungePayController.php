@@ -81,6 +81,9 @@ class BeninBungePayController extends Controller
                 PRIMARY KEY (`staff_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
+    
+        // Auto-attach any custom columns configured in PayrollColumn registry
+        \App\Models\PayrollColumn::ensureColumnsForTable($tableName);
     }
 
     // String columns (stored as-is, trimmed)

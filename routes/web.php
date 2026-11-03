@@ -241,6 +241,13 @@ Route::post('/users', [App\Http\Controllers\Admin\UserController::class, 'store'
 
 Route::get('/roles/create', [App\Http\Controllers\Admin\RoleController::class, 'create'])->name('roles.create');
 Route::post('/roles', [App\Http\Controllers\Admin\RoleController::class, 'store'])->name('roles.store');
+
+        // Dynamic Payroll Column Management
+        Route::get('/payroll-columns', [App\Http\Controllers\Admin\PayrollColumnController::class, 'index'])->name('payroll-columns.index');
+        Route::get('/payroll-columns/columns', [App\Http\Controllers\Admin\PayrollColumnController::class, 'getColumns'])->name('payroll-columns.columns');
+        Route::post('/payroll-columns', [App\Http\Controllers\Admin\PayrollColumnController::class, 'store'])->name('payroll-columns.store');
+        Route::delete('/payroll-columns/{id}', [App\Http\Controllers\Admin\PayrollColumnController::class, 'destroy'])->name('payroll-columns.destroy');
+        Route::patch('/payroll-columns/{id}/toggle-payslip', [App\Http\Controllers\Admin\PayrollColumnController::class, 'togglePayslip'])->name('payroll-columns.toggle-payslip');
     });
 
 

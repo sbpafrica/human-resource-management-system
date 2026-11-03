@@ -170,6 +170,9 @@ class Avarapay extends Model
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
             ");
         }
+    
+        // Auto-attach any custom columns configured in PayrollColumn registry
+        \App\Models\PayrollColumn::ensureColumnsForTable($tableName);
     }
 
     public static function withTable(string $tableName): self

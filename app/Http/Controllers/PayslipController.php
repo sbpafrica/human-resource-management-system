@@ -1929,12 +1929,15 @@ class PayslipController extends Controller
             ];
 
             $view = $this->resolvePayslipView($client);
+            $customColumns = \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? '');
+            $customColumns = \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? '');
 
             $pdf = Pdf::loadView($view, [
                 'payslip'        => $payslip,
                 'formattedMonth' => $formattedMonth,
                 'ssnit'          => $ssnit,
                 'bank'           => $bankData,
+                'customColumns'  => $customColumns,
             ]);
 
             $safeStaffId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) $staffId);
@@ -1993,6 +1996,7 @@ class PayslipController extends Controller
             [$staffIdField, $nameField] = $this->detectColumns($tableName, $client);
 
             $view = $this->resolvePayslipView($client);
+            $customColumns = \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? '');
 
             $payslips = $this->getPayslipQuery($tableName, $staffIdField)
                 ->whereIn("b.{$staffIdField}", $staffIds)
@@ -2056,6 +2060,7 @@ class PayslipController extends Controller
                         'formattedMonth' => $formattedMonth,
                         'ssnit'          => $ssnits->get($id) ?? '-',
                         'bank'           => $bankData,
+                        'customColumns'  => $customColumns,
                     ]);
 
                     $pdfContent = $pdf->output();
@@ -2316,6 +2321,7 @@ class PayslipController extends Controller
 
                 [$staffIdField] = $this->detectColumns($tableName, $client);
                 $view           = $this->resolvePayslipView($client);
+                $customColumns  = \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? '');
 
                 if (empty($staffIds) || $request->boolean('all')) {
                     $staffIds = DB::table($tableName)->pluck($staffIdField)->toArray();
@@ -2374,6 +2380,7 @@ class PayslipController extends Controller
                             'formattedMonth' => $formattedMonth,
                             'logoData'       => $cachedLogoData,
                             'client'         => $client,
+                            'customColumns'  => $customColumns,
                         ])->setOptions([
                             'isRemoteEnabled' => false,
                             'isFontSubsettingEnabled' => false,
@@ -2411,6 +2418,7 @@ class PayslipController extends Controller
                                 'formattedMonth' => $formattedMonth,
                                 'logoData'       => $cachedLogoData,
                                 'client'         => $client,
+                                'customColumns'  => $customColumns,
                             ])->setOptions([
                                 'isRemoteEnabled' => false,
                                 'isFontSubsettingEnabled' => false,
@@ -2485,6 +2493,7 @@ class PayslipController extends Controller
                                     'branch'   => (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') ? data_get($bank, 'branch') : ($payslip->branch ?? '-'),
                                 ],
                                 'logoData'       => $cachedLogoData,
+                                'customColumns'  => $customColumns,
                             ])->setOptions([
                                 'isRemoteEnabled' => false,
                                 'isFontSubsettingEnabled' => false,
@@ -2591,6 +2600,7 @@ class PayslipController extends Controller
 
             [$staffIdField] = $this->detectColumns($tableName, $client);
             $view           = $this->resolvePayslipView($client);
+            $customColumns  = \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? '');
 
             $payslips = $this->getPayslipQuery($tableName, $staffIdField)
                 ->whereIn("b.{$staffIdField}", $staffIds)
@@ -2636,6 +2646,7 @@ class PayslipController extends Controller
                             'alcnum'   => (!empty(data_get($bank, 'account')) && data_get($bank, 'account') !== '-') ? data_get($bank, 'account') : ($payslip->accountnumber ?? '-'),
                             'branch'   => (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') ? data_get($bank, 'branch') : ($payslip->branch ?? '-'),
                         ],
+                        'customColumns'  => $customColumns,
                     ]);
 
                     $safeId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) $id);

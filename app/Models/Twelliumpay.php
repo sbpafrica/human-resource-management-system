@@ -193,6 +193,9 @@ class Twelliumpay extends Model
                 DB::statement("ALTER TABLE `$tableName` ADD COLUMN `total_assessable_income` DECIMAL(12,2) NULL DEFAULT NULL AFTER `deduction`");
             }
         }
+    
+        // Auto-attach any custom columns configured in PayrollColumn registry
+        \App\Models\PayrollColumn::ensureColumnsForTable($tableName);
     }
 
     /**

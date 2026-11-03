@@ -165,7 +165,7 @@ public function export(Request $request)
             $sheet->setCellValueExplicit("F{$row}", $r->code ?? '',    DataType::TYPE_STRING);
 
             $sheet->setCellValue("G{$row}", $r->branch ?? '');
-            $sheet->setCellValue("H{$row}", $r->TAKEHOMEPAY_GHC ? (float)$r->TAKEHOMEPAY_GHC : '');
+            $sheet->setCellValue("H{$row}", ($r->TAKEHOMEPAY_GHC !== null && $r->TAKEHOMEPAY_GHC !== '') ? number_format((float)$r->TAKEHOMEPAY_GHC, 2, '.', '') : '');
 
             $row++;
         }

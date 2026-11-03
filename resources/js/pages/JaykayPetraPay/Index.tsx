@@ -281,8 +281,8 @@ export default function JaykayPetraPay({
                                                 <div className="text-sm text-muted-foreground">Other Name: {record.othername}</div>
                                                 <div className="text-sm text-muted-foreground">PETRA ID: {record.petra_id}</div>
                                                 <div className="text-sm text-muted-foreground">Ghana Card: {record.ghana_card}</div>
-                                                <div className="text-sm text-muted-foreground">Basic Salary: {record.basic_salary != null ? record.basic_salary : "N/A"}</div>
-                                                <div className="text-sm text-muted-foreground">PETRA Amount: {record.petra_amount != null ? record.petra_amount : "N/A"}</div>
+                                                <div className="text-sm text-muted-foreground">Basic Salary: {record.basic_salary != null ? Number(record.basic_salary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</div>
+                                                <div className="text-sm text-muted-foreground">PETRA Amount: {record.petra_amount != null ? Number(record.petra_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</div>
                                             </div>
                                         </div>
                                     ))}
@@ -333,8 +333,8 @@ export default function JaykayPetraPay({
                                                     <TableCell>{record.othername}</TableCell>
                                                     <TableCell>{record.petra_id}</TableCell>
                                                     <TableCell>{record.ghana_card}</TableCell>
-                                                    <TableCell>{record.basic_salary != null ? record.basic_salary : "N/A"}</TableCell>
-                                                    <TableCell>{record.petra_amount != null ? record.petra_amount : "N/A"}</TableCell>
+                                                    <TableCell>{record.basic_salary != null ? Number(record.basic_salary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</TableCell>
+                                                    <TableCell>{record.petra_amount != null ? Number(record.petra_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</TableCell>
                                                 </TableRow>
                                             ))}
                                         </TableBody>

@@ -257,8 +257,8 @@ export default function AvaraSsnitPay({ records, selectedMonth, formattedMonth, 
                         <div className="text-sm text-muted-foreground">Department: {record.shop || "Avara"}</div>
                         <div className="text-sm text-muted-foreground">SSNIT No: {record.ssnit_number || ""}</div>
                         <div className="text-sm text-muted-foreground">Ghana Card: {record.gh_card_number || ""}</div>
-                        <div className="text-sm text-muted-foreground">Basic Salary: {record.basic_salary != null ? record.basic_salary : ""}</div>
-                        <div className="text-sm text-muted-foreground">SSNIT Amount (13.5%): {record.ssnit_amount != null ? record.ssnit_amount : ""}</div>
+                        <div className="text-sm text-muted-foreground">Basic Salary: {record.basic_salary != null ? Number(record.basic_salary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</div>
+                        <div className="text-sm text-muted-foreground">SSNIT Amount (13.5%): {record.ssnit_amount != null ? Number(record.ssnit_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</div>
                       </div>
                     </div>
                   ))}
@@ -292,8 +292,8 @@ export default function AvaraSsnitPay({ records, selectedMonth, formattedMonth, 
                           <TableCell>{record.othername}</TableCell>
                           <TableCell>{record.ssnit_number}</TableCell>
                           <TableCell>{record.gh_card_number}</TableCell>
-                          <TableCell>{record.basic_salary != null ? record.basic_salary : ""}</TableCell>
-                          <TableCell>{record.ssnit_amount != null ? record.ssnit_amount : ""}</TableCell>
+                          <TableCell>{record.basic_salary != null ? Number(record.basic_salary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</TableCell>
+                          <TableCell>{record.ssnit_amount != null ? Number(record.ssnit_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

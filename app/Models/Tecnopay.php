@@ -84,6 +84,9 @@ class Tecnopay extends Model
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
             ");
         }
+    
+        // Auto-attach any custom columns configured in PayrollColumn registry
+        \App\Models\PayrollColumn::ensureColumnsForTable($tableName);
     }
 
     public static function withTable($tableName)

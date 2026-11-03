@@ -528,7 +528,7 @@ export default function TranssionBfaPayIndex({
                             <TableCell>{r.bankname || <span className="text-amber-600 font-semibold">No Bank</span>}</TableCell>
                             <TableCell className="font-mono text-xs">{r.accountnum || "—"}</TableCell>
                             <TableCell className="text-right font-mono font-semibold">
-                              {r.finalnetpay !== null ? Number(r.finalnetpay).toLocaleString() : "—"}
+                              {r.finalnetpay !== null ? Number(r.finalnetpay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                             </TableCell>
                           </TableRow>
                         ))}

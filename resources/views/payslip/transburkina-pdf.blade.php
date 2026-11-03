@@ -205,12 +205,43 @@
             <td></td>
         </tr>
         @endif
+
+        <!-- Dynamic Custom Earnings -->
+        @if(isset($customColumns))
+            @foreach($customColumns->where('payslip_section', 'earnings') as $cc)
+                @php $val = data_get($payslip, $cc->column_name, 0); @endphp
+                @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
+                <tr>
+                    <td colspan="2">{{ $cc->display_label }}</td>
+                    <td class="text-center"></td>
+                    <td class="text-center">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
+                    <td></td>
+                </tr>
+                @endif
+            @endforeach
+        @endif
+
         <tr>
             <td colspan="2" class="total">Salaire Brut</td>
             <td></td>
             <td class="text-center total">{{ number_format($gross, 2) }}</td>
             <td></td>
         </tr>
+
+        <!-- Dynamic Custom Tax Reference / Info -->
+        @if(isset($customColumns))
+            @foreach($customColumns->whereIn('payslip_section', ['tax_reference', 'info']) as $cc)
+                @php $val = data_get($payslip, $cc->column_name, 0); @endphp
+                @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
+                <tr style="font-style: italic;">
+                    <td colspan="2">{{ $cc->display_label }}</td>
+                    <td class="text-center" style="font-size: 10px;">(Référence)</td>
+                    <td class="text-center">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
+                    <td></td>
+                </tr>
+                @endif
+            @endforeach
+        @endif
         <tr>
             <td colspan="2">Cotisation CNSS</td>
             <td class="text-center">5.5%</td>
@@ -252,6 +283,21 @@
             <td></td>
             <td class="text-center">{{ number_format($otherdeduct, 2) }}</td>
         </tr>
+        @endif
+
+        <!-- Dynamic Custom Deductions -->
+        @if(isset($customColumns))
+            @foreach($customColumns->where('payslip_section', 'deductions') as $cc)
+                @php $val = data_get($payslip, $cc->column_name, 0); @endphp
+                @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
+                <tr>
+                    <td colspan="2">{{ $cc->display_label }}</td>
+                    <td class="text-center"></td>
+                    <td></td>
+                    <td class="text-center">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
+                </tr>
+                @endif
+            @endforeach
         @endif
         <tr>
             <td colspan="3" class="total">Total</td>

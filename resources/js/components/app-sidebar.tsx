@@ -84,6 +84,7 @@ export function AppSidebar() {
     const userRoles = user.roles || [];
     const userPermissions = user.permissions || [];
     const hasRole = (role: string) => userRoles.includes(role);
+    const isHrManager = hasRole('HR Manager') || userRoles.some(r => r.toLowerCase().includes('hr manager'));
     const isReceiptStaff = hasRole('Receipt Manager') || 
                            hasRole('Receipt Officer') || 
                            userRoles.some(r => r.toLowerCase().includes('receipt'));
@@ -91,7 +92,8 @@ export function AppSidebar() {
     const can = (perm: string) => Boolean(
       user.is_super_admin || 
       userPermissions.includes(perm) ||
-      (isReceiptStaff && (perm === 'view receipts' || perm === 'manage receipts'))
+      (isReceiptStaff && (perm === 'view receipts' || perm === 'manage receipts')) ||
+      (isHrManager && (perm === 'manage payroll columns' || perm === 'view payroll'))
     );
     const items: MenuItem[] = [];
 
@@ -248,7 +250,14 @@ export function AppSidebar() {
       }));
 
       if (can('view payroll')) {
-        items.push({ title: 'Salary Payment', icon: FileText, children: salaryItems });
+        const salaryMenuChildren = [...salaryItems];
+        if (can('manage payroll columns') || isHrManager || user.is_super_admin) {
+          salaryMenuChildren.unshift({
+            title: '⚙ Payroll Columns',
+            href: '/admin/payroll-columns',
+          });
+        }
+        items.push({ title: 'Salary Payment', icon: FileText, children: salaryMenuChildren });
       }
       if (can('view ssnit')) {
         items.push({ title: 'SSNIT Payment', icon: FileSpreadsheet, children: ssnitItems });
@@ -292,14 +301,18 @@ export function AppSidebar() {
       });
     }
 
-    if (can('manage users')) {
+    if (can('manage users') || can('manage payroll columns') || isHrManager || user.is_super_admin) {
+      const adminChildren: MenuItem[] = [];
+      if (can('manage users') || user.is_super_admin) {
+        adminChildren.push({ title: 'Users', href: '/admin/users' });
+        adminChildren.push({ title: 'Roles & Permissions', href: '/admin/roles' });
+      }
+      adminChildren.push({ title: 'Payroll Columns', href: '/admin/payroll-columns' });
+
       items.push({
         title: 'Admin Management',
         icon: Shield,
-        children: [
-          { title: 'Users', href: '/admin/users' },
-          { title: 'Roles & Permissions', href: '/admin/roles' },
-        ],
+        children: adminChildren,
       });
     }
 

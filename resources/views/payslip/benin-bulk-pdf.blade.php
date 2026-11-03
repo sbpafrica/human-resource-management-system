@@ -139,7 +139,39 @@
             @endphp
             <div class="payslip-wrapper">
                 <table class="payslip-table">
-                    <tr>
+                    
+    <!-- Dynamic Custom Earnings -->
+    @if(isset($customColumns))
+        @foreach($customColumns->where('payslip_section', 'earnings') as $cc)
+            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
+            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
+            
+    <!-- Dynamic Custom Deductions -->
+    @if(isset($customColumns))
+        @foreach($customColumns->where('payslip_section', 'deductions') as $cc)
+            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
+            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
+            <tr>
+                <td colspan="2">{{ $cc->display_label }}</td>
+                <td></td>
+                <td></td>
+                <td style="text-align: center;">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
+            </tr>
+            @endif
+        @endforeach
+    @endif
+
+<tr>
+                <td colspan="2">{{ $cc->display_label }}</td>
+                <td></td>
+                <td style="text-align: center;">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
+                <td></td>
+            </tr>
+            @endif
+        @endforeach
+    @endif
+
+<tr>
                         <td colspan="2" style="text-align:center;">
                             <img src="{{ $logoSrc }}" class="logo" alt="SBP Africa Logo">
                         </td>
@@ -271,6 +303,22 @@
                         <td style="text-align:right;">{{ number_format($gross, 2) }}</td>
                         <td></td>
                     </tr>
+
+    <!-- Dynamic Custom Tax Reference / Info -->
+    @if(isset($customColumns))
+        @foreach($customColumns->whereIn('payslip_section', ['tax_reference', 'info']) as $cc)
+            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
+            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
+            <tr style="font-style: italic;">
+                <td colspan="2">{{ $cc->display_label }}</td>
+                <td style="text-align: center; font-size: 10px;">(Reference)</td>
+                <td style="text-align: center;">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
+                <td></td>
+            </tr>
+            @endif
+        @endforeach
+    @endif
+
                     <tr class="bold2">
                         <td colspan="2">TOTAL DES DÉDUCTIONS</td>
                         <td></td>

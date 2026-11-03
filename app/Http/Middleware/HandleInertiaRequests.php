@@ -79,6 +79,12 @@ class HandleInertiaRequests extends Middleware
                                 $perms[] = 'manage receipts';
                             }
                         }
+
+                        if (in_array('HR Manager', $roles) || in_array('Super Admin', $roles) || collect($roles)->contains(fn ($r) => str_contains(strtolower($r), 'hr manager')) || $user->is_super_admin) {
+                            if (!in_array('manage payroll columns', $perms)) {
+                                $perms[] = 'manage payroll columns';
+                            }
+                        }
                         return $perms;
                     })(),
 

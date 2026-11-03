@@ -176,6 +176,9 @@ class Inhousepay extends Model
                 DB::statement("ALTER TABLE `$tableName` ADD COLUMN `petra` DOUBLE NULL DEFAULT NULL AFTER `ssnitpay`");
             }
         }
+    
+        // Auto-attach any custom columns configured in PayrollColumn registry
+        \App\Models\PayrollColumn::ensureColumnsForTable($tableName);
     }
 
     /**

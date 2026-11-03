@@ -323,7 +323,7 @@ const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
                                             <div className="text-sm text-muted-foreground">ID: {r.employ}</div>
                                             <div className="text-sm text-muted-foreground">Shop: {r.shop || "N/A"}</div>
                                             <div className="text-sm text-muted-foreground">Bank: {r.bank || "N/A"}</div>
-                                            <div className="text-sm text-muted-foreground">Net Pay: {r.netpay?.toLocaleString() || "N/A"}</div>
+                                            <div className="text-sm text-muted-foreground">Net Pay: {r.netpay != null ? Number(r.netpay).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</div>
                                         </div>
                                     ))}
                                 </div>

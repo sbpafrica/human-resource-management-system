@@ -167,6 +167,9 @@ class Bungepay extends Model
                 }
             }
         }
+    
+        // Auto-attach any custom columns configured in PayrollColumn registry
+        \App\Models\PayrollColumn::ensureColumnsForTable($tableName);
     }
 
     /**

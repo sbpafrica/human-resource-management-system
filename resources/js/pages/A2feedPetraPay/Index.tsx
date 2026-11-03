@@ -291,7 +291,7 @@ export default function A2feedPetraPay({
                                                     <div><span className="font-medium">Shop:</span> {r.shop}</div>
                                                     <div><span className="font-medium">PETRA ID:</span> {r.petra_id || "—"}</div>
                                                     <div><span className="font-medium">Ghana Card:</span> {r.ghana_card || "—"}</div>
-                                                    <div><span className="font-medium">Basic Salary:</span> {r.basic_salary?.toLocaleString() || "N/A"}</div>
+                                                    <div><span className="font-medium">Basic Salary:</span> {r.basic_salary != null ? Number(r.basic_salary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "N/A"}</div>
                                                     <div className="text-green-600 font-bold text-lg">
                                                         PETRA: GHS {r.petra_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || "N/A"}
                                                     </div>
