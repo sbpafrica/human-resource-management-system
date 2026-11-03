@@ -488,6 +488,9 @@ class PayslipController extends Controller
         if (str_contains($dbName, 'benin') || str_contains($slug, 'benin')) {
             return 'payslip.benin-bulk-pdf';
         }
+        if (str_contains($dbName, 'honda') || str_contains($slug, 'honda')) {
+            return 'payslip.honda-bulk-pdf';
+        }
         if (str_contains($dbName, 'ofibwh') || str_contains($slug, 'ofi-bean-warehouse') || str_contains($slug, 'ofibwh') || str_contains($dbName, 'olambwh') || str_contains($shortName, 'bean wh')) {
             return 'payslip.ofibwh-bulk-pdf';
         }
