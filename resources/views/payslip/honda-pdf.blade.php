@@ -17,56 +17,24 @@
 </head>
 <body>
 @php
-    $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
-        ? data_get($bank, 'bankname') 
+    $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-')
+        ? data_get($bank, 'bankname')
         : ($payslip->bank ?? $payslip->bankname ?? '-');
-    $displayAccountName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') 
-        ? data_get($bank, 'name') 
+    $displayAccountName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-')
+        ? data_get($bank, 'name')
         : ($payslip->name ?? $payslip->names ?? $payslip->employeename ?? '-');
-    $displayAccountNo = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
-        ? data_get($bank, 'alcnum') 
+    $displayAccountNo = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-')
+        ? data_get($bank, 'alcnum')
         : ($payslip->accountnumber ?? $payslip->account_number ?? $payslip->alcnum ?? '-');
-    $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') 
-        ? data_get($bank, 'branch') 
+    $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-')
+        ? data_get($bank, 'branch')
         : ($payslip->branch ?? '-');
 
     $logoData = $logoData ?? (file_exists(public_path('images/sbpafricalogo.png')) ? 'data:image/png;base64,' . base64_encode(file_get_contents(public_path('images/sbpafricalogo.png'))) : null);
 @endphp
 <table>
     <thead>
-        
-    <!-- Dynamic Custom Earnings -->
-    @if(isset($customColumns))
-        @foreach($customColumns->where('payslip_section', 'earnings') as $cc)
-            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
-            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
-            
-    <!-- Dynamic Custom Deductions -->
-    @if(isset($customColumns))
-        @foreach($customColumns->where('payslip_section', 'deductions') as $cc)
-            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
-            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
-            <tr>
-                <td colspan="2">{{ $cc->display_label }}</td>
-                <td></td>
-                <td></td>
-                <td style="text-align: center;">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
-            </tr>
-            @endif
-        @endforeach
-    @endif
-
-<tr>
-                <td colspan="2">{{ $cc->display_label }}</td>
-                <td></td>
-                <td style="text-align: center;">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
-                <td></td>
-            </tr>
-            @endif
-        @endforeach
-    @endif
-
-<tr>
+        <tr>
             <td colspan="2">
                 @if($logoData)
                     <img src="{{ $logoData }}" class="logo" alt="Company Logo">
@@ -105,7 +73,7 @@
         </tr>
         <tr>
             <td>Basic Salary</td>
-            <td>{{ number_format((float)($payslip->BASICSALARY_GHC ?? 0), 2) }}</td>
+            <td>{{ number_format((float)($payslip->BASICSALARY_GHC ?? $payslip->basic ?? 0), 2) }}</td>
             <td></td>
             <td></td>
             <td></td>
@@ -120,32 +88,44 @@
     <tbody>
         <tr>
             <td colspan="2">Basic Salary Earned</td>
-            <td style="text-align: right;">{{ $payslip->NUMBEROFDAYSWORKED ?? 0 }}</td>
-            <td style="text-align: center;">{{ number_format((float)($payslip->BASICSALARYEARNED_GHC ?? 0), 2) }}</td>
+            <td style="text-align: right;">{{ $payslip->NUMBEROFDAYSWORKED ?? $payslip->workdays ?? 0 }}</td>
+            <td style="text-align: center;">{{ number_format((float)($payslip->BASICSALARYEARNED_GHC ?? $payslip->basic_earned ?? 0), 2) }}</td>
             <td></td>
         </tr>
+        <tr>
+            <td colspan="2">Transport Allowance</td>
+            <td style="text-align: right;">{{ $payslip->NUMBEROFDAYSWORKED ?? $payslip->workdays ?? 0 }}</td>
+            <td style="text-align: center;">{{ number_format((float)($payslip->TRANSPORTALLOWANCE ?? $payslip->transport ?? $payslip->transport_allowance ?? 0), 2) }}</td>
+            <td></td>
+        </tr>
+        @if((float)($payslip->PERFORMANCEBONUS ?? 0) > 0 || (float)($payslip->COEFFICIENT ?? 0) > 0)
         <tr>
             <td colspan="2">Performance Bonus</td>
             <td style="text-align: right;">{{ $payslip->COEFFICIENT ?? 0 }}</td>
             <td style="text-align: center;">{{ number_format((float)($payslip->PERFORMANCEBONUS ?? 0), 2) }}</td>
             <td></td>
         </tr>
-        <tr>
-            <td colspan="2">Transport Allowance</td>
-            <td style="text-align: right;">{{ $payslip->NUMBEROFDAYSWORKED ?? 0 }}</td>
-            <td style="text-align: center;">{{ number_format((float)($payslip->TRANSPORTALLOWANCE ?? 0), 2) }}</td>
-            <td></td>
-        </tr>
-        <tr>
-            <td colspan="2">Food Allowance</td>
-            <td></td>
-            <td style="text-align: center;">{{ number_format((float)($payslip->foodallowance ?? 0), 2) }}</td>
-            <td></td>
-        </tr>
+        @endif
+
+    <!-- Dynamic Custom Earnings -->
+    @if(isset($customColumns))
+        @foreach($customColumns->where('payslip_section', 'earnings') as $cc)
+            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
+            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
+            <tr>
+                <td colspan="2">{{ $cc->display_label }}</td>
+                <td></td>
+                <td style="text-align: center;">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
+                <td></td>
+            </tr>
+            @endif
+        @endforeach
+    @endif
+
         <tr>
             <td colspan="2" class="total">Gross Salary</td>
             <td></td>
-            <td style="text-align: center;" class="total">{{ number_format((float)($payslip->GROSSSALARY_GHC ?? 0), 2) }}</td>
+            <td style="text-align: center;" class="total">{{ number_format((float)($payslip->GROSSSALARY_GHC ?? $payslip->grosspay ?? 0), 2) }}</td>
             <td></td>
         </tr>
 
@@ -168,24 +148,40 @@
             <td colspan="2">SSNIT</td>
             <td></td>
             <td></td>
-            <td style="text-align: center;">{{ number_format((float)($payslip->SSNITEE_0_5 ?? 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)($payslip->SSNITEE_0_5 ?? $payslip->ssnitee ?? 0), 2) }}</td>
         </tr>
         <tr>
             <td colspan="2">PETRA</td>
             <td></td>
             <td></td>
-            <td style="text-align: center;">{{ number_format((float)($payslip->PETRA_5 ?? 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)($payslip->PETRA_5 ?? $payslip->petra ?? 0), 2) }}</td>
         </tr>
         <tr>
             <td colspan="2">PAYE</td>
             <td></td>
             <td></td>
-            <td style="text-align: center;">{{ number_format((float)($payslip->PAYE_GHC ?? 0), 2) }}</td>
+            <td style="text-align: center;">{{ number_format((float)($payslip->PAYE_GHC ?? $payslip->paye ?? 0), 2) }}</td>
         </tr>
+
+    <!-- Dynamic Custom Deductions -->
+    @if(isset($customColumns))
+        @foreach($customColumns->where('payslip_section', 'deductions') as $cc)
+            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
+            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
+            <tr>
+                <td colspan="2">{{ $cc->display_label }}</td>
+                <td></td>
+                <td></td>
+                <td style="text-align: center;">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
+            </tr>
+            @endif
+        @endforeach
+    @endif
+
         <tr>
             <td colspan="3" class="total">Total</td>
-            <td style="text-align: center;" class="total">{{ number_format((float)($payslip->GROSSSALARY_GHC ?? 0), 2) }}</td>
-            <td style="text-align: center;" class="total">{{ number_format((float)($payslip->TOTALDEDUCTIONS_GHC ?? 0), 2) }}</td>
+            <td style="text-align: center;" class="total">{{ number_format((float)($payslip->GROSSSALARY_GHC ?? $payslip->grosspay ?? 0), 2) }}</td>
+            <td style="text-align: center;" class="total">{{ number_format((float)($payslip->TOTALDEDUCTIONS_GHC ?? $payslip->totaldeductions ?? 0), 2) }}</td>
         </tr>
         <tr>
             <td>Bank Name</td>
@@ -197,7 +193,7 @@
             <td>Bank Account Name</td>
             <td>{{ $displayAccountName }}</td>
             <td></td>
-            <td colspan="2" class="net-pay-value">{{ number_format((float)($payslip->TAKEHOMEPAY_GHC ?? 0), 2) }}</td>
+            <td colspan="2" class="net-pay-value">{{ number_format((float)($payslip->TAKEHOMEPAY_GHC ?? $payslip->netpay ?? 0), 2) }}</td>
         </tr>
         <tr>
             <td>Bank Account #</td>

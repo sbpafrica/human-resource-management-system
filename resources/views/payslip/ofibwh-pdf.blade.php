@@ -49,37 +49,6 @@
 <body>
     <table>
         <!-- Header Row -->
-        
-    <!-- Dynamic Custom Earnings -->
-    @if(isset($customColumns))
-        @foreach($customColumns->where('payslip_section', 'earnings') as $cc)
-            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
-            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
-            
-    <!-- Dynamic Custom Deductions -->
-    @if(isset($customColumns))
-        @foreach($customColumns->where('payslip_section', 'deductions') as $cc)
-            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
-            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
-            <tr>
-                <td colspan="2">{{ $cc->display_label }}</td>
-                <td></td>
-                <td></td>
-                <td style="text-align: center;">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
-            </tr>
-            @endif
-        @endforeach
-    @endif
-
-<tr>
-                <td colspan="2">{{ $cc->display_label }}</td>
-                <td></td>
-                <td style="text-align: center;">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
-                <td></td>
-            </tr>
-            @endif
-        @endforeach
-    @endif
 
 <tr>
             <td colspan="2">
@@ -129,8 +98,8 @@
             <td>{{ $payslip->department ?? 'Bean Warehouse' }}</td>
         </tr>
         @php
-            $hasBasic = !empty($payslip->has_basic_salary) 
-                ? true 
+            $hasBasic = !empty($payslip->has_basic_salary)
+                ? true
                 : ((float)($payslip->raw_basic ?? 0) > 0 || ((float)($payslip->basic ?? 0) > 0 && empty($payslip->is_casual) && (float)($payslip->weekdayhr ?? 0) == 0 && (float)($payslip->weekdaytonage ?? 0) == 0 && (float)($payslip->amt ?? 0) == 0));
             $dailyRateVal = (float)($payslip->daily_rate ?? $payslip->rate ?? $payslip->weekdayrate ?? 0);
             $regularAmt = (float)($payslip->amt ?? $payslip->basic_earned ?? 0);
@@ -168,14 +137,14 @@
         @if($hasBasic)
         <tr>
             <td colspan="2">Basic Salary Earned</td>
-            <td class="text-right">{{ (int)($payslip->workdays ?? 0) }} days</td>
+            <td class="text-right">{{ (int)($payslip->workdays ?? 0) }} </td>
             <td class="text-center">{{ number_format((float)($payslip->basic_earned ?? $payslip->basic ?? 0), 2) }}</td>
             <td></td>
         </tr>
         @elseif($weekdayHrs > 0)
         <tr>
             <td colspan="2">Regular Hours Pay</td>
-            <td class="text-right">{{ $weekdayHrs }} hrs</td>
+            <td class="text-right">{{ $weekdayHrs }} </td>
             <td class="text-center">{{ number_format($regularAmt, 2) }}</td>
             <td></td>
         </tr>
@@ -189,7 +158,7 @@
         @elseif($regularAmt > 0 || (int)($payslip->workdays ?? 0) > 0)
         <tr>
             <td colspan="2">Daily Rate Earned</td>
-            <td class="text-right">{{ (int)($payslip->workdays ?? 0) }} days</td>
+            <td class="text-right">{{ (int)($payslip->workdays ?? 0) }} </td>
             <td class="text-center">{{ number_format($regularAmt, 2) }}</td>
             <td></td>
         </tr>
@@ -201,8 +170,8 @@
         @endphp
         @if($ftAmt > 0)
         <tr>
-            <td colspan="2">Feeding & Transport Allowance</td>
-            <td class="text-right">{{ (int)($payslip->workdays ?? 0) }} days</td>
+            <td colspan="2">Transport Allowance</td>
+            <td class="text-right">{{ (int)($payslip->workdays ?? 0) }} </td>
             <td class="text-center">{{ number_format($ftAmt, 2) }}</td>
             <td></td>
         </tr>
@@ -211,7 +180,7 @@
         <!-- Weekday Overtime (weekdayotamt1) -->
         @if((float)($payslip->normalovertime ?? 0) > 0 || (float)($payslip->weekdaysOT ?? 0) > 0)
         <tr>
-            <td colspan="2">Normal Overtime (Weekday)</td>
+            <td colspan="2">Weekday Overtime</td>
             <td class="text-right">{{ (float)($payslip->weekdaysOT ?? 0) > 0 ? round((float)$payslip->weekdaysOT, 2) . ' hrs' : '-' }}</td>
             <td class="text-center">{{ number_format((float)($payslip->normalovertime ?? 0), 2) }}</td>
             <td></td>
@@ -228,16 +197,16 @@
         <tr>
             <td colspan="2">
                 @if($weekendTons > 0)
-                    Weekend Tonnage Pay
+                    Weekend Tonnage Pay(Weekend Overtime)
                 @else
                     Weekend Overtime
                 @endif
             </td>
             <td class="text-right">
                 @if($weekendTons > 0)
-                    {{ $weekendTons }} tons
+                    {{ $weekendTons }}
                 @elseif($weekendHrs > 0)
-                    {{ $weekendHrs }} hrs
+                    {{ $weekendHrs }}
                 @else
                     -
                 @endif
@@ -246,6 +215,21 @@
             <td></td>
         </tr>
         @endif
+
+    <!-- Dynamic Custom Earnings -->
+    @if(isset($customColumns))
+        @foreach($customColumns->where('payslip_section', 'earnings') as $cc)
+            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
+            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
+            <tr>
+                <td colspan="2">{{ $cc->display_label }}</td>
+                <td></td>
+                <td class="text-center">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
+                <td></td>
+            </tr>
+            @endif
+        @endforeach
+    @endif
 
         <!-- Gross Salary -->
         <tr>
@@ -275,7 +259,7 @@
 
         <!-- Deductions -->
         <tr>
-            <td colspan="2">SSNIT EE (5.5%)</td>
+            <td colspan="2">SSNIT EE (0.5%)</td>
             <td></td>
             <td></td>
             <td class="text-center">{{ number_format((float)($payslip->ssnitee ?? 0), 2) }}</td>
@@ -302,15 +286,30 @@
         @endif
 
         @php
-            $totalDeductionsCalculated = (float)($payslip->ssnitee ?? 0) 
-                + (float)($payslip->petra ?? 0) 
-                + (float)($payslip->paye ?? 0) 
+            $totalDeductionsCalculated = (float)($payslip->ssnitee ?? 0)
+                + (float)($payslip->petra ?? 0)
+                + (float)($payslip->paye ?? 0)
                 + (float)($payslip->otherdeduction ?? 0);
 
             if ($totalDeductionsCalculated == 0) {
                 $totalDeductionsCalculated = (float)($payslip->totaldeductions ?? $payslip->totaltaxdeduction ?? 0);
             }
         @endphp
+
+    <!-- Dynamic Custom Deductions -->
+    @if(isset($customColumns))
+        @foreach($customColumns->where('payslip_section', 'deductions') as $cc)
+            @php $val = data_get($payslip, $cc->column_name, 0); @endphp
+            @if((float)$val != 0 || (!is_numeric($val) && !empty($val)))
+            <tr>
+                <td colspan="2">{{ $cc->display_label }}</td>
+                <td></td>
+                <td></td>
+                <td class="text-center">{{ is_numeric($val) ? number_format((float)$val, 2) : $val }}</td>
+            </tr>
+            @endif
+        @endforeach
+    @endif
 
         <!-- Total Row -->
         <tr>
@@ -324,20 +323,20 @@
         </tr>
 
         @php
-            $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
-                ? data_get($bank, 'bankname') 
+            $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-')
+                ? data_get($bank, 'bankname')
                 : ($payslip->bank ?? $payslip->bank1 ?? '-');
 
-            $displayName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') 
-                ? data_get($bank, 'name') 
+            $displayName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-')
+                ? data_get($bank, 'name')
                 : ($payslip->name ?? '-');
 
-            $displayAccount = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
-                ? data_get($bank, 'alcnum') 
+            $displayAccount = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-')
+                ? data_get($bank, 'alcnum')
                 : ($payslip->accountnumber ?? $payslip->account2 ?? '-');
 
-            $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') 
-                ? data_get($bank, 'branch') 
+            $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-')
+                ? data_get($bank, 'branch')
                 : ($payslip->branch ?? '-');
         @endphp
 

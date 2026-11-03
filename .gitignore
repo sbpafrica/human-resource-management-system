@@ -32,3 +32,4 @@ storage/logs/*.log
 *.sql
 *.sql.gz
 *.gz
+/skills
