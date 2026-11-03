@@ -84,7 +84,7 @@ export function AppSidebar() {
     const userRoles = user.roles || [];
     const userPermissions = user.permissions || [];
     const hasRole = (role: string) => userRoles.includes(role);
-    const isHrManager = hasRole('HR Manager') || userRoles.some(r => r.toLowerCase().includes('hr manager'));
+    const isHrManager = hasRole('HR Manager') || userRoles.some(r => r.toLowerCase().includes('hr') || r.toLowerCase().includes('payroll'));
     const isReceiptStaff = hasRole('Receipt Manager') || 
                            hasRole('Receipt Officer') || 
                            userRoles.some(r => r.toLowerCase().includes('receipt'));
@@ -253,7 +253,7 @@ export function AppSidebar() {
         const salaryMenuChildren = [...salaryItems];
         if (can('manage payroll columns') || isHrManager || user.is_super_admin) {
           salaryMenuChildren.unshift({
-            title: '⚙ Payroll Columns',
+            title: '⚙ Manage Payroll Columns',
             href: '/admin/payroll-columns',
           });
         }
@@ -271,6 +271,17 @@ export function AppSidebar() {
       if (can('view gra')) {
         items.push({ title: 'GRA', icon: FileSpreadsheet, children: graItems });
       }
+    } else if (can('view payroll') || can('manage payroll columns') || isHrManager) {
+      items.push({
+        title: 'Salary Payment',
+        icon: FileText,
+        children: [
+          {
+            title: '⚙ Manage Payroll Columns',
+            href: '/admin/payroll-columns',
+          },
+        ],
+      });
     }
 
     // TRANSSION BFA SECTION
@@ -307,10 +318,10 @@ export function AppSidebar() {
         adminChildren.push({ title: 'Users', href: '/admin/users' });
         adminChildren.push({ title: 'Roles & Permissions', href: '/admin/roles' });
       }
-      adminChildren.push({ title: 'Payroll Columns', href: '/admin/payroll-columns' });
+      adminChildren.push({ title: 'Manage Payroll Columns', href: '/admin/payroll-columns' });
 
       items.push({
-        title: 'Admin Management',
+        title: can('manage users') || user.is_super_admin ? 'Admin Management' : 'Payroll Management',
         icon: Shield,
         children: adminChildren,
       });

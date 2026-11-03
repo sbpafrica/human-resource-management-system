@@ -26,9 +26,9 @@ class PayrollColumnController extends Controller
         $roles = $user->getRoleNames()->toArray();
         $hasHrRole = in_array('HR Manager', $roles)
             || in_array('Super Admin', $roles)
-            || collect($roles)->contains(fn ($r) => str_contains(strtolower($r), 'hr manager'));
+            || collect($roles)->contains(fn ($r) => str_contains(strtolower($r), 'hr') || str_contains(strtolower($r), 'payroll'));
 
-        if (!$user->is_super_admin && !$hasHrRole && !$user->can('manage users') && !$user->can('manage payroll columns')) {
+        if (!$user->is_super_admin && !$hasHrRole && !$user->can('manage users') && !$user->can('manage payroll columns') && !$user->can('view payroll')) {
             abort(403, 'Unauthorized access to Payroll Columns configuration.');
         }
     }
@@ -189,9 +189,9 @@ class PayrollColumnController extends Controller
 
         // Find candidate tables
         $tables = DB::select("
-            SELECT TABLE_NAME 
-            FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_SCHEMA = DATABASE() 
+            SELECT TABLE_NAME
+            FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_SCHEMA = DATABASE()
               AND ({$whereLikes})
               AND TABLE_NAME NOT LIKE '%_sign'
               AND TABLE_NAME NOT LIKE '%_contracts%'
@@ -216,4 +216,3 @@ class PayrollColumnController extends Controller
         return ['staff_id', 'name', 'position', 'department', 'basic', 'gross', 'net_pay'];
     }
 }
-

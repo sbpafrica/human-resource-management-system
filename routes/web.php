@@ -250,6 +250,13 @@ Route::post('/roles', [App\Http\Controllers\Admin\RoleController::class, 'store'
         Route::patch('/payroll-columns/{id}/toggle-payslip', [App\Http\Controllers\Admin\PayrollColumnController::class, 'togglePayslip'])->name('payroll-columns.toggle-payslip');
     });
 
+    // Direct aliases for Payroll Columns accessible to HR Managers and Admins
+    Route::get('/payroll-columns', [App\Http\Controllers\Admin\PayrollColumnController::class, 'index'])->name('payroll-columns.direct');
+    Route::get('/payroll-columns/columns', [App\Http\Controllers\Admin\PayrollColumnController::class, 'getColumns'])->name('payroll-columns.direct-columns');
+    Route::post('/payroll-columns', [App\Http\Controllers\Admin\PayrollColumnController::class, 'store'])->name('payroll-columns.direct-store');
+    Route::delete('/payroll-columns/{id}', [App\Http\Controllers\Admin\PayrollColumnController::class, 'destroy'])->name('payroll-columns.direct-destroy');
+    Route::patch('/payroll-columns/{id}/toggle-payslip', [App\Http\Controllers\Admin\PayrollColumnController::class, 'togglePayslip'])->name('payroll-columns.direct-toggle-payslip');
+
 
     // SSNIT Details Routes
     Route::get('/ssnitdetails', [SsnitController::class, 'index'])->name('ssnitdetails.index');
