@@ -172,7 +172,6 @@ class PayrollColumnController extends Controller
      */
     private function getClientTableColumns(string $clientDb): array
     {
-        $dbName = config('database.connections.mysql.database', env('DB_DATABASE', 'sbpafricahr'));
         $prefix = strtolower(trim($clientDb));
 
         $prefixes = ($prefix === 'all')
@@ -180,7 +179,7 @@ class PayrollColumnController extends Controller
             : PayrollColumn::getTablePrefixesForClient($prefix);
 
         $likeClauses = [];
-        $bindings = [$dbName];
+        $bindings = [];
         foreach ($prefixes as $p) {
             $likeClauses[] = "TABLE_NAME = ? OR TABLE_NAME LIKE ?";
             $bindings[] = $p;
@@ -192,11 +191,14 @@ class PayrollColumnController extends Controller
         $tables = DB::select("
             SELECT TABLE_NAME 
             FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_SCHEMA = ? 
+            WHERE TABLE_SCHEMA = DATABASE() 
               AND ({$whereLikes})
               AND TABLE_NAME NOT LIKE '%_sign'
               AND TABLE_NAME NOT LIKE '%_contracts%'
               AND TABLE_NAME NOT LIKE '%attendance%'
+              AND TABLE_NAME NOT LIKE '%sms%'
+              AND TABLE_NAME NOT LIKE '%data'
+              AND TABLE_NAME NOT LIKE '%con'
             ORDER BY TABLE_NAME DESC
             LIMIT 10
         ", $bindings);

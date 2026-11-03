@@ -37,7 +37,9 @@ class PayslipController extends Controller
     {
         $map = [
             'good-ease-technology-gh-ltd'        => 'transsion',
+            'unitycorp-technology-limited'       => 'tecno',
             'unitycorp'                          => 'tecno',
+            'transsnet-ltd'                      => 'transsnet',
             'melcom'                             => 'melcom',
             'melcom-drivers'                     => 'driver',
             'century'                            => 'century',
@@ -68,24 +70,30 @@ class PayslipController extends Controller
             'benin-bunge'                        => 'beninbunge',
         ];
 
-        return $map[$client->slug] ?? $client->slug;
+        return $map[$client->slug] ?? ($map[$client->client_dbname] ?? $client->slug);
     }
 
     private function getFormalSlug(string $routeSlug): string
     {
         $map = [
             'transsion'     => 'good-ease-technology-gh-ltd',
-            'tecno'         => 'unitycorp',
+            'tecno'         => 'unitycorp-technology-limited',
+            'transsiontec'  => 'unitycorp-technology-limited',
+            'unitycorp'     => 'unitycorp-technology-limited',
+            'transsnet'     => 'transsnet-ltd',
             'melcom'        => 'melcom',
             'driver'        => 'melcom-drivers',
+            'drivers'       => 'melcom-drivers',
             'century'       => 'century',
             'nyonkopa'      => 'nyonkopa-cocoa-buying-ltd',
             'jaykay'        => 'jay-kay',
+            'jkay'          => 'jay-kay',
             'pz'            => 'pz-cussons-ghana-ltd',
             'twellium'      => 'twellium-industrial-company-ghana',
             'twelliumaccra' => 'twellium-industrial-company-accra',
             'shefer'        => 'shefer-plastics-ltd',
             'fon'           => 'fon-packaging',
+            'fonpackage'    => 'fon-packaging',
             'a2feed'        => 'a2-group-of-companies-a2-feed',
             'a2soya'        => 'a2-soya',
             'ofibwh'        => 'ofi-bean-warehouse',
@@ -102,9 +110,12 @@ class PayslipController extends Controller
             'avara'         => 'avara-rc-limited',
             'transburkina'  => 'transsion-bfa',
             'transsionbfa'  => 'transsion-bfa',
+            'tbfa'          => 'transsion-bfa',
             'civ'           => 'civ-bunge',
             'togobunge'     => 'togo-bunge',
+            'togo'          => 'togo-bunge',
             'beninbunge'    => 'benin-bunge',
+            'benin'         => 'benin-bunge',
         ];
 
         return $map[$routeSlug] ?? $routeSlug;
@@ -113,6 +124,41 @@ class PayslipController extends Controller
     private function resolveClient(string $routeSlug)
     {
         $formalSlug = $this->getFormalSlug($routeSlug);
+
+        // Explicit alias check for common DB names
+        $aliases = [
+            'tecno'        => 'transsiontec',
+            'transsiontec' => 'transsiontec',
+            'unitycorp'    => 'transsiontec',
+            'transsnet'    => 'transsnet',
+            'driver'       => 'driverssnit',
+            'drivers'      => 'driverssnit',
+            'century'      => 'centurypay',
+            'jkay'         => 'jkay',
+            'jaykay'       => 'jkay',
+            'fon'          => 'fonpackage',
+            'ofibwh'       => 'olambwh',
+            'ofioffload'   => 'offload',
+            'ofiexternal'  => 'hygieneexternal',
+            'ofihygiene'   => 'olamhygiene',
+            'ofitemp'      => 'olamtem',
+            'bunge'        => 'bungegh',
+            'tbfa'         => 'transburkina',
+            'transburkina' => 'transburkina',
+            'transsionbfa' => 'transburkina',
+            'togo'         => 'togobunge',
+            'togobunge'    => 'togobunge',
+            'benin'        => 'bungebenin',
+            'beninbunge'   => 'bungebenin',
+        ];
+
+        $targetDb = $aliases[strtolower($routeSlug)] ?? null;
+        if ($targetDb) {
+            $client = Client::where('is_active', 1)->where('client_dbname', $targetDb)->first();
+            if ($client) {
+                return $client;
+            }
+        }
 
         $client = Client::where('is_active', 1)
             ->where(function ($q) use ($routeSlug, $formalSlug) {
@@ -1876,6 +1922,7 @@ class PayslipController extends Controller
             'month'          => $month,
             'formattedMonth' => $formattedMonth,
             'employees'      => $employees,
+            'customColumns'  => \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? ''),
         ]);
     }
 

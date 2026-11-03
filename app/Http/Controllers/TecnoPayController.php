@@ -217,15 +217,17 @@ public function export(Request $request)
  $date = Carbon::createFromFormat('Y-m', $selectedMonth);
  $tableName = 'transsiontec' . strtolower($date->format('F')) . $date->format('y');
 
- // Create table if it doesn't exist
- TecnoPay::createTableIfNotExists($tableName);
+        // Create table if it doesn't exist
+        TecnoPay::createTableIfNotExists($tableName);
+        \App\Models\PayrollColumn::ensureColumnsForTable($tableName, 'transsiontec');
 
- $file = $request->file('file');
- $reader = new XlsxReader();
- $spreadsheet = $reader->load($file->getRealPath());
- $sheet = $spreadsheet->getActiveSheet();
- $rows = $sheet->toArray();
- array_shift($rows); // Remove header row
+        $file = $request->file('file');
+        $reader = new XlsxReader();
+        $spreadsheet = $reader->load($file->getRealPath());
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray();
+        $headerRow = $rows[0] ?? [];
+        array_shift($rows); // Remove header row
 
  // Check for existing staff IDs
  $existingStaffIds = DB::table($tableName)->pluck('staffida')->toArray();
@@ -370,13 +372,19 @@ public function export(Request $request)
  'taxbase' => $taxbase,
  'paye' => $paye,
  'annaultax' => $annaultax,
- 'netpay' => $netpay,
- 'hrcost' => $hrcost,
- 'brandname' => $brandname,
- ];
+            'netpay' => $netpay,
+            'hrcost' => $hrcost,
+            'brandname' => $brandname,
+        ];
 
- $validRecords[] = $data;
- $existingStaffIds[] = $staffId;
+        // Dynamically merge any registered custom columns from the uploaded header row
+        $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'transsiontec');
+        if (!empty($customVals)) {
+            $data = array_merge($data, $customVals);
+        }
+
+        $validRecords[] = $data;
+        $existingStaffIds[] = $staffId;
  }
 
  if (!empty($errors)) {
@@ -448,27 +456,34 @@ public function export(Request $request)
  'Other Deduction', 'Loan', 'Gross Pay', 'Excess', 'Total Emoluments', 'Accommodation', 'Charge Income',
  'Petra', 'SSNIT Amount', 'NSSF', 'Tax Base', 'PAYE', 'Annual Tax', 'Net Pay', 'HR Cost', 'Brand Name'
  ];
- $sheet->fromArray($headers, null, 'A1');
+        // Example data
+        $exampleRow = [
+            'STF123', 'John Doe', 'Sales', '10/19/2016', '01/01/2025', '12/31/2025', 'SALES REPRESENTATIVE', 'L09',
+            'FORMAL STAFF', 'ACCRA', 'Bank A', '1234567890', 'Branch X', 'P0012345678', 'P0031284639', 21, 0, 0, 0,
+            1113.75, 1856.25, 1, 1856.25, 742.5, 0, 0, 0, 0, 0, 0, 0, 0, 3712.5, 0, 3712.5, 0, 3712.5, 55.69,
+            5.57, 144.79, 3651.24, 529.72, 0, 3121.52, 3857.29, 'TRANSSION'
+        ];
 
- // Example data
- $exampleData = [
- [
- 'STF123', 'John Doe', 'Sales', '10/19/2016', '01/01/2025', '12/31/2025', 'SALES REPRESENTATIVE', 'L09',
- 'FORMAL STAFF', 'ACCRA', 'Bank A', '1234567890', 'Branch X', 'P0012345678', 'P0031284639', 21, 0, 0, 0,
- 1113.75, 1856.25, 1, 1856.25, 742.5, 0, 0, 0, 0, 0, 0, 0, 0, 3712.5, 0, 3712.5, 0, 3712.5, 55.69,
- 5.57, 144.79, 3651.24, 529.72, 0, 3121.52, 3857.29, 'TRANSSION'
- ]
- ];
- $sheet->fromArray($exampleData, null, 'A2');
+        \App\Models\PayrollColumn::augmentTemplate($headers, $exampleRow, 'transsiontec');
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray([$exampleRow], null, 'A2');
 
- // Add a note
- $sheet->setCellValue('A4', 'Note: Numeric fields (e.g., Net Pay, Basic) must be numbers without symbols. Dates should be in MM/DD/YYYY format.');
+        // Add a note
+        $sheet->setCellValue('A4', 'Note: Numeric fields (e.g., Net Pay, Basic) must be numbers without symbols. Dates should be in MM/DD/YYYY format.');
 
- $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
- $fileName = 'tecno_template.xlsx';
- $tempFile = tempnam(sys_get_temp_dir(), $fileName);
- $writer->save($tempFile);
+        $writer   = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $fileName = 'tecno_template.xlsx';
 
- return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($writer) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Cache-Control'       => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma'              => 'public',
+        ]);
  }
 }

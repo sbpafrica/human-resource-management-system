@@ -446,6 +446,12 @@ class TransbfaPayController extends Controller
                     }
                 }
 
+                // Dynamically merge any registered custom columns
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $mergedHeaders, 'transburkina');
+                if (!empty($customVals)) {
+                    $record = array_merge($record, $customVals);
+                }
+
                 $validRecords[] = $record;
             }
 
@@ -495,6 +501,9 @@ class TransbfaPayController extends Controller
             'IUTS Salaire', 'Enfant', 'IUTS Net', 'CNSS Salaire', 'Ecarts', 'NAP', 'Nom', 'TPA', 'AV1',
             'RP1', 'PF1', 'Total', 'Cout Total', 'Frais', 'TVA', 'Fact', 'WHT', 'Final Net Pay', 'Brand',
         ];
+
+        $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'transburkina');
 
         foreach ($headers as $i => $header) {
             $sheet->setCellValue(Coordinate::stringFromColumnIndex($i + 1) . '1', $header);

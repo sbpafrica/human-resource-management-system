@@ -186,7 +186,7 @@ class NyonkopaPayController extends Controller
             $sheet = $spreadsheet->getActiveSheet();
 
             $headers = ['Staff ID', 'Name', 'Department', 'Bank Name', 'Account No.', 'Branch Code', 'Branch', 'Net Pay'];
-            $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray($headers, null, 'A1');
 
             $row = 2;
             foreach ($records as $r) {
@@ -495,6 +495,8 @@ class NyonkopaPayController extends Controller
             'Take Home Pay',
         ];
 
+        $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'nyonkopa');
         $sheet->fromArray($headers, null, 'A1');
 
         // 28 columns → last column is AB (A=1 … Z=26, AA=27, AB=28)
@@ -552,9 +554,18 @@ class NyonkopaPayController extends Controller
 
         $writer   = IOFactory::createWriter($spreadsheet, 'Xlsx');
         $fileName = 'Payroll_Upload_Template_' . date('M-Y') . '.xlsx';
-        $tempFile = tempnam(sys_get_temp_dir(), $fileName);
-        $writer->save($tempFile);
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 
-        return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($writer) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Cache-Control'       => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma'              => 'public',
+        ]);
     }
 }

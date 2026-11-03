@@ -294,6 +294,10 @@ class PzPayController extends Controller
             foreach ($dataRows as $i => $row) {
                 $rowNumber = $rowOffset + $i;
                 $data      = $this->mapRow($row, $columnMap);
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $rows[$headerRowIndex] ?? [], 'pz');
+                if (!empty($customVals)) {
+                    $data = array_merge($data, $customVals);
+                }
 
                 $staffid = $data['staffid'] ?? null;
                 $name    = $data['name'] ?? null;
@@ -422,6 +426,8 @@ class PzPayController extends Controller
         }
 
         $headers = $this->getTemplateHeaders($department);
+        $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'pz');
 
         $spreadsheet = new Spreadsheet();
         $sheet       = $spreadsheet->getActiveSheet();

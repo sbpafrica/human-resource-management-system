@@ -448,7 +448,9 @@ public function export(Request $request)
  'Other Deduction', 'Loan', 'Gross Pay', 'Excess', 'Total Emoluments', 'Accommodation', 'Charge Income',
  'Petra', 'SSNIT Amount', 'NSSF', 'Tax Base', 'PAYE', 'Annual Tax', 'Net Pay', 'HR Cost', 'Brand Name'
  ];
- $sheet->fromArray($headers, null, 'A1');
+ $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'transsion');
+        $sheet->fromArray($headers, null, 'A1');
 
  // Example data
  $exampleData = [
@@ -466,9 +468,18 @@ public function export(Request $request)
 
  $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
  $fileName = 'transsion_template.xlsx';
- $tempFile = tempnam(sys_get_temp_dir(), $fileName);
- $writer->save($tempFile);
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 
- return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($writer) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Cache-Control'       => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma'              => 'public',
+        ]);
  }
 }

@@ -81,6 +81,12 @@ interface Props {
     month: string;
     formattedMonth: string;
     employees: Employee[];
+    customColumns?: Array<{
+        id: number;
+        column_name: string;
+        display_label: string;
+        payslip_section: 'earnings' | 'deductions' | 'tax_reference' | 'info';
+    }>;
     flash?: { success?: string; error?: string };
     errors?: { [key: string]: string };
     auth: {
@@ -97,7 +103,7 @@ const breadcrumbs = (clientSlug: string, shortName: string) => [
     { title: shortName, href: `/payslips/${clientSlug}` },
 ];
 
-export default function Index({ clientSlug, client, payslip, month, formattedMonth, employees = [], flash, errors, auth }: Props) {
+export default function Index({ clientSlug, client, payslip, month, formattedMonth, employees = [], flash, errors, auth, customColumns = [] }: Props) {
     const [isViewDialogOpen, setIsViewDialogOpen] = useState(!!payslip);
     const [staffId, setStaffId] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
@@ -109,6 +115,10 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
     const [isDownloadingMultiple, setIsDownloadingMultiple] = useState(false);
     const [isSendingEmail, setIsSendingEmail] = useState(false);
     const [isSendingSms, setIsSendingSms] = useState(false);
+
+    const customEarnings = (customColumns || []).filter((c: any) => c.payslip_section === 'earnings');
+    const customDeductions = (customColumns || []).filter((c: any) => c.payslip_section === 'deductions');
+    const customTaxRef = (customColumns || []).filter((c: any) => c.payslip_section === 'tax_reference' || c.payslip_section === 'info');
 
     const { data, setData, processing, reset } = useForm({
         month,
@@ -2109,6 +2119,14 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td className="p-2 text-center">{Number(payslip.transport ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
+        {customEarnings.map((cc) => (
+            <tr key={`shefer-ce-${cc.id}`}>
+                <td colSpan={2} className="p-2">{cc.display_label}</td>
+                <td></td>
+                <td className="p-2 text-center">{payslip[cc.column_name] != null ? (isNaN(Number(payslip[cc.column_name])) ? payslip[cc.column_name] : Number(payslip[cc.column_name]).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '0.00'}</td>
+                <td></td>
+            </tr>
+        ))}
         <tr>
             <td colSpan={2} className="p-2 font-bold">Gross Salary</td>
             <td></td>
@@ -2127,6 +2145,14 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td className="p-2 text-center">{Number(payslip.total_assessable_income ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             <td></td>
         </tr>
+        {customTaxRef.filter(cc => cc.column_name !== 'total_cash_emolument' && cc.column_name !== 'total_assessable_income').map((cc) => (
+            <tr key={`shefer-cr-${cc.id}`} className="italic">
+                <td colSpan={2} className="p-2">{cc.display_label}</td>
+                <td className="p-2 text-center text-xs">(Reference)</td>
+                <td className="p-2 text-center">{payslip[cc.column_name] != null ? (isNaN(Number(payslip[cc.column_name])) ? payslip[cc.column_name] : Number(payslip[cc.column_name]).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '0.00'}</td>
+                <td></td>
+            </tr>
+        ))}
         <tr>
             <td colSpan={2} className="p-2">SSNIT</td>
             <td></td>
@@ -2159,6 +2185,14 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
             <td></td>
             <td className="p-2 text-center">{Number(payslip.salaryloan ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
+        {customDeductions.map((cc) => (
+            <tr key={`shefer-cd-${cc.id}`}>
+                <td colSpan={2} className="p-2">{cc.display_label}</td>
+                <td></td>
+                <td></td>
+                <td className="p-2 text-center">{payslip[cc.column_name] != null ? (isNaN(Number(payslip[cc.column_name])) ? payslip[cc.column_name] : Number(payslip[cc.column_name]).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '0.00'}</td>
+            </tr>
+        ))}
         <tr style={{ backgroundColor: '#3498db', color: 'white' }}>
             <td colSpan={2} className="p-2 font-bold">Total</td>
             <td></td>
@@ -2492,6 +2526,14 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                                         <td></td>
                                     </tr>
                                 )}
+                                {customEarnings.map((cc) => (
+                                    <tr key={`gen-ce-${cc.id}`}>
+                                        <td colSpan={2} className="p-2">{cc.display_label}</td>
+                                        <td></td>
+                                        <td className="p-2 text-center">{payslip[cc.column_name] != null ? (isNaN(Number(payslip[cc.column_name])) ? payslip[cc.column_name] : Number(payslip[cc.column_name]).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '0.00'}</td>
+                                        <td></td>
+                                    </tr>
+                                ))}
                                 <tr>
                                     <td colSpan={2} className="p-2 font-bold">Gross Salary</td>
                                     <td></td>
@@ -2504,6 +2546,14 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                                     <td className="p-2 text-center font-bold">{(payslip.annaulbonus ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                     <td></td>
                                 </tr>
+                                {customTaxRef.map((cc) => (
+                                    <tr key={`gen-cr-${cc.id}`} className="italic">
+                                        <td colSpan={2} className="p-2">{cc.display_label}</td>
+                                        <td className="p-2 text-center text-xs">(Reference)</td>
+                                        <td className="p-2 text-center">{payslip[cc.column_name] != null ? (isNaN(Number(payslip[cc.column_name])) ? payslip[cc.column_name] : Number(payslip[cc.column_name]).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '0.00'}</td>
+                                        <td></td>
+                                    </tr>
+                                ))}
                                 <tr>
                                     <td colSpan={2} className="p-2">SSNIT</td>
                                     <td></td>
@@ -2556,6 +2606,14 @@ export default function Index({ clientSlug, client, payslip, month, formattedMon
                                     <td></td>
                                     <td className="p-2 text-center">{(payslip.annaultax ?? 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                 </tr>
+                                {customDeductions.map((cc) => (
+                                    <tr key={`gen-cd-${cc.id}`}>
+                                        <td colSpan={2} className="p-2">{cc.display_label}</td>
+                                        <td></td>
+                                        <td></td>
+                                        <td className="p-2 text-center">{payslip[cc.column_name] != null ? (isNaN(Number(payslip[cc.column_name])) ? payslip[cc.column_name] : Number(payslip[cc.column_name]).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : '0.00'}</td>
+                                    </tr>
+                                ))}
                                 <tr>
                                     <td colSpan={3} className="p-2 total">Total</td>
                                     <td className="p-2 text-center total">{((payslip.grosspay ?? 0) + (payslip.annaulbonus ?? 0)).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

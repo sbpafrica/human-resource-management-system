@@ -263,7 +263,7 @@ class OlamfoodPayController extends Controller
                 'VAT 15%', 'SSF 13%', 'Cost to OFI', 'SSNIT EE 5.5%', 'PETRA',
                 'Taxable Income', 'PAYE', 'Total Deduction', 'Net Pay',
             ];
-            $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray($headers, null, 'A1');
 
             $row = 2;
             foreach ($records as $r) {
@@ -328,6 +328,8 @@ class OlamfoodPayController extends Controller
             'Taxable Income', 'PAYE', 'Total Deduction', 'Net Pay',
         ];
 
+        $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'olamfood');
         $sheet->fromArray($headers, null, 'A1');
         $sheet->getStyle('A1:P1')->getFont()->setBold(true);
 
@@ -345,9 +347,18 @@ class OlamfoodPayController extends Controller
 
         $writer   = new Xlsx($spreadsheet);
         $filename = 'olamfood_payroll_template_' . date('M-Y') . '.xlsx';
-        $tempFile = tempnam(sys_get_temp_dir(), $filename);
-        $writer->save($tempFile);
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 
-        return response()->download($tempFile, $filename)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($writer) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Cache-Control'       => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma'              => 'public',
+        ]);
     }
 }

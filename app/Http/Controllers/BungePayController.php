@@ -178,7 +178,7 @@ class BungePayController extends Controller
             $sheet = $spreadsheet->getActiveSheet();
 
             $headers = ['Staff ID', 'Employee Name', 'Shop/Location', 'Bank Name', 'Account No.', 'Branch Code', 'Branch', 'Take Home Pay (GHC)'];
-            $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray($headers, null, 'A1');
 
             $row = 2;
             foreach ($records as $r) {
@@ -449,16 +449,27 @@ class BungePayController extends Controller
     'BANK','ACCOUNT NUMBER','BRANCH','SSNIT','GH CARD NUMBER'
 ];
 
-$sheet->fromArray($headers, null, 'A1');
+$nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'bungegh');
+        $sheet->fromArray($headers, null, 'A1');
 $sheet->getStyle('A1:AB1')->getFont()->setBold(true);  // 28 columns = A to AB
 
 
 
  $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
  $fileName = 'bunge_template.xlsx';
- $tempFile = tempnam(sys_get_temp_dir(), $fileName);
- $writer->save($tempFile);
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 
- return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($writer) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Cache-Control'       => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma'              => 'public',
+        ]);
  }
 }

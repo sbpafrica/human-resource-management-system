@@ -231,6 +231,12 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
                     }
                 }
 
+                // Merge any custom columns present in uploaded row
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $uploadedHeaders, $client_dbname);
+                if (!empty($customVals)) {
+                    $record = array_merge($record, $customVals);
+                }
+
                 if (empty($staffId)) {
                     $errors[] = "Row {$rowNumber}: Staff ID missing";
                     continue;
@@ -321,6 +327,9 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
         $exampleRow[1] = 'John Doe';
         $exampleRow[array_key_last($exampleRow)] = '5000.00';
 
+        // Augment with dynamic custom columns!
+        \App\Models\PayrollColumn::augmentTemplate($headers, $exampleRow, $client_dbname);
+
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->fromArray($headers, null, 'A1');
@@ -339,10 +348,19 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
 
         $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
         $fileName = "{$client->short_name}_Payroll_Template_" . now()->format('M_Y') . ".xlsx";
-        $tempFile = tempnam(sys_get_temp_dir(), $fileName);
-        $writer->save($tempFile);
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 
-        return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($writer) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Cache-Control'       => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma'              => 'public',
+        ]);
     }
     // ==================== ALL HEADER FUNCTIONS (IN CORRECT ORDER) ====================
 

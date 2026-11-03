@@ -451,6 +451,8 @@ class DriverPayController extends Controller
             'Total Wages', 'Service Charge'
         ];
 
+        $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'driverssnit');
         $sheet->fromArray($headers, null, 'A1');
         $sheet->getStyle('A1:Z1')->getFont()->setBold(true);
 
@@ -466,10 +468,19 @@ class DriverPayController extends Controller
 
         $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
         $fileName = 'Melcom_Drivers_Payroll_Template_' . date('M-Y') . '.xlsx';
-        $tempFile = tempnam(sys_get_temp_dir(), $fileName);
-        $writer->save($tempFile);
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 
-        return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($writer) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Cache-Control'       => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma'              => 'public',
+        ]);
     }
 
 
@@ -547,6 +558,8 @@ public function export(Request $request)
             'Staff ID', 'Name', 'Department', 'Report To', 'SSNIT No.',
             'Bank Name', 'Account No.', 'Branch Code', 'Branch', 'Net Pay'
         ];
+        $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'driverssnit');
         $sheet->fromArray($headers, null, 'A1');
 
         $row = 2;

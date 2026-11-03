@@ -347,7 +347,7 @@ class GmoneyPayController extends Controller
                 'Branch / Wallet Name',
                 'Take Home Pay (GHC)',
             ];
-            $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray($headers, null, 'A1');
 
             $sheet->getStyle('A1:I1')->getFont()->setBold(true)->setSize(11)->setName('Calibri');
             $sheet->getStyle('A1:I1')->getFill()
@@ -452,6 +452,8 @@ class GmoneyPayController extends Controller
             'gh_card_number',
         ];
 
+        $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'gmoney');
         $sheet->fromArray($headers, null, 'A1');
         $sheet->getStyle('A1:AG1')->getFont()->setBold(true);
         $sheet->getStyle('A1:AG1')->getFill()
@@ -481,9 +483,18 @@ class GmoneyPayController extends Controller
 
         $writer   = new Xlsx($spreadsheet);
         $filename = 'gmoney_payroll_template_' . date('M-Y') . '.xlsx';
-        $tempFile = tempnam(sys_get_temp_dir(), $filename);
-        $writer->save($tempFile);
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 
-        return response()->download($tempFile, $filename)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($writer) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Cache-Control'       => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma'              => 'public',
+        ]);
     }
 }

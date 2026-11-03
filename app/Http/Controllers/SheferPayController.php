@@ -52,21 +52,40 @@ class SheferPayController extends Controller
             ]);
         }
 
+        // 1. Ensure table schema has expected columns and any registered custom columns
+        Sheferpay::createTableIfNotExists($tableName);
+
         $nameExpr = 'COALESCE(NULLIF(TRIM(bd.name), ""), tp.name1)';
         $shopExpr = 'COALESCE(NULLIF(TRIM(bd.shop), ""), tp.department)';
 
+        // 2. Safe check for columns so no query ever throws 1054 Unknown column
+        $hasEmolument  = Schema::hasColumn($tableName, 'total_cash_emolument');
+        $hasAssessable = Schema::hasColumn($tableName, 'total_assessable_income');
+
+        $selectFields = [
+            'tp.staff_id',
+            DB::raw("{$nameExpr} as name"),
+            DB::raw("{$shopExpr} as shop"),
+            'bd.bank', 'bd.account', 'bd.code', 'bd.branch',
+            'tp.net_pay',
+            $hasEmolument ? 'tp.total_cash_emolument' : DB::raw('NULL as total_cash_emolument'),
+            $hasAssessable ? 'tp.total_assessable_income' : DB::raw('NULL as total_assessable_income'),
+        ];
+
+        // 3. Include any registered custom payroll columns that exist in this table
+        if (class_exists(\App\Models\PayrollColumn::class)) {
+            $customCols = \App\Models\PayrollColumn::getColumnsForClient('shefer');
+            $tableCols  = Schema::getColumnListing($tableName);
+            foreach ($customCols as $cc) {
+                if (in_array($cc->column_name, $tableCols) && !in_array($cc->column_name, ['total_cash_emolument', 'total_assessable_income', 'staff_id', 'net_pay'])) {
+                    $selectFields[] = "tp.{$cc->column_name}";
+                }
+            }
+        }
+
         $query = DB::table($tableName . ' as tp')
             ->leftJoin('bankdetails as bd', 'tp.staff_id', '=', 'bd.employid')
-            ->select(
-                'tp.staff_id',
-                DB::raw("{$nameExpr} as name"),
-                DB::raw("{$shopExpr} as shop"),
-                'bd.bank', 'bd.account', 'bd.code', 'bd.branch',
-                'tp.net_pay',
-                // Expose the 2 new columns to the frontend as well
-                'tp.total_cash_emolument',
-                'tp.total_assessable_income'
-            );
+            ->select($selectFields);
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search, $nameExpr, $shopExpr) {
@@ -250,15 +269,13 @@ class SheferPayController extends Controller
             }
 
             // Primary = header content; fallback = column count
-            if ($hasClockInId || $hasTotalAssessable || $columnCount >= 52) {
+            if ($hasClockInId || ($columnCount >= 56 && in_array('full name', $normalizedHeaders))) {
                 $mapper = 'mapShefer58ColumnRow';      // SHEFER official file
-            } elseif ($hasTotalCashEmolument || $columnCount === 51) {
-                $mapper = 'mapTemplate51ColumnRow';    // new template with 2 new cols
-            } elseif ($columnCount >= 49) {
-                $mapper = 'mapLegacy49ColumnRow';      // old template
+            } elseif ($hasTotalCashEmolument || $hasTotalAssessable || $columnCount >= 49) {
+                $mapper = 'mapTemplate51ColumnRow';    // Template format (supports custom columns)
             } else {
                 return redirect()->route('sheferpay.index', ['month' => $selectedMonth])
-                    ->with('error', "Unrecognized file format: {$columnCount} columns detected. Expected 49, 51 or 58 columns.");
+                    ->with('error', "Unrecognized file format: {$columnCount} columns detected. Expected at least 49 columns.");
             }
 
             $existingStaffIds = DB::table($tableName)->pluck('staff_id')->toArray();
@@ -272,6 +289,12 @@ class SheferPayController extends Controller
                 }
 
                 $record = $this->{$mapper}($row);
+
+                // Dynamically merge any registered custom columns from the uploaded header row
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'shefer');
+                if (!empty($customVals)) {
+                    $record = array_merge($record, $customVals);
+                }
 
                 if (empty($record['staff_id'])) {
                     $errors[] = "Row " . ($index + 2) . ": Staff ID is required.";
@@ -585,51 +608,48 @@ class SheferPayController extends Controller
             'Total Deductions', 'Refunds', 'Net Pay',
         ];
 
-        $sheet->fromArray($headers, null, 'A1');
+        // Example row
+        $exampleRow = [
+            'SHF001', 'John Doe', 'Machine Operator', 'Production', '2023-01-15',
+            3500.00, 22, 22, 0.00, 0, 3500.00,
+            0,
+            0, 0, 0.00,
+            0, 0, 0.00,
+            0, 0, 0.00,
+            0.00, 0.00, 0.00,
+            0.00, 0.00,
+            0.00, 0.00,
+            0.00,
+            0.00, 0.00,
+            0.00, 0.00,
+            0.00, 0.00,
+            0.00,
+            3500.00,
+            3500.00,
+            3500.00,
+            455.00,
+            192.50,
+            175.00,
+            3132.50, 420.00, 0.00, 420.00,
+            0.00, 0.00,
+            787.50, 0.00, 2712.50,
+        ];
 
-        // 51 columns → AY is the last column
-        $lastCol = 'AY';
+        // Inject custom columns dynamically into headers & example data!
+        \App\Models\PayrollColumn::augmentTemplate($headers, $exampleRow, 'shefer');
+
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray([$exampleRow], null, 'A2');
+
+        $totalCols = count($headers);
+        $lastCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($totalCols);
         $sheet->getStyle("A1:{$lastCol}1")->getFont()->setBold(true);
         $sheet->getStyle("A1:{$lastCol}1")->getFill()
             ->setFillType(Fill::FILL_SOLID)
             ->getStartColor()->setARGB('BBDDE6');
 
-        $exampleData = [
-            'ST00123', 'Akosua Boateng', 'Team Leader', 'Operations', '2023-01-10',
-            5800.00, 22, 20.5, 200.00, 1.5, 5270.45,
-            8,
-            12.5, 55.00, 687.50,
-            16.0, 110.00, 1760.00,
-            4.0, 165.00, 660.00,
-            500.00, 750.00, 3097.50,
-            400.00, 400.00,
-            300.00, 300.00,
-            600.00,
-            200.00, 200.00, 200.00,
-            400.00, 400.00,
-            500.00, 500.00,
-            3900.00,      // Total Allowance
-            10867.95,     // Gross Salary
-            7770.45,      // Total Cash Emolument (NEW) = Gross − OT
-            10867.95,     // Total Assessable Income (NEW) = Gross
-            1412.83,      // Employer SSNIT 13%
-            597.74,       // Employee SSNIT 5.5%
-            500.00,       // PETRA
-            9270.21,      // Taxable Income
-            1245.80,      // PAYE
-            309.75,       // OT Tax
-            1555.55,      // Total Tax
-            341.00,       // Absent Without Pay
-            500.00,       // Salary Loan
-            2346.55,      // Total Deductions
-            150.00,       // Refunds
-            8270.90,      // Net Pay
-        ];
-
-        $sheet->fromArray($exampleData, null, 'A2');
-
         // Autosize all columns
-        for ($i = 1; $i <= count($headers); $i++) {
+        for ($i = 1; $i <= $totalCols; $i++) {
             $sheet->getColumnDimension(
                 \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i)
             )->setAutoSize(true);
@@ -637,17 +657,25 @@ class SheferPayController extends Controller
 
         // Instruction note
         $sheet->setCellValue(
-            'A' . ($sheet->getHighestRow() + 3),
+            'A4',
             'INSTRUCTIONS: Fill only the required fields. All amounts in GHS. '
             . 'Do NOT add commas, GH¢ or currency symbols to number columns. '
             . 'Dates: DD/MM/YYYY or MM/DD/YYYY. Do NOT edit the header row.'
         );
 
-        $writer   = IOFactory::createWriter($spreadsheet, 'Xlsx');
+        $writer   = new Xlsx($spreadsheet);
         $fileName = 'Shefer_Payroll_Template_' . date('M-Y') . '.xlsx';
-        $tempFile = tempnam(sys_get_temp_dir(), $fileName);
-        $writer->save($tempFile);
 
-        return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($writer) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Cache-Control'       => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma'              => 'public',
+        ]);
     }
 }

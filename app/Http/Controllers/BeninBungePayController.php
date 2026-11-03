@@ -532,6 +532,9 @@ class BeninBungePayController extends Controller
 
         $totalCols = count($headers);
 
+        $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'beninbunge');
+
         foreach ($headers as $i => $header) {
             $sheet->setCellValue(Coordinate::stringFromColumnIndex($i + 1) . "1", $header);
         }
@@ -591,7 +594,8 @@ class BeninBungePayController extends Controller
             $sheet->setTitle('Benin Bunge Payroll');
 
             $headers = ['Staff ID', 'Names', 'Net A Payer'];
-            foreach ($headers as $i => $header) {
+
+        foreach ($headers as $i => $header) {
                 $sheet->setCellValue(Coordinate::stringFromColumnIndex($i + 1) . "1", $header);
             }
 

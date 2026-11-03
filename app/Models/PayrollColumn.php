@@ -86,8 +86,14 @@ class PayrollColumn extends Model
             DB::statement("ALTER TABLE `{$tableName}` ADD COLUMN `{$col->column_name}` {$typeSql} NULL DEFAULT NULL{$afterSql}");
             return true;
         } catch (\Throwable $e) {
-            Log::error("Failed adding column {$col->column_name} to table {$tableName}: " . $e->getMessage());
-            return false;
+            // If AFTER clause failed or any positional error occurred, try adding at the end
+            try {
+                DB::statement("ALTER TABLE `{$tableName}` ADD COLUMN `{$col->column_name}` {$typeSql} NULL DEFAULT NULL");
+                return true;
+            } catch (\Throwable $e2) {
+                Log::error("Failed adding column {$col->column_name} to table {$tableName}: " . $e2->getMessage());
+                return false;
+            }
         }
     }
 
@@ -174,8 +180,16 @@ class PayrollColumn extends Model
      */
     public static function applyToAllClientTables(PayrollColumn $col): int
     {
-        $dbName = config('database.connections.mysql.database', env('DB_DATABASE', 'sbpafricahr'));
         $prefix = strtolower(trim($col->client_dbname));
+
+        $excludeClause = "
+            AND TABLE_NAME NOT LIKE '%_sign'
+            AND TABLE_NAME NOT LIKE '%_contracts%'
+            AND TABLE_NAME NOT LIKE '%attendance%'
+            AND TABLE_NAME NOT LIKE '%sms%'
+            AND TABLE_NAME NOT LIKE '%data'
+            AND TABLE_NAME NOT LIKE '%con'
+        ";
 
         // If 'all', apply across ALL monthly payroll tables in the entire database!
         if ($prefix === 'all') {
@@ -190,11 +204,9 @@ class PayrollColumn extends Model
             $tables = DB::select("
                 SELECT TABLE_NAME 
                 FROM INFORMATION_SCHEMA.TABLES 
-                WHERE TABLE_SCHEMA = ?
-                  AND TABLE_NAME NOT LIKE '%_sign'
-                  AND TABLE_NAME NOT LIKE '%_contracts%'
-                  AND TABLE_NAME NOT LIKE '%attendance%'
-            ", [$dbName]);
+                WHERE TABLE_SCHEMA = DATABASE()
+                  {$excludeClause}
+            ");
 
             $appliedCount = 0;
             foreach ($tables as $t) {
@@ -211,7 +223,7 @@ class PayrollColumn extends Model
         // Find all matching tables for this client and its aliases
         $prefixes = self::getTablePrefixesForClient($prefix);
         $likeClauses = [];
-        $bindings = [$dbName];
+        $bindings = [];
 
         foreach ($prefixes as $p) {
             $likeClauses[] = "TABLE_NAME = ? OR TABLE_NAME LIKE ?";
@@ -224,16 +236,37 @@ class PayrollColumn extends Model
         $tables = DB::select("
             SELECT TABLE_NAME 
             FROM INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_SCHEMA = ? 
+            WHERE TABLE_SCHEMA = DATABASE() 
               AND ({$whereLikes})
-              AND TABLE_NAME NOT LIKE '%_sign'
-              AND TABLE_NAME NOT LIKE '%_contracts%'
-              AND TABLE_NAME NOT LIKE '%attendance%'
+              {$excludeClause}
         ", $bindings);
 
         $appliedCount = 0;
         foreach ($tables as $t) {
             $tableName = $t->TABLE_NAME;
+
+            // If Shefer, ensure base columns exist too
+            if (str_starts_with(strtolower($tableName), 'shefer')) {
+                if (!Schema::hasColumn($tableName, 'total_cash_emolument')) {
+                    try {
+                        DB::statement("ALTER TABLE `{$tableName}` ADD COLUMN `total_cash_emolument` DECIMAL(15,2) NULL DEFAULT NULL AFTER `gross`");
+                    } catch (\Throwable $e) {
+                        try {
+                            DB::statement("ALTER TABLE `{$tableName}` ADD COLUMN `total_cash_emolument` DECIMAL(15,2) NULL DEFAULT NULL");
+                        } catch (\Throwable $e2) {}
+                    }
+                }
+                if (!Schema::hasColumn($tableName, 'total_assessable_income')) {
+                    try {
+                        DB::statement("ALTER TABLE `{$tableName}` ADD COLUMN `total_assessable_income` DECIMAL(15,2) NULL DEFAULT NULL AFTER `total_cash_emolument`");
+                    } catch (\Throwable $e) {
+                        try {
+                            DB::statement("ALTER TABLE `{$tableName}` ADD COLUMN `total_assessable_income` DECIMAL(15,2) NULL DEFAULT NULL");
+                        } catch (\Throwable $e2) {}
+                    }
+                }
+            }
+
             if (self::addColumnToTable($tableName, $col)) {
                 $appliedCount++;
             }
@@ -259,5 +292,125 @@ class PayrollColumn extends Model
             'boolean', 'bool'        => 'TINYINT(1)',
             default                  => str_starts_with($type, 'decimal') ? strtoupper($type) : 'VARCHAR(255)',
         };
+    }
+
+    /**
+     * Dynamically inject registered custom columns into template headers & example data.
+     */
+    public static function augmentTemplate(array &$headers, ?array &$exampleRow, string $clientDb): void
+    {
+        $customCols = static::getColumnsForClient($clientDb);
+        if ($customCols->isEmpty()) {
+            return;
+        }
+
+        $normalize = fn($s) => strtolower(preg_replace('/[^a-zA-Z0-9]/', '', (string)$s));
+
+        foreach ($customCols as $col) {
+            $cleanLabel = $normalize($col->display_label);
+            $cleanCol   = $normalize($col->column_name);
+
+            // Skip if column already present in headers
+            $exists = false;
+            foreach ($headers as $h) {
+                $ch = $normalize($h);
+                if ($ch === $cleanLabel || $ch === $cleanCol) {
+                    $exists = true;
+                    break;
+                }
+            }
+            if ($exists) {
+                continue;
+            }
+
+            // Determine insert position if position_after is set
+            $insertIdx = null;
+            if (!empty($col->position_after)) {
+                $cleanPos = $normalize($col->position_after);
+                foreach ($headers as $idx => $h) {
+                    $ch = $normalize($h);
+                    if ($ch === $cleanPos || str_contains($ch, $cleanPos)) {
+                        $insertIdx = $idx + 1;
+                        break;
+                    }
+                }
+            }
+
+            $sampleVal = match(strtolower($col->data_type)) {
+                'int', 'integer' => 0,
+                'text', 'varchar', 'string' => 'Sample',
+                'date' => date('Y-m-d'),
+                default => 0.00,
+            };
+
+            if ($insertIdx !== null) {
+                array_splice($headers, $insertIdx, 0, [$col->display_label]);
+                if ($exampleRow !== null) {
+                    array_splice($exampleRow, $insertIdx, 0, [$sampleVal]);
+                }
+            } else {
+                $headers[] = $col->display_label;
+                if ($exampleRow !== null) {
+                    $exampleRow[] = $sampleVal;
+                }
+            }
+        }
+    }
+
+    /**
+     * Map excel headers to database column names for custom columns.
+     */
+    public static function getCustomHeaderToDbMap(string $clientDb): array
+    {
+        $customCols = static::getColumnsForClient($clientDb);
+        $map = [];
+        foreach ($customCols as $col) {
+            $map[$col->display_label] = $col->column_name;
+            $map[$col->column_name]   = $col->column_name;
+        }
+        return $map;
+    }
+
+    /**
+     * Helper to extract custom column values from an excel row given header row.
+     */
+    public static function extractCustomColumnValues(array $row, array $headerRow, string $clientDb): array
+    {
+        $customCols = static::getColumnsForClient($clientDb);
+        if ($customCols->isEmpty()) {
+            return [];
+        }
+
+        $normalize = fn($s) => strtolower(preg_replace('/[^a-zA-Z0-9]/', '', (string)$s));
+
+        // Index the header row by normalized name
+        $headerIndices = [];
+        foreach ($headerRow as $idx => $h) {
+            $norm = $normalize($h);
+            if ($norm !== '') {
+                $headerIndices[$norm] = $idx;
+            }
+        }
+
+        $extracted = [];
+        foreach ($customCols as $col) {
+            $cleanLabel = $normalize($col->display_label);
+            $cleanCol   = $normalize($col->column_name);
+
+            $targetIdx = $headerIndices[$cleanLabel] ?? ($headerIndices[$cleanCol] ?? null);
+            if ($targetIdx !== null && array_key_exists($targetIdx, $row)) {
+                $rawVal = $row[$targetIdx];
+                if (is_numeric($rawVal)) {
+                    $extracted[$col->column_name] = (float)$rawVal;
+                } elseif ($rawVal === null || trim((string)$rawVal) === '' || trim((string)$rawVal) === '-') {
+                    $extracted[$col->column_name] = null;
+                } else {
+                    $cleaned = preg_replace('/[^\d.-]/', '', str_replace(',', '', trim((string)$rawVal)));
+                    $extracted[$col->column_name] = is_numeric($cleaned) ? (float)$cleaned : trim((string)$rawVal);
+                }
+            }
+        }
+
+        return $extracted;
     }
 }

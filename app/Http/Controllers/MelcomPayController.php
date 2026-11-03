@@ -596,7 +596,9 @@ public function export(Request $request)
         'Bank Transfer'       // banktransfer → Net Pay
     ];
 
-    $sheet->fromArray($headers, null, 'A1');
+    $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'melcom');
+        $sheet->fromArray($headers, null, 'A1');
 
     // Make headers bold
     $sheet->getStyle('A1:' . $sheet->getHighestColumn() . '1')
@@ -656,9 +658,18 @@ public function export(Request $request)
 
     $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
     $fileName = 'Payroll_Upload_Template_' . date('M-Y') . '.xlsx';
-    $tempFile = tempnam(sys_get_temp_dir(), $fileName);
-    $writer->save($tempFile);
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 
-    return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($writer) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            $writer->save('php://output');
+        }, $fileName, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Cache-Control'       => 'max-age=0, no-cache, no-store, must-revalidate',
+            'Pragma'              => 'public',
+        ]);
 }
 }

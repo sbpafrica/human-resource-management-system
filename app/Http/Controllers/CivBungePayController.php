@@ -662,6 +662,9 @@ class CivBungePayController extends Controller
         $totalCols = count($headers);
 
         // Write headers using column index (safe beyond Z)
+        $nullRow = null;
+        \App\Models\PayrollColumn::augmentTemplate($headers, $nullRow, 'civ');
+
         foreach ($headers as $i => $header) {
             $sheet->setCellValue(Coordinate::stringFromColumnIndex($i + 1) . "1", $header);
         }
@@ -724,7 +727,8 @@ class CivBungePayController extends Controller
             $sheet->setTitle('CIV Bunge Payroll');
 
             $headers = ['ID', 'Full Name', 'Net Pay'];
-            foreach ($headers as $i => $header) {
+
+        foreach ($headers as $i => $header) {
                 $sheet->setCellValue(Coordinate::stringFromColumnIndex($i + 1) . "1", $header);
             }
 
