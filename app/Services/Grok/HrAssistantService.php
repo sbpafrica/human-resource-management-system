@@ -144,6 +144,23 @@ PROMPT;
                     ],
                 ],
             ],
+            [
+                'type'     => 'function',
+                'function' => [
+                    'name'        => 'lookup_payroll_columns',
+                    'description' => 'Look up custom payroll columns added via the Column Adder for a client or globally. Shows column names, display labels, data types, and whether they appear on the payslips.',
+                    'parameters'  => [
+                        'type'       => 'object',
+                        'properties' => [
+                            'client' => [
+                                'type'        => 'string',
+                                'description' => 'Client name or client dbname (e.g. shefer, honda, melcom, ofibwh, or all)',
+                            ],
+                        ],
+                        'required'   => ['client'],
+                    ],
+                ],
+            ],
         ];
     }
 
@@ -382,6 +399,32 @@ PROMPT;
                     'account'      => $bank->account ? ('****' . substr($bank->account, -4)) : null,
                     'branch'       => $bank->branch,
                     'momo_number'  => $bank->momonum ? ('****' . substr($bank->momonum, -4)) : null,
+                ];
+
+            case 'lookup_payroll_columns':
+                $clientInput = strtolower(trim($args['client'] ?? 'all'));
+                $columns = \App\Models\PayrollColumn::getColumnsForClient($clientInput);
+
+                if ($columns->isEmpty()) {
+                    return [
+                        'status'  => 'not_found',
+                        'client'  => $clientInput,
+                        'message' => "No custom payroll columns currently registered for '{$clientInput}'.",
+                    ];
+                }
+
+                return [
+                    'status'  => 'found',
+                    'client'  => $clientInput,
+                    'count'   => $columns->count(),
+                    'columns' => $columns->map(fn ($c) => [
+                        'column_name'     => $c->column_name,
+                        'display_label'   => $c->display_label,
+                        'data_type'       => $c->data_type,
+                        'position_after'  => $c->position_after,
+                        'show_in_payslip' => (bool) $c->show_in_payslip,
+                        'payslip_section' => $c->payslip_section,
+                    ])->toArray(),
                 ];
 
             default:
