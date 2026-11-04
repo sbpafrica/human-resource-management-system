@@ -54,22 +54,27 @@ class PayrollColumnController extends Controller
         $clients = collect([$allOption])->concat($dbClients);
 
         $selectedClient = $request->input('client', 'all');
+        $showAll = $request->boolean('show_all', false);
 
         $columns = PayrollColumn::where('client_dbname', $selectedClient)
             ->where('is_custom', true)
             ->orderBy('id', 'asc')
             ->get();
 
-        $standardColumns = PayrollColumn::getStandardColumnsWithOverrides($selectedClient);
+        $standardColumns = PayrollColumn::getStandardColumnsWithOverrides($selectedClient, !$showAll);
         $existingColumns = $this->getClientTableColumns($selectedClient);
+        $totalCanonicalCount = count(PayrollColumn::getCanonicalStandardColumns());
 
         return Inertia::render('Admin/PayrollColumns/Index', [
-            'clients'         => $clients,
-            'selectedClient'  => $selectedClient,
-            'columns'         => $columns,
-            'standardColumns' => $standardColumns,
-            'existingColumns' => $existingColumns,
-            'flash'           => [
+            'clients'            => $clients,
+            'selectedClient'     => $selectedClient,
+            'columns'            => $columns,
+            'standardColumns'    => $standardColumns,
+            'existingColumns'    => $existingColumns,
+            'isTailored'         => ($selectedClient !== 'all' && !$showAll),
+            'showAll'            => $showAll,
+            'totalSystemColumns' => $totalCanonicalCount,
+            'flash'              => [
                 'success' => session('success'),
                 'error'   => session('error'),
             ],
@@ -242,14 +247,14 @@ class PayrollColumnController extends Controller
         $colName = strtolower(trim($validated['column_name']));
 
         // Enforce user requirement: "no changing of id"
-        if (in_array($colName, ['staff_id', 'staffid', 'id', 'employid'], true)) {
+        if (in_array($colName, ['staff_id', 'staffid', 'staffida', 'employ', 'id', 'employid'], true)) {
             return redirect()->back()->with('error', 'Staff ID is a protected core identifier and cannot be renamed.');
         }
 
         $canonical = PayrollColumn::getCanonicalStandardColumns();
-        if (!isset($canonical[$colName])) {
-            return redirect()->back()->with('error', "Unrecognized standard column: '{$colName}'.");
-        }
+        $defaultDef = $canonical[$colName] ?? null;
+        $defaultLabel = $defaultDef['display_label'] ?? ucwords(str_replace('_', ' ', $colName));
+        $dataType = $defaultDef['data_type'] ?? 'varchar(100)';
 
         $client = Client::where('client_dbname', $validated['client_dbname'])->first();
 
@@ -258,8 +263,8 @@ class PayrollColumnController extends Controller
             ->first();
 
         $aliasesArray = array_filter(array_map('trim', preg_split('/[,;|\n\r]+/', (string)($validated['header_aliases'] ?? ''))));
-        if (!in_array($canonical[$colName]['display_label'], $aliasesArray, true)) {
-            $aliasesArray[] = $canonical[$colName]['display_label'];
+        if (!in_array($defaultLabel, $aliasesArray, true)) {
+            $aliasesArray[] = $defaultLabel;
         }
         if (!in_array($colName, $aliasesArray, true)) {
             $aliasesArray[] = $colName;
@@ -280,7 +285,7 @@ class PayrollColumnController extends Controller
                 'column_name'     => $colName,
                 'display_label'   => trim($validated['display_label']),
                 'header_aliases'  => implode(', ', array_unique($aliasesArray)),
-                'data_type'       => $canonical[$colName]['data_type'],
+                'data_type'       => $dataType,
                 'position_after'  => null,
                 'show_in_payslip' => $request->boolean('show_in_payslip', true),
                 'payslip_section' => $validated['payslip_section'],

@@ -83,6 +83,7 @@ interface StandardColumnItem {
   payslip_section: 'earnings' | 'deductions' | 'tax_reference' | 'info';
   description: string;
   has_override: boolean;
+  locked?: boolean;
 }
 
 interface Props {
@@ -91,6 +92,9 @@ interface Props {
   columns: PayrollColumnItem[];
   standardColumns?: StandardColumnItem[];
   existingColumns: string[];
+  isTailored?: boolean;
+  showAll?: boolean;
+  totalSystemColumns?: number;
   flash?: {
     success?: string;
     error?: string;
@@ -103,6 +107,9 @@ export default function PayrollColumnsIndex({
   columns,
   standardColumns = [],
   existingColumns,
+  isTailored = false,
+  showAll = false,
+  totalSystemColumns = 410,
   flash,
 }: Props) {
   // Navigation Tab State
@@ -675,7 +682,7 @@ export default function PayrollColumnsIndex({
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Base payroll columns (Basic, PAYE, SSNIT, Net Pay, etc.)
+                {isTailored ? `Tailored for ${currentClientObj?.short_name || 'selected client'}` : 'Base system columns (All Clients)'}
               </p>
             </CardContent>
           </Card>
@@ -973,16 +980,66 @@ export default function PayrollColumnsIndex({
             {/* Standard Columns Table */}
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <CardTitle className="text-lg">Standard Base Columns Directory</CardTitle>
-                    <CardDescription>
-                      Showing {filteredStandardColumns.length} of {standardColumns.length} standard base columns for{' '}
-                      <span className="font-semibold text-blue-600">
-                        {selectedClient === 'all' ? 'All Clients (Global Scope)' : (currentClientObj?.client_name || selectedClient)}
-                      </span>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      Standard Base Columns Directory
+                      {isTailored && (
+                        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-xs font-medium">
+                          Tailored to {currentClientObj?.short_name || selectedClient}
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      Showing <span className="font-semibold text-gray-900 dark:text-gray-100">{filteredStandardColumns.length}</span> of{' '}
+                      <span className="font-semibold text-gray-900 dark:text-gray-100">{standardColumns.length}</span> standard base columns{' '}
+                      {isTailored ? (
+                        <>
+                          tailored for <span className="font-semibold text-blue-600">{currentClientObj?.client_name || selectedClient}</span>
+                        </>
+                      ) : (
+                        <>(All System Scope)</>
+                      )}
                     </CardDescription>
                   </div>
+
+                  {selectedClient !== 'all' && (
+                    <div className="flex items-center gap-2">
+                      {isTailored ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            router.get(
+                              '/admin/payroll-columns',
+                              { client: selectedClient, show_all: 1 },
+                              { preserveState: true, preserveScroll: true }
+                            );
+                          }}
+                          className="text-xs text-gray-600 hover:text-gray-900"
+                        >
+                          Show All System Columns ({totalSystemColumns || 410})
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            router.get(
+                              '/admin/payroll-columns',
+                              { client: selectedClient },
+                              { preserveState: true, preserveScroll: true }
+                            );
+                          }}
+                          className="text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                        >
+                          Filter to {currentClientObj?.short_name || 'Client'} Columns Only
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </CardHeader>
 
@@ -1002,7 +1059,7 @@ export default function PayrollColumnsIndex({
                     </TableHeader>
                     <TableBody>
                       {filteredStandardColumns.map((col) => {
-                        const isStaffId = col.column_name === 'staff_id';
+                        const isStaffId = Boolean(col.locked) || ['staff_id', 'staffid', 'staffida', 'employ', 'id', 'employid'].includes(col.column_name.toLowerCase());
 
                         return (
                           <TableRow key={col.column_name} className={col.has_override ? 'bg-blue-50/30 dark:bg-blue-950/20' : ''}>
