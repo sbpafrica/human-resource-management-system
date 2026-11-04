@@ -110,7 +110,7 @@
                         <td class="bold3">Deductions</td>
                     </tr>
                     <tr>
-                        <td colspan="2">Basic Salary</td>
+                        <td colspan="2">{{ $columnLabels['basic'] ?? 'Basic Salary' }}</td>
                         <td style="text-align:right;">{{ data_get($payslip, 'workdays', data_get($payslip, 'actualdays', 0)) ?: '-' }}</td>
                         <td style="text-align:center;">{{ number_format((float)data_get($payslip, 'basic_earned', data_get($payslip, 'basic', 0)), 2) }}</td>
                         <td></td>
@@ -189,7 +189,7 @@
 
                     @if((float)data_get($payslip, 'total_cash_emolument', 0) > 0)
                     <tr>
-                        <td colspan="2" class="bold">Total Cash Emolument</td>
+                        <td colspan="2" class="bold">{{ $columnLabels['total_cash_emolument'] ?? 'Total Cash Emolument' }}</td>
                         <td></td>
                         <td style="text-align:center;" class="bold">{{ number_format((float)data_get($payslip, 'total_cash_emolument', 0), 2) }}</td>
                         <td></td>
@@ -197,7 +197,7 @@
                     @endif
                     @if((float)data_get($payslip, 'total_assessable_income', 0) > 0)
                     <tr>
-                        <td colspan="2" class="bold">Total Assessable Income</td>
+                        <td colspan="2" class="bold">{{ $columnLabels['total_assessable_income'] ?? 'Total Assessable Income' }}</td>
                         <td></td>
                         <td style="text-align:center;" class="bold">{{ number_format((float)data_get($payslip, 'total_assessable_income', 0), 2) }}</td>
                         <td></td>
@@ -221,14 +221,14 @@
                         @endforeach
                     @endif
                     <tr>
-                        <td colspan="2" class="bold">Gross Salary</td>
+                        <td colspan="2" class="bold">{{ $columnLabels['gross'] ?? 'Gross Salary' }}</td>
                         <td></td>
                         <td style="text-align:center;" class="bold">{{ number_format((float)data_get($payslip, 'grosspay', data_get($payslip, 'gross', 0)), 2) }}</td>
                         <td></td>
                     </tr>
                     @if((float)data_get($payslip, 'ssnitee', 0) > 0)
                     <tr>
-                        <td colspan="2">SSNIT</td>
+                        <td colspan="2">{{ $columnLabels['ssnit_5_5_percent'] ?? 'SSNIT' }}</td>
                         <td></td>
                         <td></td>
                         <td style="text-align:center;">{{ number_format((float)data_get($payslip, 'ssnitee', 0), 2) }}</td>
@@ -236,7 +236,7 @@
                     @endif
                     @if((float)data_get($payslip, 'petra', data_get($payslip, 'petrafund', 0)) > 0)
                     <tr>
-                        <td colspan="2">Petra</td>
+                        <td colspan="2">{{ $columnLabels['petra'] ?? 'Petra' }}</td>
                         <td></td>
                         <td></td>
                         <td style="text-align:center;">{{ number_format((float)data_get($payslip, 'petra', data_get($payslip, 'petrafund', 0)), 2) }}</td>
@@ -252,7 +252,7 @@
                     @endif
                     @if((float)data_get($payslip, 'paye', 0) > 0)
                     <tr>
-                        <td colspan="2">Normal Tax (PAYE)</td>
+                        <td colspan="2">{{ $columnLabels['paye'] ?? 'Normal Tax (PAYE)' }}</td>
                         <td></td>
                         <td></td>
                         <td style="text-align:center;">{{ number_format((float)data_get($payslip, 'paye', 0), 2) }}</td>
@@ -307,7 +307,7 @@
                         <td></td>
                         <td></td>
                         <td></td>
-                        <td colspan="2">NET PAY</td>
+                        <td colspan="2">{{ strtoupper($columnLabels['net_pay'] ?? 'NET PAY') }}</td>
                     </tr>
                     <tr>
                         <td></td>

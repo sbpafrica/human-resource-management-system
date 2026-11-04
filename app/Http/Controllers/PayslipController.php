@@ -1926,6 +1926,7 @@ class PayslipController extends Controller
             'formattedMonth' => $formattedMonth,
             'employees'      => $employees,
             'customColumns'  => \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? ''),
+            'columnLabels'   => \App\Models\PayrollColumn::getColumnLabelsMap($client->client_dbname ?? ''),
         ]);
     }
 
@@ -1983,7 +1984,8 @@ class PayslipController extends Controller
 
             $view = $this->resolvePayslipView($client);
             $customColumns = \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? '');
-            $customColumns = \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? '');
+            $columnLabels  = \App\Models\PayrollColumn::getColumnLabelsMap($client->client_dbname ?? '');
+            $columnLabels  = \App\Models\PayrollColumn::getColumnLabelsMap($client->client_dbname ?? '');
 
             $pdf = Pdf::loadView($view, [
                 'payslip'        => $payslip,
@@ -1991,6 +1993,7 @@ class PayslipController extends Controller
                 'ssnit'          => $ssnit,
                 'bank'           => $bankData,
                 'customColumns'  => $customColumns,
+                'columnLabels'   => $columnLabels,
             ]);
 
             $safeStaffId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) $staffId);
@@ -2050,6 +2053,7 @@ class PayslipController extends Controller
 
             $view = $this->resolvePayslipView($client);
             $customColumns = \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? '');
+            $columnLabels  = \App\Models\PayrollColumn::getColumnLabelsMap($client->client_dbname ?? '');
 
             $payslips = $this->getPayslipQuery($tableName, $staffIdField)
                 ->whereIn("b.{$staffIdField}", $staffIds)
@@ -2114,6 +2118,8 @@ class PayslipController extends Controller
                         'ssnit'          => $ssnits->get($id) ?? '-',
                         'bank'           => $bankData,
                         'customColumns'  => $customColumns,
+                        'columnLabels'   => $columnLabels,
+                        'columnLabels'   => $columnLabels,
                     ]);
 
                     $pdfContent = $pdf->output();
@@ -2375,6 +2381,7 @@ class PayslipController extends Controller
                 [$staffIdField] = $this->detectColumns($tableName, $client);
                 $view           = $this->resolvePayslipView($client);
                 $customColumns  = \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? '');
+                $columnLabels   = \App\Models\PayrollColumn::getColumnLabelsMap($client->client_dbname ?? '');
 
                 if (empty($staffIds) || $request->boolean('all')) {
                     $staffIds = DB::table($tableName)->pluck($staffIdField)->toArray();
@@ -2434,6 +2441,8 @@ class PayslipController extends Controller
                             'logoData'       => $cachedLogoData,
                             'client'         => $client,
                             'customColumns'  => $customColumns,
+                        'columnLabels'   => $columnLabels,
+                            'columnLabels'   => $columnLabels,
                         ])->setOptions([
                             'isRemoteEnabled' => false,
                             'isFontSubsettingEnabled' => false,
@@ -2472,6 +2481,8 @@ class PayslipController extends Controller
                                 'logoData'       => $cachedLogoData,
                                 'client'         => $client,
                                 'customColumns'  => $customColumns,
+                        'columnLabels'   => $columnLabels,
+                                'columnLabels'   => $columnLabels,
                             ])->setOptions([
                                 'isRemoteEnabled' => false,
                                 'isFontSubsettingEnabled' => false,
@@ -2547,6 +2558,8 @@ class PayslipController extends Controller
                                 ],
                                 'logoData'       => $cachedLogoData,
                                 'customColumns'  => $customColumns,
+                        'columnLabels'   => $columnLabels,
+                                'columnLabels'   => $columnLabels,
                             ])->setOptions([
                                 'isRemoteEnabled' => false,
                                 'isFontSubsettingEnabled' => false,
@@ -2654,6 +2667,7 @@ class PayslipController extends Controller
             [$staffIdField] = $this->detectColumns($tableName, $client);
             $view           = $this->resolvePayslipView($client);
             $customColumns  = \App\Models\PayrollColumn::getPayslipColumns($client->client_dbname ?? '');
+            $columnLabels   = \App\Models\PayrollColumn::getColumnLabelsMap($client->client_dbname ?? '');
 
             $payslips = $this->getPayslipQuery($tableName, $staffIdField)
                 ->whereIn("b.{$staffIdField}", $staffIds)
@@ -2700,6 +2714,7 @@ class PayslipController extends Controller
                             'branch'   => (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') ? data_get($bank, 'branch') : ($payslip->branch ?? '-'),
                         ],
                         'customColumns'  => $customColumns,
+                        'columnLabels'   => $columnLabels,
                     ]);
 
                     $safeId = preg_replace('/[^A-Za-z0-9_-]/', '_', (string) $id);

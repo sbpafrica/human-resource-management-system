@@ -93,7 +93,7 @@
         <td>{{ $payslip->department ?? '-' }}</td>
     </tr>
     <tr>
-        <td class="header">Basic Salary</td>
+        <td class="header">{{ $columnLabels['basic'] ?? 'Basic Salary' }}</td>
         <td>{{ number_format((float)($payslip->basic ?? 0), 2) }}</td>
         <td></td>
         <td class="header">Expected Work Days</td>
@@ -108,67 +108,67 @@
 
     <!-- Earnings -->
     <tr>
-        <td colspan="2">Basic Entitled</td>
+        <td colspan="2">{{ $columnLabels['basic_earned'] ?? 'Basic Entitled' }}</td>
         <td style="text-align: right;">{{ (float)($payslip->no_of_days_worked ?? ($payslip->days_worked ?? 0)) > 0 ? (int)($payslip->no_of_days_worked ?? $payslip->days_worked) : ($payslip->description ?? 0) }}</td>
         <td style="text-align: center;">{{ number_format((float)($payslip->basic_earned ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">Absent Days</td>
+        <td colspan="2">{{ $columnLabels['absent_days'] ?? 'Absent Days' }}</td>
         <td style="text-align: right;">{{ $payslip->absent_days ?? 0 }}</td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->absent_without_pay ?? ($payslip->absent_deduction ?? 0)), 2) }}</td>
     </tr>
     <tr>
-        <td colspan="2">Weekday Overtime</td>
+        <td colspan="2">{{ $columnLabels['weekdayOT_amount'] ?? 'Weekday Overtime' }}</td>
         <td style="text-align: right;">{{ $payslip->weekdayOT_hours ?? ($payslip->weekday_overtime_hours ?? 0) }}</td>
         <td style="text-align: center;">{{ number_format((float)($payslip->weekdayOT_amount ?? ($payslip->weekday_overtime_amount ?? 0)), 2) }}</td>
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">Saturday Overtime</td>
+        <td colspan="2">{{ $columnLabels['weekendOT_amount'] ?? 'Saturday Overtime' }}</td>
         <td style="text-align: right;">{{ $payslip->weekendOT_hours ?? ($payslip->offday_holiday_overtime_hours ?? 0) }}</td>
         <td style="text-align: center;">{{ number_format((float)($payslip->weekendOT_amount ?? ($payslip->offday_holiday_overtime_total ?? 0)), 2) }}</td>
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">Sunday Overtime</td>
+        <td colspan="2">{{ $columnLabels['sunOT_amount'] ?? 'Sunday Overtime' }}</td>
         <td style="text-align: right;">{{ $payslip->sunOT_hours ?? ($payslip->special_day_overtime_hours ?? 0) }}</td>
         <td style="text-align: center;">{{ number_format((float)($payslip->sunOT_amount ?? ($payslip->special_day_overtime_amount ?? 0)), 2) }}</td>
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">Fixed Overtime</td>
+        <td colspan="2">{{ $columnLabels['fixedot'] ?? 'Fixed Overtime' }}</td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->fixedot ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">Food Allowance</td>
+        <td colspan="2">{{ $columnLabels['food'] ?? 'Food Allowance' }}</td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->food ?? ($payslip->food_allowance ?? 0)), 2) }}</td>
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">Airtime Allowance</td>
+        <td colspan="2">{{ $columnLabels['airtime'] ?? 'Airtime Allowance' }}</td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->airtime ?? ($payslip->airtime_allowance ?? 0)), 2) }}</td>
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">Medical Allowance</td>
+        <td colspan="2">{{ $columnLabels['medical'] ?? 'Medical Allowance' }}</td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->medical ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">Responsibility Allowance</td>
+        <td colspan="2">{{ $columnLabels['responseallo'] ?? 'Responsibility Allowance' }}</td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->responseallo ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr>
-        <td colspan="2">Transport Allowance</td>
+        <td colspan="2">{{ $columnLabels['transport'] ?? 'Transport Allowance' }}</td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->transport ?? 0), 2) }}</td>
         <td></td>
@@ -189,21 +189,27 @@
 
     <!-- Gross Salary -->
     <tr>
-        <td colspan="2" class="total">Gross Salary</td>
+        <td colspan="2" class="total">{{ $columnLabels['gross'] ?? 'Gross Salary' }}</td>
         <td></td>
         <td style="text-align: center;" class="total">{{ number_format((float)($payslip->gross ?? 0), 2) }}</td>
         <td></td>
     </tr>
 
-    <!-- NEW: Tax Reference Values (Always shows) -->
+    <!-- Tax Reference Values (Dynamic Display Labels from Custom Columns) -->
+    @php
+        $cashEmolumentCol = isset($customColumns) ? $customColumns->firstWhere('column_name', 'total_cash_emolument') : null;
+        $assessableCol    = isset($customColumns) ? $customColumns->firstWhere('column_name', 'total_assessable_income') : null;
+        $cashLabel        = $cashEmolumentCol ? $cashEmolumentCol->display_label : 'Total Cash Emolument';
+        $assessableLabel  = $assessableCol ? $assessableCol->display_label : 'Total Assessable Income';
+    @endphp
     <tr class="reference-row">
-        <td colspan="2">Total Cash Emolument</td>
+        <td colspan="2">{{ $cashLabel }}</td>
         <td style="text-align: center; font-size: 10px;">(Gross - OT)</td>
         <td style="text-align: center;">{{ number_format((float)($payslip->total_cash_emolument ?? 0), 2) }}</td>
         <td></td>
     </tr>
     <tr class="reference-row">
-        <td colspan="2">Total Assessable Income</td>
+        <td colspan="2">{{ $assessableLabel }}</td>
         <td style="text-align: center; font-size: 10px;">(Taxable Base)</td>
         <td style="text-align: center;">{{ number_format((float)($payslip->total_assessable_income ?? 0), 2) }}</td>
         <td></td>
@@ -226,33 +232,33 @@
 
     <!-- Deductions -->
     <tr>
-        <td colspan="2">SSNIT</td>
+        <td colspan="2">{{ $columnLabels['ssnit_5_5_percent'] ?? 'SSNIT' }}</td>
         <td></td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->ssnit_5_5_percent ?? ($payslip->ssnitee ?? 0)), 2) }}</td>
     </tr>
     @if((float)($payslip->petra ?? $payslip->petra_5_percent ?? 0) > 0)
     <tr>
-        <td colspan="2">Petra (5%)</td>
+        <td colspan="2">{{ $columnLabels['petra'] ?? 'Petra (5%)' }}</td>
         <td></td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->petra ?? $payslip->petra_5_percent ?? 0), 2) }}</td>
     </tr>
     @endif
     <tr>
-        <td colspan="2">Normal Tax-Regular</td>
+        <td colspan="2">{{ $columnLabels['paye'] ?? 'Normal Tax-Regular' }}</td>
         <td></td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->paye ?? 0), 2) }}</td>
     </tr>
     <tr>
-        <td colspan="2">Overtime Tax</td>
+        <td colspan="2">{{ $columnLabels['ot_tax'] ?? 'Overtime Tax' }}</td>
         <td></td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->ot_tax ?? ($payslip->overtimetax ?? 0)), 2) }}</td>
     </tr>
     <tr>
-        <td colspan="2">Salary Loan</td>
+        <td colspan="2">{{ $columnLabels['salaryloan'] ?? 'Salary Loan' }}</td>
         <td></td>
         <td></td>
         <td style="text-align: center;">{{ number_format((float)($payslip->salaryloan ?? 0), 2) }}</td>
@@ -284,7 +290,7 @@
         <td class="header">Bank Name</td>
         <td>{{ $displayBankName }}</td>
         <td></td>
-        <td colspan="2" class="net-pay" style="text-align: center;">NET PAY</td>
+        <td colspan="2" class="net-pay" style="text-align: center;">{{ strtoupper($columnLabels['net_pay'] ?? 'NET PAY') }}</td>
     </tr>
     <tr>
         <td class="header">Bank Account Name</td>

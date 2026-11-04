@@ -299,6 +299,13 @@ class PzPayController extends Controller
                     $data = array_merge($data, $customVals);
                 }
 
+                $allMapped = \App\Models\PayrollColumn::mapRowHeadersToDb($row, $rows[$headerRowIndex] ?? [], 'pz');
+                foreach ($allMapped as $dbCol => $val) {
+                    if ($dbCol !== 'staffid' && $dbCol !== 'name' && $val !== null) {
+                        $data[$dbCol] = $val;
+                    }
+                }
+
                 $staffid = $data['staffid'] ?? null;
                 $name    = $data['name'] ?? null;
 

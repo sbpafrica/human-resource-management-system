@@ -237,6 +237,14 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
                     $record = array_merge($record, $customVals);
                 }
 
+                // Dynamically map any standard columns that used changed header names or aliases
+                $allMapped = \App\Models\PayrollColumn::mapRowHeadersToDb($row, $uploadedHeaders, $client_dbname);
+                foreach ($allMapped as $dbCol => $val) {
+                    if ($dbCol !== 'staffida' && $dbCol !== 'name' && $val !== null) {
+                        $record[$dbCol] = $val;
+                    }
+                }
+
                 if (empty($staffId)) {
                     $errors[] = "Row {$rowNumber}: Staff ID missing";
                     continue;

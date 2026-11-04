@@ -474,6 +474,12 @@ public function export(Request $request)
              $data['total_assessable_income'] = $totalAssessable ?? $gross;
          }
 
+         // Merge custom column values dynamically
+         $customValues = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headers, 'melcom');
+         foreach ($customValues as $colKey => $colVal) {
+             $data[$colKey] = $colVal;
+         }
+
          // If already exists in table, update the record with latest values (e.g. re-upload)
          if (in_array($employ, $existingStaffIds)) {
              DB::table($tableName)->where('employ', $employ)->update($data);

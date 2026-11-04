@@ -257,9 +257,16 @@ class SheferPayController extends Controller
                 $headerRow
             );
 
-            $hasClockInId          = in_array('clock in id', $normalizedHeaders, true);
-            $hasTotalAssessable    = in_array('total assessable income', $normalizedHeaders, true);
-            $hasTotalCashEmolument = in_array('total cash emolument', $normalizedHeaders, true);
+            $hasClockInId = in_array('clock in id', $normalizedHeaders, true);
+            $hasTotalAssessable = \App\Models\PayrollColumn::findHeaderIndex('total_assessable_income', $headerRow, 'shefer') !== null
+                || in_array('total assessable income', $normalizedHeaders, true)
+                || in_array('assessable income', $normalizedHeaders, true);
+
+            $hasTotalCashEmolument = \App\Models\PayrollColumn::findHeaderIndex('total_cash_emolument', $headerRow, 'shefer') !== null
+                || in_array('total cash emolument', $normalizedHeaders, true)
+                || in_array('total cash emoluments', $normalizedHeaders, true)
+                || in_array('cash emoluments', $normalizedHeaders, true)
+                || in_array('cash emolument', $normalizedHeaders, true);
 
             // Trim trailing empty header cells for the fallback count check
             $columnCount = count($headerRow);
@@ -271,8 +278,10 @@ class SheferPayController extends Controller
             // Primary = header content; fallback = column count
             if ($hasClockInId || ($columnCount >= 56 && in_array('full name', $normalizedHeaders))) {
                 $mapper = 'mapShefer58ColumnRow';      // SHEFER official file
-            } elseif ($hasTotalCashEmolument || $hasTotalAssessable || $columnCount >= 49) {
+            } elseif ($hasTotalCashEmolument || $hasTotalAssessable || $columnCount >= 51) {
                 $mapper = 'mapTemplate51ColumnRow';    // Template format (supports custom columns)
+            } elseif ($columnCount >= 45) {
+                $mapper = 'mapLegacy49ColumnRow';      // Legacy 49-col template (old format preserved)
             } else {
                 return redirect()->route('sheferpay.index', ['month' => $selectedMonth])
                     ->with('error', "Unrecognized file format: {$columnCount} columns detected. Expected at least 49 columns.");
@@ -294,6 +303,14 @@ class SheferPayController extends Controller
                 $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'shefer');
                 if (!empty($customVals)) {
                     $record = array_merge($record, $customVals);
+                }
+
+                // Dynamically map any standard columns that used changed header names or aliases
+                $allMapped = \App\Models\PayrollColumn::mapRowHeadersToDb($row, $headerRow, 'shefer');
+                foreach ($allMapped as $dbCol => $val) {
+                    if ($dbCol !== 'staff_id' && $dbCol !== 'name1' && $val !== null) {
+                        $record[$dbCol] = $val;
+                    }
                 }
 
                 if (empty($record['staff_id'])) {

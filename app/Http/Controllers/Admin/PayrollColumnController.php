@@ -56,15 +56,18 @@ class PayrollColumnController extends Controller
         $selectedClient = $request->input('client', 'all');
 
         $columns = PayrollColumn::where('client_dbname', $selectedClient)
+            ->where('is_custom', true)
             ->orderBy('id', 'asc')
             ->get();
 
+        $standardColumns = PayrollColumn::getStandardColumnsWithOverrides($selectedClient);
         $existingColumns = $this->getClientTableColumns($selectedClient);
 
         return Inertia::render('Admin/PayrollColumns/Index', [
             'clients'         => $clients,
             'selectedClient'  => $selectedClient,
             'columns'         => $columns,
+            'standardColumns' => $standardColumns,
             'existingColumns' => $existingColumns,
             'flash'           => [
                 'success' => session('success'),
@@ -137,6 +140,58 @@ class PayrollColumnController extends Controller
     }
 
     /**
+     * Update an existing custom column.
+     * Preserves physical MySQL column_name to prevent database errors and historical data loss.
+     * Updates display_label, header_aliases, position_after, show_in_payslip, payslip_section.
+     * Automatically appends any previous display label to header_aliases for backward compatibility.
+     */
+    public function update(Request $request, $id)
+    {
+        $this->authorizeUser($request);
+
+        $column = PayrollColumn::findOrFail($id);
+
+        $validated = $request->validate([
+            'display_label'   => ['required', 'string', 'max:128'],
+            'header_aliases'  => ['nullable', 'string', 'max:500'],
+            'position_after'  => ['nullable', 'string', 'max:64'],
+            'show_in_payslip' => ['boolean'],
+            'payslip_section' => ['required', 'string', 'in:earnings,deductions,tax_reference,info'],
+        ]);
+
+        $oldLabel = $column->display_label;
+        $newLabel = trim($validated['display_label']);
+
+        // Collect existing and new aliases
+        $aliasesArray = array_filter(array_map('trim', preg_split('/[,;|\n\r]+/', (string)($validated['header_aliases'] ?? ''))));
+
+        // If display label changed, ensure old display label is preserved as an alias
+        if ($oldLabel !== $newLabel && !in_array($oldLabel, $aliasesArray, true)) {
+            array_unshift($aliasesArray, $oldLabel);
+        }
+
+        // Also ensure column_name is preserved as an alias
+        if (!in_array($column->column_name, $aliasesArray, true)) {
+            $aliasesArray[] = $column->column_name;
+        }
+
+        $column->display_label   = $newLabel;
+        $column->header_aliases  = implode(', ', array_unique($aliasesArray));
+        if (array_key_exists('position_after', $validated)) {
+            $column->position_after = ($validated['position_after'] === 'END' || empty($validated['position_after'])) ? null : $validated['position_after'];
+        }
+        $column->show_in_payslip = $request->boolean('show_in_payslip', false);
+        $column->payslip_section = $validated['payslip_section'] ?? 'earnings';
+
+        // NOTE: $column->column_name is strictly NEVER altered in MySQL tables.
+        // This ensures existing payroll tables (e.g. sheferoctober26) and queries remain 100% stable.
+        $column->save();
+
+        return redirect()->route('admin.payroll-columns.index', ['client' => $column->client_dbname])
+            ->with('success', "Column '{$column->display_label}' updated. Excel uploads will now recognize new names and preserve old formats securely.");
+    }
+
+    /**
      * Remove the specified custom column from registry.
      */
     public function destroy(Request $request, $id)
@@ -165,6 +220,97 @@ class PayrollColumnController extends Controller
         $column->save();
 
         return redirect()->back()->with('success', "Payslip visibility for '{$column->display_label}' updated.");
+    }
+
+    /**
+     * Update or create an override for a standard base payroll column.
+     * Core identifier (staff_id) is strictly locked and cannot be renamed.
+     */
+    public function updateStandard(Request $request)
+    {
+        $this->authorizeUser($request);
+
+        $validated = $request->validate([
+            'client_dbname'   => ['required', 'string', 'max:64'],
+            'column_name'     => ['required', 'string', 'max:64'],
+            'display_label'   => ['required', 'string', 'max:128'],
+            'header_aliases'  => ['nullable', 'string', 'max:500'],
+            'show_in_payslip' => ['boolean'],
+            'payslip_section' => ['required', 'string', 'in:earnings,deductions,tax_reference,info'],
+        ]);
+
+        $colName = strtolower(trim($validated['column_name']));
+
+        // Enforce user requirement: "no changing of id"
+        if (in_array($colName, ['staff_id', 'staffid', 'id', 'employid'], true)) {
+            return redirect()->back()->with('error', 'Staff ID is a protected core identifier and cannot be renamed.');
+        }
+
+        $canonical = PayrollColumn::getCanonicalStandardColumns();
+        if (!isset($canonical[$colName])) {
+            return redirect()->back()->with('error', "Unrecognized standard column: '{$colName}'.");
+        }
+
+        $client = Client::where('client_dbname', $validated['client_dbname'])->first();
+
+        $record = PayrollColumn::where('client_dbname', $validated['client_dbname'])
+            ->where('column_name', $colName)
+            ->first();
+
+        $aliasesArray = array_filter(array_map('trim', preg_split('/[,;|\n\r]+/', (string)($validated['header_aliases'] ?? ''))));
+        if (!in_array($canonical[$colName]['display_label'], $aliasesArray, true)) {
+            $aliasesArray[] = $canonical[$colName]['display_label'];
+        }
+        if (!in_array($colName, $aliasesArray, true)) {
+            $aliasesArray[] = $colName;
+        }
+
+        if ($record) {
+            $record->display_label   = trim($validated['display_label']);
+            $record->header_aliases  = implode(', ', array_unique($aliasesArray));
+            $record->show_in_payslip = $request->boolean('show_in_payslip', true);
+            $record->payslip_section = $validated['payslip_section'];
+            $record->is_custom       = false;
+            $record->save();
+        } else {
+            PayrollColumn::create([
+                'client_id'       => $client?->id,
+                'client_dbname'   => $validated['client_dbname'],
+                'is_custom'       => false,
+                'column_name'     => $colName,
+                'display_label'   => trim($validated['display_label']),
+                'header_aliases'  => implode(', ', array_unique($aliasesArray)),
+                'data_type'       => $canonical[$colName]['data_type'],
+                'position_after'  => null,
+                'show_in_payslip' => $request->boolean('show_in_payslip', true),
+                'payslip_section' => $validated['payslip_section'],
+                'is_active'       => true,
+            ]);
+        }
+
+        return redirect()->route('admin.payroll-columns.index', ['client' => $validated['client_dbname']])
+            ->with('success', "Standard column '{$colName}' updated. New label '{$validated['display_label']}' will reflect in payslips, templates, and map changed Excel headers securely.");
+    }
+
+    /**
+     * Reset a standard column override back to system default.
+     */
+    public function resetStandard(Request $request)
+    {
+        $this->authorizeUser($request);
+
+        $validated = $request->validate([
+            'client_dbname' => ['required', 'string', 'max:64'],
+            'column_name'   => ['required', 'string', 'max:64'],
+        ]);
+
+        PayrollColumn::where('client_dbname', $validated['client_dbname'])
+            ->where('column_name', $validated['column_name'])
+            ->where('is_custom', false)
+            ->delete();
+
+        return redirect()->route('admin.payroll-columns.index', ['client' => $validated['client_dbname']])
+            ->with('success', "Standard column '{$validated['column_name']}' reset to system default.");
     }
 
     /**
