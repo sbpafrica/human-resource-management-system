@@ -337,28 +337,37 @@ class DashboardController extends Controller
         // CLIENT SUMMARY — per-client headcount for the current payroll month
         // ====================================================================
         $clientSummary = [];
-        foreach ($currentTables as $table) {
+
+        // Define tables to exclude Burkina Faso for compliance checks (bank, SSNIT, Petra, Ghana Card, No Contact, Incomplete Profiles)
+        $ghanaComplianceTables = array_values(array_filter($currentTables, function ($table) {
+            return !str_contains($table, 'transburkina');
+        }));
+
+
+
+        // CLIENT SUMMARY — per-client headcount for the current payroll month (excluding Burkina tables)
+        foreach ($ghanaComplianceTables as $table) {
             $client = $tableToClientMap[$table] ?? null;
             if (!$client) continue;
             try {
                 $count = DB::table($table)->count();
                 $staffIdCol = $this->getStaffIdColumn($table);
-                $nameCol    = $this->getNameColumn($table);
+                $nameCol = $this->getNameColumn($table);
 
                 $emps = DB::table($table)
                     ->select("{$staffIdCol} as staffid", DB::raw("COALESCE({$nameCol}, 'Unknown') as employeename"))
                     ->get()
                     ->map(fn($e) => [
-                        'staffid'      => $e->staffid,
+                        'staffid' => $e->staffid,
                         'employeename' => $e->employeename ?? 'Unknown',
-                        'company'      => $client->client_name,
+                        'company' => $client->client_name,
                     ])->toArray();
 
                 $clientSummary[] = [
                     'client_name' => $client->client_name,
-                    'count'       => $count,
-                    'table'       => $table,
-                    'employees'   => $emps,
+                    'count' => $count,
+                    'table' => $table,
+                    'employees' => $emps,
                 ];
             } catch (\Exception $e) {
                 Log::warning("Client summary count failed for {$table}", ['error' => $e->getMessage()]);
@@ -366,11 +375,13 @@ class DashboardController extends Controller
         }
         usort($clientSummary, fn($a, $b) => $b['count'] <=> $a['count']);
 
+
         // ====================================================================
         // CURRENT MONTH STAFF IDS & STAFF ON PAYROLL
         // ====================================================================
         $currentStaffIds = [];
-        foreach ($currentTables as $table) {
+        // Exclude Burkina Faso tables from No Contact Details
+        foreach ($ghanaComplianceTables as $table) {
             try {
                 $col = $this->getStaffIdColumn($table);
                 $ids = DB::table($table)->pluck($col)->toArray();
@@ -387,7 +398,8 @@ class DashboardController extends Controller
         // NO CONTACT DETAILS
         // ====================================================================
         $noContactIds = [];
-        foreach ($currentTables as $table) {
+        // Exclude Burkina Faso tables from No Contact Details
+        foreach ($ghanaComplianceTables as $table) {
             try {
                 $staffIdCol = $this->getStaffIdColumn($table);
                 $missing = DB::table($table)
@@ -436,8 +448,8 @@ class DashboardController extends Controller
         // ====================================================================
         // NEW EMPLOYEES YET TO BE ONBOARDED
         // ====================================================================
-        $notOnboardedIds  = $this->getIncompleteProfileIds($currentTables);
-        $notOnboardedList = $this->getEmployeeSample($currentTables, $notOnboardedIds, $tableToClientMap);
+        $notOnboardedIds  = $this->getIncompleteProfileIds($ghanaComplianceTables);
+        $notOnboardedList = $this->getEmployeeSample($ghanaComplianceTables, $notOnboardedIds, $tableToClientMap);
 
         // ====================================================================
         // SAMPLE LISTS
@@ -448,12 +460,14 @@ class DashboardController extends Controller
         // ====================================================================
         // COMPLIANCE CHECKS
         // ====================================================================
-        $withoutBank  = $this->getWithoutDetails($currentTables, 'bankdetails', 'employid', $tableToClientMap);
-        $withoutSsnit = $this->getWithoutDetails($currentTables, 'ssnit', 'staffid', $tableToClientMap);
-        $withoutPetra = $this->getWithoutDetails($currentTables, 'petraorg', 'staffid', $tableToClientMap);
+        // Definition moved earlier – the $ghanaComplianceTables variable is already set above.
 
-        $withoutGhanaCardIds  = $this->getWithoutGhanaCardFromSsnit($currentTables);
-        $withoutGhanaCardList = $this->getEmployeeSample($currentTables, $withoutGhanaCardIds, $tableToClientMap);
+        $withoutBank  = $this->getWithoutDetails($ghanaComplianceTables, 'bankdetails', 'employid', $tableToClientMap);
+        $withoutSsnit = $this->getWithoutDetails($ghanaComplianceTables, 'ssnit', 'staffid', $tableToClientMap);
+        $withoutPetra = $this->getWithoutDetails($ghanaComplianceTables, 'petraorg', 'staffid', $tableToClientMap);
+
+        $withoutGhanaCardIds  = $this->getWithoutGhanaCardFromSsnit($ghanaComplianceTables);
+        $withoutGhanaCardList = $this->getEmployeeSample($ghanaComplianceTables, $withoutGhanaCardIds, $tableToClientMap);
 
         $trendData = $this->getLastThreeMonthsTrend($allowedClients, $tableToClientMap);
 
@@ -692,7 +706,7 @@ class DashboardController extends Controller
         if (str_contains($table, 'a2poultry'))                                    return 'staff_id';
         if (str_contains($table, 'a2soya'))                                       return 'staff_id';
         if (str_contains($table, 'pz'))                                           return 'staffid';
-        if (str_contains($table, 'transburkina'))                                 return 'staffid';
+        // if (str_contains($table, 'transburkina'))                                 return 'staffid';
         return 'staffid';
     }
 
@@ -744,7 +758,7 @@ class DashboardController extends Controller
         if (str_contains($table, 'bunge'))           return 'NAME';
         if (str_contains($table, 'twellium'))        return 'name';
         if (str_contains($table, 'inhouse'))         return 'name';
-        if (str_contains($table, 'transburkina'))    return 'fullname';
+        // if (str_contains($table, 'transburkina'))    return 'fullname';
         return 'name';
     }
 
