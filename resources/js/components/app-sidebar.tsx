@@ -124,6 +124,7 @@ export function AppSidebar() {
         children: [
           { title: 'Employee Portal', href: '/employeeportal' },
           { title: 'Employee Contact', href: '/employeecontact' },
+          { title: 'Ghana Card', href: '/ghana-card' },
           { title: 'General Pin Code', href: '/employeepincode' },
           { title: 'Twillium Pin Code', href: '/twelliumpincode' },
           { title: 'Twillium Accra 2', href: '/twelliumaccra2' },
@@ -140,6 +141,7 @@ export function AppSidebar() {
           { title: 'Bank Details', href: '/bankdetails' },
           { title: 'Tier1/SSNIT Details', href: '/ssnitdetails' },
           { title: 'Tier2/PETRA Details', href: '/petradetails' },
+          { title: 'Ghana Card', href: '/ghana-card' },
         ],
       });
     }
@@ -153,6 +155,7 @@ export function AppSidebar() {
           { title: 'SSNIT Audit', href: '/hr-audit/ssnit' },
           { title: 'PETRA Audit', href: '/hr-audit/petra' },
           { title: 'Contacts Audit', href: '/hr-audit/contacts' },
+          { title: 'Ghana Card Audit', href: '/ghana-card' },
           { title: 'New Joiners', href: '/hr-audit/new-joiners' },
           { title: 'Exited Staff', href: '/hr-audit/exited-staff' },
           { title: 'Melcom Basic', href: '/hr-audit/melcom-basic' },

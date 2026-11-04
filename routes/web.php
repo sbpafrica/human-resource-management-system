@@ -27,6 +27,7 @@ use App\Http\Controllers\ContactAuditController;
 use App\Http\Controllers\NewJoinersController;
 use App\Http\Controllers\ExitedStaffController;
 use App\Http\Controllers\MelcomBasicController;
+use App\Http\Controllers\GhanaCardSearchController;
 use App\Http\Controllers\TranssionPayController;
 use App\Http\Controllers\XiaomiPayController;
 use App\Http\Controllers\TecnoPayController;
@@ -475,6 +476,15 @@ Route::post('/employeeportal/bulk-archive', [EmployeePortalController::class, 'b
     // Melcom Basic Audit Routes
     Route::get('/hr-audit/melcom-basic', [MelcomBasicController::class, 'index'])->name('hr-audit.melcom-basic');
     Route::get('/hr-audit/melcom-basic/export', [MelcomBasicController::class, 'exportExcel'])->name('hr-audit.melcom-basic.export');
+
+    // Ghana Card Search & Update Routes (Accessible to HR Managers, Officers & Admins)
+    Route::get('/ghana-card', [GhanaCardSearchController::class, 'index'])->name('ghana-card.index');
+    Route::post('/ghana-card/update', [GhanaCardSearchController::class, 'update'])->name('ghana-card.update');
+    Route::get('/ghana-card/export', [GhanaCardSearchController::class, 'exportExcel'])->name('ghana-card.export');
+
+    Route::get('/hr-audit/ghana-card', [GhanaCardSearchController::class, 'index'])->name('hr-audit.ghana-card');
+    Route::post('/hr-audit/ghana-card/update', [GhanaCardSearchController::class, 'update'])->name('hr-audit.ghana-card.update');
+    Route::get('/hr-audit/ghana-card/export', [GhanaCardSearchController::class, 'exportExcel'])->name('hr-audit.ghana-card.export');
 });
 
     // Transsion Pay Routes
