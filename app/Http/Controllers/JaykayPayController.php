@@ -254,7 +254,7 @@ public function export(Request $request)
  $cOtRate      = $cols['overtime_rate'] ?? 16;
  $cOtAmount    = $cols['overtime_amount'] ?? 17;
  $cNightAllow  = $cols['night_allowance'] ?? 18;
- $cTotalOt     = $cols['totalovertime'] ?? 19;
+ $cTotalOt     = $cols['totalovertime'] ?? $cols['total_overtime_amt'] ?? 19;
  $cGross       = $cols['gross_salary'] ?? 20;
  $cMgmtFee     = $cols['management_fee'] ?? 21;
  $cGetfund     = $cols['getfund'] ?? 22;
@@ -287,50 +287,61 @@ public function export(Request $request)
     }
 
 // === MAPPED SAFELY VIA 3-TIER RESOLVER ===
+$cleanNumber = function ($value, $default = null) {
+    if ($value === null || $value === '') {
+        return $default;
+    }
+    $clean = trim((string)$value);
+    // Accounting dash format indicates 0
+    if ($clean === '-' || preg_match('/^\s*-\s*$/', $clean)) {
+        return 0.0;
+    }
+    $clean = preg_replace('/[^0-9.-]/', '', $clean);
+    return is_numeric($clean) ? (float)$clean : $default;
+};
+
 $position                = trim($row[$cPos] ?? '') ?: null;
 $join_date               = trim($row[$cJoinDate] ?? '') ?: null;
 
-$basic_salary            = is_numeric($row[$cBasic] ?? '') ? (float)$row[$cBasic] : null;
-$legalworkdays           = is_numeric($row[$cWorkdays] ?? '') ? (int)$row[$cWorkdays] : null;
-$daily_rate              = is_numeric($row[$cDailyRate] ?? '') ? (float)$row[$cDailyRate] : null;
-$days_worked             = is_numeric($row[$cDaysWorked] ?? '') ? (float)$row[$cDaysWorked] : null;
-$absentee_days           = is_numeric($row[$cAbsentDays] ?? '') ? (float)$row[$cAbsentDays] : null;
-$absent_deductions       = is_numeric($row[$cAbsentDed] ?? '') ? (float)$row[$cAbsentDed] : null;
-$earned_basic_salary     = is_numeric($row[$cEarnedBasic] ?? '') ? (float)$row[$cEarnedBasic] : null;
+$basic_salary            = $cleanNumber($row[$cBasic] ?? '');
+$legalworkdays           = is_numeric($row[$cWorkdays] ?? '') ? (int)$row[$cWorkdays] : 0;
+$daily_rate              = $cleanNumber($row[$cDailyRate] ?? '');
+$days_worked             = $cleanNumber($row[$cDaysWorked] ?? '');
+$absentee_days           = $cleanNumber($row[$cAbsentDays] ?? '');
+$absent_deductions       = $cleanNumber($row[$cAbsentDed] ?? '');
+$earned_basic_salary     = $cleanNumber($row[$cEarnedBasic] ?? '');
 
-$saturdays_worked        = is_numeric($row[$cSatWorked] ?? '') ? (float)$row[$cSatWorked] : null;
-$saturday_rate           = is_numeric($row[$cSatRate] ?? '') ? (float)$row[$cSatRate] : null;
-$saturday_amount         = is_numeric($row[$cSatAmount] ?? '') ? (float)$row[$cSatAmount] : null;
-$total_days_amount       = is_numeric($row[$cTotalDays] ?? '') ? (float)$row[$cTotalDays] : null;
+$saturdays_worked        = $cleanNumber($row[$cSatWorked] ?? '');
+$saturday_rate           = $cleanNumber($row[$cSatRate] ?? '');
+$saturday_amount         = $cleanNumber($row[$cSatAmount] ?? '');
+$total_days_amount       = $cleanNumber($row[$cTotalDays] ?? '');
 
-$overtime_hours          = is_numeric($row[$cOtHours] ?? '') ? (float)$row[$cOtHours] : null;
-$overtime_rate           = is_numeric($row[$cOtRate] ?? '') ? (float)$row[$cOtRate] : null;
-$overtime_amount         = is_numeric($row[$cOtAmount] ?? '') ? (float)$row[$cOtAmount] : null;
-$night_allowance         = is_numeric($row[$cNightAllow] ?? '') ? (float)$row[$cNightAllow] : null;
-$totalovertime           = is_numeric($row[$cTotalOt] ?? '') ? (float)$row[$cTotalOt] : null;
+$overtime_hours          = $cleanNumber($row[$cOtHours] ?? '');
+$overtime_rate           = $cleanNumber($row[$cOtRate] ?? '');
+$overtime_amount         = $cleanNumber($row[$cOtAmount] ?? '');
+$night_allowance         = $cleanNumber($row[$cNightAllow] ?? '');
+$totalovertime           = $cleanNumber($row[$cTotalOt] ?? '', 0.0) ?? 0.0;
 
-$gross_salary            = is_numeric($row[$cGross] ?? '') ? (float)$row[$cGross] : null;
+$gross_salary            = $cleanNumber($row[$cGross] ?? '');
 
-$management_fee          = is_numeric($row[$cMgmtFee] ?? '') ? (float)$row[$cMgmtFee] : null;
-$getfund                 = is_numeric($row[$cGetfund] ?? '') ? (float)$row[$cGetfund] : null;
-$nhil                    = is_numeric($row[$cNhil] ?? '') ? (float)$row[$cNhil] : null;
+$management_fee          = $cleanNumber($row[$cMgmtFee] ?? '');
+$getfund                 = $cleanNumber($row[$cGetfund] ?? '');
+$nhil                    = $cleanNumber($row[$cNhil] ?? '');
 
-$vat                     = is_numeric($row[$cVat] ?? '') ? (float)$row[$cVat] : null;
-$ssf                     = is_numeric($row[$cSsf] ?? '') ? (float)$row[$cSsf] : null;
-$cost_to_jkay            = is_numeric($row[$cCostToJkay] ?? '') ? (float)$row[$cCostToJkay] : null;
+$vat                     = $cleanNumber($row[$cVat] ?? '');
+$ssf                     = $cleanNumber($row[$cSsf] ?? '');
+$cost_to_jkay            = $cleanNumber($row[$cCostToJkay] ?? '');
 
-$ssnit_ee                = is_numeric($row[$cSsnitEe] ?? '') ? (float)$row[$cSsnitEe] : null;
-$petra                   = is_numeric($row[$cPetra] ?? '') ? (float)$row[$cPetra] : null;
-$taxable_income          = is_numeric($row[$cTaxableInc] ?? '') ? (float)$row[$cTaxableInc] : null;
-$paye                    = is_numeric($row[$cPaye] ?? '') ? (float)$row[$cPaye] : null;
-$overtime_tax            = is_numeric($row[$cOtTax] ?? '') ? (float)$row[$cOtTax] : null;
-$surcharge_or_student_loan = is_numeric($row[$cSurcharge] ?? '') ? (float)$row[$cSurcharge] : null;
-$total_deductions        = is_numeric($row[$cTotalDed] ?? '') ? (float)$row[$cTotalDed] : null;
+$ssnit_ee                = $cleanNumber($row[$cSsnitEe] ?? '');
+$petra                   = $cleanNumber($row[$cPetra] ?? '');
+$taxable_income          = $cleanNumber($row[$cTaxableInc] ?? '');
+$paye                    = $cleanNumber($row[$cPaye] ?? '');
+$overtime_tax            = $cleanNumber($row[$cOtTax] ?? '');
+$surcharge_or_student_loan = $cleanNumber($row[$cSurcharge] ?? '');
+$total_deductions        = $cleanNumber($row[$cTotalDed] ?? '');
 
 // Take Home Pay – cleaned like bank transfer
-$rawTakeHome             = trim($row[$cTakeHome] ?? '');
-$cleanTakeHome           = preg_replace('/[^0-9.-]/', '', $rawTakeHome);
-$take_home_pay           = is_numeric($cleanTakeHome) ? (float)$cleanTakeHome : null;
+$take_home_pay           = $cleanNumber($row[$cTakeHome] ?? '');
 
     // === VALIDATION ===
     if (empty($staff_id)) {

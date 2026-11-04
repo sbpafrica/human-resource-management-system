@@ -127,7 +127,7 @@ class Jaykaypay extends Model
                     `overtime_rate` DECIMAL(10,2) NULL DEFAULT NULL,
                     `overtime_amount` DECIMAL(10,2) NULL DEFAULT NULL,
                     `night_allowance` DECIMAL(10,2) NULL DEFAULT NULL,
-                    `totalovertime` DOUBLE NOT NULL,
+                    `totalovertime` DECIMAL(10,2) NULL DEFAULT 0.00,
                     `gross_salary` DECIMAL(10,2) NULL DEFAULT NULL,
                     `management_fee` DECIMAL(10,2) NULL DEFAULT NULL,
                     `getfund` DECIMAL(10,2) NULL DEFAULT NULL,
@@ -146,6 +146,13 @@ class Jaykaypay extends Model
                     `take_home_pay` DECIMAL(10,2) NULL DEFAULT NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
             ");
+        } else {
+            // Self-heal totalovertime on pre-existing tables if it was created with NOT NULL
+            try {
+                DB::statement("ALTER TABLE `{$tableName}` MODIFY `totalovertime` DECIMAL(10,2) NULL DEFAULT 0.00");
+            } catch (\Throwable $e) {
+                // Ignore if already altered or not supported
+            }
         }
     
         // Auto-attach any custom columns configured in PayrollColumn registry
