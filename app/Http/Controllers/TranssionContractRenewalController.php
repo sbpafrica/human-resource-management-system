@@ -23,6 +23,9 @@ class TranssionContractRenewalController extends Controller
     {
         $query = TranssionContractRenewal::query();
 
+        $totalRecords = TranssionContractRenewal::count();
+        $searchCount = null;
+
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('id', 'like', "%{$search}%") // original contract id
@@ -30,6 +33,7 @@ class TranssionContractRenewalController extends Controller
                   ->orWhere('contract_id', 'like', "%{$search}%")
                   ->orWhere('email', 'like', "%{$search}%");
             });
+            $searchCount = (clone $query)->count();
         }
 
         $sort = $request->input('sort', 'issuedate');
@@ -40,9 +44,11 @@ class TranssionContractRenewalController extends Controller
             ->withQueryString();
 
         return inertia('Transsion/Renewals/Index', [
-            'renewals' => $renewals,
-            'filters'  => $request->only(['search', 'sort', 'order']),
-            'flash'    => session()->only(['success', 'error']),
+            'renewals'     => $renewals,
+            'filters'      => $request->only(['search', 'sort', 'order']),
+            'totalRecords' => $totalRecords,
+            'searchCount'  => $searchCount,
+            'flash'        => session()->only(['success', 'error']),
         ]);
     }
 

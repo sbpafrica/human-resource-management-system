@@ -596,6 +596,10 @@ class SheferPayController extends Controller
     // ─────────────────────────────────────────────────────────────────────
     public function downloadTemplate()
     {
+        if (\App\Models\ClientTemplateColumn::where('client_dbname', 'shefer')->where('module', 'payroll')->exists()) {
+            return (new \App\Services\Payroll\TemplateBuilderService())->downloadResponse('shefer', 'payroll');
+        }
+
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 

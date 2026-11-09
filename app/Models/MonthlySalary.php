@@ -47,14 +47,15 @@ class MonthlySalary extends Model
     public static function createClientTable($tableName, $clientDbName)
     {
         $columns = self::getClientColumns($clientDbName);
+        $sql = "CREATE TABLE IF NOT EXISTS `{$tableName}` (\n";
 
         if ($clientDbName === 'melcom') {
-    $sql .= "    `employ` VARCHAR(50) NOT NULL PRIMARY KEY,\n";
-    $sql .= "    `empoyeename` VARCHAR(150) NULL,\n";
-} else {
-    $sql .= "    `staffida` VARCHAR(50) NOT NULL PRIMARY KEY,\n";
-    $sql .= "    `name` VARCHAR(150) NULL,\n";
-}
+            $sql .= "    `employ` VARCHAR(50) NOT NULL PRIMARY KEY,\n";
+            $sql .= "    `empoyeename` VARCHAR(150) NULL,\n";
+        } else {
+            $sql .= "    `staffida` VARCHAR(50) NOT NULL PRIMARY KEY,\n";
+            $sql .= "    `name` VARCHAR(150) NULL,\n";
+        }
 
 foreach ($columns as $col => $type) {
     if (in_array($col, ['staffida', 'name', 'employ', 'empoyeename'])) continue;

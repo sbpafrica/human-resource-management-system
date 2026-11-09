@@ -67,6 +67,12 @@ foreach ($zipsToCreate as $zipName => $includeBuild) {
                 continue;
             }
 
+            // Explicitly exclude any .env or .htaccess files
+            $basename = $item->getBasename();
+            if (str_starts_with($basename, '.env') || $basename === '.htaccess') {
+                continue;
+            }
+
             $relPath = substr($cleanItemPath, strlen($cleanRoot));
 
             if ($item->isDir()) {

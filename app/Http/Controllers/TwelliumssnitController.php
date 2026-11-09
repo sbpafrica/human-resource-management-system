@@ -43,7 +43,7 @@ class TwelliumssnitController extends Controller
             ->leftJoin('ssnit as s', 'tp.employ', '=', 's.staffid')
             ->select(
                 'tp.employ as employ',
-                DB::raw('COALESCE(s.shop, "", "Twellium") as shop'),
+                DB::raw('COALESCE(s.shop, "TWELLIUM") as shop'),
                 DB::raw('COALESCE(s.lastname, tp.name) as lastname'),
                 DB::raw('COALESCE(s.firstname, "") as firstname'),
                 DB::raw('COALESCE(s.othername, "") as othername'),
@@ -131,10 +131,10 @@ class TwelliumssnitController extends Controller
             }
 
             $query = DB::table($tableName . ' as tp')
-                ->leftJoin('ssnit as s', 'tp.name', '=', 's.staffid')
+                ->leftJoin('ssnit as s', 'tp.employ', '=', 's.staffid')
                 ->select(
                     'tp.employ as employ',
-                    DB::raw('COALESCE(s.shop, "", "Twellium") as shop'),
+                    DB::raw('COALESCE(s.shop, "TWELLIUM") as shop'),
                     DB::raw('COALESCE(s.lastname, tp.name) as lastname'),
                     DB::raw('COALESCE(s.firstname, "") as firstname'),
                     DB::raw('COALESCE(s.othername, "") as othername'),

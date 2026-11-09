@@ -1,4 +1,4 @@
-import { Head, useForm } from "@inertiajs/react";
+import { Head, useForm, router } from "@inertiajs/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Pencil, Trash, CheckCircle, XCircle, Download, Upload, ArrowUpDown, Eye, FileSpreadsheet } from "lucide-react";
@@ -46,13 +46,16 @@ interface Props {
     success?: string;
     error?: string;
   };
+  clientName?: string;
 }
 
-const breadcrumbs = [
-  { title: "Contracts", href: "/contracts" },
-];
+export default function Contracts({ contracts, filters, totalRecords, searchCount, flash, clientName }: Props) {
+  const pageTitle = clientName ? `${clientName} Contracts` : "Employee Contracts";
+  const breadcrumbs = [
+    { title: "Contracts", href: "/contracts" },
+    ...(clientName ? [{ title: clientName, href: "#" }] : []),
+  ];
 
-export default function Contracts({ contracts, filters, totalRecords, searchCount, flash }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -67,10 +70,10 @@ export default function Contracts({ contracts, filters, totalRecords, searchCoun
   const [sort, setSort] = useState(filters.sort || "employeename");
   const [order, setOrder] = useState(filters.order || "asc");
 
-  const { data, setData, get, post, put, delete: destroy, processing, reset, errors } = useForm({
+  const { data, setData, post, put, delete: destroy, processing, reset, errors } = useForm({
     id: "",
     employeename: "",
-    client: "",
+    client: clientName || "",
     location: "",
     position1: "",
     startdate: "",
@@ -95,9 +98,10 @@ export default function Contracts({ contracts, filters, totalRecords, searchCoun
 
   const debouncedSearch = useCallback(
     debounce((searchValue: string, sortValue: string, orderValue: string) => {
-      get(route("contracts.index", { search: searchValue, sort: sortValue, order: orderValue }), {
+      router.get(window.location.pathname, { search: searchValue, sort: sortValue, order: orderValue }, {
         preserveState: true,
         preserveScroll: true,
+        replace: true,
         onError: (err) => {
           setToastMessage("Search failed: " + Object.values(err).join(" | "));
           setToastType("error");
@@ -266,7 +270,7 @@ export default function Contracts({ contracts, filters, totalRecords, searchCoun
   return (
     <ErrorBoundary>
       <AppLayout breadcrumbs={breadcrumbs}>
-        <Head title="Contracts" />
+        <Head title={pageTitle} />
         <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
           {showToast && (
             <div
@@ -290,7 +294,7 @@ export default function Contracts({ contracts, filters, totalRecords, searchCoun
           )}
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <h1 className="text-2xl font-bold">Employee Contracts</h1>
+            <h1 className="text-2xl font-bold">{pageTitle}</h1>
             <div className="flex flex-col sm:flex-row gap-4">
               <Input
                 placeholder="Search by staff ID, employee name, or client..."
@@ -569,7 +573,7 @@ export default function Contracts({ contracts, filters, totalRecords, searchCoun
           {contracts.data.length > 0 ? (
             <Card>
               <CardHeader>
-                <CardTitle>Employee Contracts</CardTitle>
+                <CardTitle>{pageTitle}</CardTitle>
                 <div className="text-sm text-muted-foreground">
                   {searchCount !== null
                     ? `Showing ${searchCount} of ${totalRecords} records matching your search`
@@ -676,7 +680,11 @@ export default function Contracts({ contracts, filters, totalRecords, searchCoun
           ) : (
             <Card>
               <CardContent className="pt-6">
-                <p className="text-center text-gray-500">No contracts found. Create a new contract to get started!</p>
+                <p className="text-center text-gray-500">
+                  {clientName
+                    ? `No contracts found for ${clientName}. Create a new contract to get started!`
+                    : "No contracts found. Create a new contract to get started!"}
+                </p>
               </CardContent>
             </Card>
           )}

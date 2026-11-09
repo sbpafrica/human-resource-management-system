@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\ClientTemplateColumn;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Validator;
@@ -53,6 +54,7 @@ class ClientsController extends Controller
             'flash' => [
                 'success' => session('success'),
                 'error' => session('error'),
+                'newly_created_client' => session('newly_created_client'),
             ],
         ]);
     }
@@ -89,9 +91,18 @@ class ClientsController extends Controller
                 ? $request->display_order
                 : Client::max('display_order') + 1;
 
-            Client::create($data);
+            $client = Client::create($data);
 
-            return redirect()->route('clients.index')->with('success', 'Client created successfully!');
+            // Automatically seed template columns for all modules (payroll, ssnit, petra, bank)
+            ClientTemplateColumn::seedAllModulesForClient($client->id, $client->client_dbname);
+
+            return redirect()->route('clients.index')
+                ->with('success', 'Client created successfully!')
+                ->with('newly_created_client', [
+                    'id'            => $client->id,
+                    'client_name'   => $client->client_name,
+                    'client_dbname' => $client->client_dbname,
+                ]);
 
         } catch (\Exception $e) {
             Log::error('ClientsController@store error', [

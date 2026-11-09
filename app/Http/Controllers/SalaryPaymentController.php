@@ -18,7 +18,10 @@ class SalaryPaymentController extends Controller
 {
     public function index(Request $request, $client_dbname)
     {
-        $client = Client::where('client_dbname', $client_dbname)->firstOrFail();
+        $client = Client::where('client_dbname', $client_dbname)
+            ->orWhere('slug', $client_dbname)
+            ->firstOrFail();
+        $client_dbname = $client->client_dbname;
 
         $month = $request->input('month', now()->format('Y-m'));
         $date = Carbon::createFromFormat('Y-m', $month);
@@ -91,6 +94,11 @@ class SalaryPaymentController extends Controller
     public function export(Request $request, $client_dbname)
     {
         try {
+            $client = Client::where('client_dbname', $client_dbname)
+                ->orWhere('slug', $client_dbname)
+                ->firstOrFail();
+            $client_dbname = $client->client_dbname;
+
             $month = $request->input('month');
             $date = Carbon::createFromFormat('Y-m', $month);
             $tableName = MonthlySalary::generateTableName($client_dbname, $month);
@@ -148,7 +156,10 @@ class SalaryPaymentController extends Controller
         ]);
 
         try {
-            $client = Client::where('client_dbname', $client_dbname)->firstOrFail();
+            $client = Client::where('client_dbname', $client_dbname)
+                ->orWhere('slug', $client_dbname)
+                ->firstOrFail();
+            $client_dbname = $client->client_dbname;
 
             $selectedMonth = $request->input('month');
            $tableName = MonthlySalary::generateTableName($client_dbname, $selectedMonth);
@@ -288,6 +299,11 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
 
     public function delete(Request $request, $client_dbname)
     {
+        $client = Client::where('client_dbname', $client_dbname)
+            ->orWhere('slug', $client_dbname)
+            ->firstOrFail();
+        $client_dbname = $client->client_dbname;
+
         $month = $request->input('month', now()->format('Y-m'));
         $tableName = MonthlySalary::generateTableName($client_dbname, $month);
 
@@ -301,7 +317,15 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
 
     public function downloadTemplate($client_dbname)
     {
-        $client = Client::where('client_dbname', $client_dbname)->firstOrFail();
+        $client = Client::where('client_dbname', $client_dbname)
+            ->orWhere('slug', $client_dbname)
+            ->firstOrFail();
+        $client_dbname = $client->client_dbname;
+
+        // If client has customized template columns, use the dynamic TemplateBuilderService
+        if (\App\Models\ClientTemplateColumn::where('client_dbname', $client_dbname)->where('module', 'payroll')->exists()) {
+            return (new \App\Services\Payroll\TemplateBuilderService())->downloadResponse($client_dbname, 'payroll');
+        }
 
         $headerMaps = [
             'transsion'       => $this->getTranssionHeaders(),

@@ -380,6 +380,14 @@ Route::get('/clients/export', [ClientsController::class, 'export'])->name('clien
 Route::get('/clients/download-template', [ClientsController::class, 'downloadTemplate'])->name('clients.download-template');
 Route::post('/clients/bulk-upload', [ClientsController::class, 'bulkUpload'])->name('clients.bulk-upload');
 
+    // Dynamic Client Template Column Configuration & Download Routes
+    Route::get('/clients/{client}/template-columns', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'index'])->name('clients.template-columns.index');
+    Route::post('/clients/{client}/template-columns', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'update'])->name('clients.template-columns.update');
+    Route::post('/clients/{client}/template-columns/custom', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'addCustomColumn'])->name('clients.template-columns.custom');
+    Route::post('/clients/{client}/template-columns/clone', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'cloneFrom'])->name('clients.template-columns.clone');
+    Route::post('/clients/{client}/template-columns/reset', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'resetToStandard'])->name('clients.template-columns.reset');
+    Route::get('/clients/{client_dbname}/download-template/{module}', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'download'])->name('clients.download-template.module');
+
     // Employee portal Routes
 Route::get('/employeeportal', [EmployeePortalController::class, 'index'])->name('employeeportal.index');
 Route::get('/employeeportal/{staffid}', [EmployeePortalController::class, 'show'])->name('employeeportal.show')->where('staffid', '.*');
@@ -1354,10 +1362,22 @@ Route::post('/employeearchived/bulk-restore', [ArchivedEmployeeController::class
 Route::get('/employeearchived/export', [ArchivedEmployeeController::class, 'export'])
     ->name('employeearchived.export');
 
-    // Generic fallback routes for all companies' Contracts, Contract Renewals, and PETRA Payment without dedicated tables
+    // Generic fallback routes for all companies' Contracts, Contract Renewals, PETRA, STAT, and Salary Payment without dedicated controllers
     Route::get('/{client}/contracts', [App\Http\Controllers\GenericContractController::class, 'contracts'])->name('generic.contracts');
     Route::get('/{client}/contract-renewals', [App\Http\Controllers\GenericContractController::class, 'renewals'])->name('generic.contract-renewals');
     Route::get('/{client}petrapay', [App\Http\Controllers\GenericContractController::class, 'petrapay'])->name('generic.petrapay');
+    Route::get('/{client}stat', [App\Http\Controllers\GenericContractController::class, 'stat'])->name('generic.stat');
+
+    // Generic SSNIT Payment routes for dynamic clients (e.g. /compughssnitpay) - must be placed before {client_dbname}pay
+    Route::get('/{client_dbname}ssnitpay', [SsnitPaymentController::class, 'showClient'])->name('generic.ssnitpay.index');
+    Route::get('/{client_dbname}ssnitpay/export', [SsnitPaymentController::class, 'export'])->name('generic.ssnitpay.export');
+
+    // Generic Salary Payment routes for dynamic clients (e.g. /compughpay)
+    Route::get('/{client_dbname}pay', [SalaryPaymentController::class, 'index'])->name('generic.pay.index');
+    Route::post('/{client_dbname}pay/upload', [SalaryPaymentController::class, 'upload'])->name('generic.pay.upload');
+    Route::post('/{client_dbname}pay/delete', [SalaryPaymentController::class, 'delete'])->name('generic.pay.delete');
+    Route::get('/{client_dbname}pay/export', [SalaryPaymentController::class, 'export'])->name('generic.pay.export');
+    Route::get('/{client_dbname}pay/download-template', [SalaryPaymentController::class, 'downloadTemplate'])->name('generic.pay.download-template');
 
 });
 

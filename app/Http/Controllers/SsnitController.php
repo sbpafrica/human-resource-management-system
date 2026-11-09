@@ -227,6 +227,11 @@ class SsnitController extends Controller
 
     public function downloadTemplate()
     {
+        $clientDb = request('client') ?: request('client_dbname');
+        if ($clientDb && \App\Models\ClientTemplateColumn::where('client_dbname', $clientDb)->where('module', 'ssnit')->exists()) {
+            return (new \App\Services\Payroll\TemplateBuilderService())->downloadResponse($clientDb, 'ssnit');
+        }
+
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setCellValue('A1', 'Staff ID');

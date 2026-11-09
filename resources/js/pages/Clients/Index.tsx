@@ -11,7 +11,9 @@ import {
   Download,
   Upload,
   Palette,
+  SlidersHorizontal,
 } from "lucide-react";
+import ClientTemplateConfigModal from "@/components/ClientTemplateConfigModal";
 import AppLayout from "@/layouts/app-layout";
 import {
   Dialog,
@@ -73,6 +75,11 @@ interface Props {
   flash?: {
     success?: string;
     error?: string;
+    newly_created_client?: {
+      id: number;
+      client_name: string;
+      client_dbname: string;
+    };
   };
 }
 
@@ -92,6 +99,8 @@ export default function Clients({ clients, filters, totalRecords, searchCount, f
   const [sort, setSort] = useState(filters.sort || "display_order");
   const [order, setOrder] = useState(filters.order || "asc");
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
+  const [configClient, setConfigClient] = useState<Client | null>(null);
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
 
   // FIXED: ADD patch HERE
   const {
@@ -124,6 +133,10 @@ export default function Clients({ clients, filters, totalRecords, searchCount, f
       setToastMessage(flash.success || flash.error || "");
       setToastType(flash.success ? "success" : "error");
       setShowToast(true);
+    }
+    if (flash?.newly_created_client) {
+      setConfigClient(flash.newly_created_client as any);
+      setIsConfigOpen(true);
     }
   }, [flash]);
 
@@ -448,6 +461,18 @@ export default function Clients({ clients, filters, totalRecords, searchCount, f
                             </span>
                           </TableCell>
                           <TableCell className="text-right space-x-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setConfigClient(client);
+                                setIsConfigOpen(true);
+                              }}
+                              title="Configure Excel Template Columns"
+                              className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                            >
+                              <SlidersHorizontal className="h-4 w-4" />
+                            </Button>
                             <Button size="sm" variant="ghost" onClick={() => handleEdit(client)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -499,6 +524,14 @@ export default function Clients({ clients, filters, totalRecords, searchCount, f
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          <ClientTemplateConfigModal
+            client={configClient}
+            isOpen={isConfigOpen}
+            onClose={() => {
+              setIsConfigOpen(false);
+              setConfigClient(null);
+            }}
+          />
         </div>
       </AppLayout>
     </ErrorBoundary>

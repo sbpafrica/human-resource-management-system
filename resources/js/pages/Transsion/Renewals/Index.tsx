@@ -77,6 +77,8 @@ interface Props {
     sort?: string;
     order?: string;
   };
+  totalRecords?: number;
+  searchCount?: number | null;
   flash?: {
     success?: string;
     error?: string;
@@ -91,6 +93,8 @@ const breadcrumbs = [
 export default function TranssionContractRenewalsIndex({
   renewals,
   filters,
+  totalRecords = 0,
+  searchCount = null,
   flash,
 }: Props) {
   const [search, setSearch] = useState(filters?.search ?? "");
@@ -324,29 +328,35 @@ export default function TranssionContractRenewalsIndex({
         </div>
       )}
 
-      <div className="container mx-auto p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-          <h1 className="text-2xl font-bold">Contract Renewals</h1>
+      <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <h1 className="text-2xl font-bold">Good Ease Contract Renewals</h1>
 
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col sm:flex-row gap-4">
             <Input
-              placeholder="Search by original ID or name..."
+              placeholder="Search by staff ID, employee name, or position..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full sm:w-72"
+              className="w-full sm:w-64"
             />
 
-            <Button onClick={() => setIsCreateOpen(true)}>
+            <Button onClick={() => setIsCreateOpen(true)} className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" />
               Add Renewal
             </Button>
 
-            <Button variant="outline" onClick={handleDownloadTemplate}>
+            <Button
+              className="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white"
+              onClick={handleDownloadTemplate}
+            >
               <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Template
+              Download Template
             </Button>
 
-            <Button variant="outline" onClick={() => setIsBulkOpen(true)}>
+            <Button
+              className="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white"
+              onClick={() => setIsBulkOpen(true)}
+            >
               <Upload className="h-4 w-4 mr-2" />
               Bulk Upload
             </Button>
@@ -653,32 +663,45 @@ export default function TranssionContractRenewalsIndex({
 
         <Card>
           <CardHeader>
-            <CardTitle>Renewal Addendums</CardTitle>
+            <CardTitle>Good Ease Contract Renewals</CardTitle>
+            <div className="text-sm text-muted-foreground">
+              {searchCount !== null && searchCount !== undefined
+                ? `Showing ${searchCount} of ${totalRecords || renewals.total || renewals.data.length} records matching your search`
+                : `Total Records: ${totalRecords || renewals.total || renewals.data.length}`}
+            </div>
           </CardHeader>
           <CardContent>
             {renewals.data.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                No renewals found.
+                No contract renewals found. Create a new contract renewal or upload an Excel file to get started!
               </div>
             ) : (
               <>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>No.</TableHead>
                       <TableHead>Download</TableHead>
-                      <TableHead>Status</TableHead>
                       <TableHead>
                         <Button
                           variant="ghost"
                           onClick={() => handleSort("id")}
-                          className="flex items-center gap-1 p-0 h-auto"
+                          className="flex items-center gap-1"
                         >
-                          Original ID
+                          Staff ID
                           <ArrowUpDown className="h-4 w-4" />
                         </Button>
                       </TableHead>
-                      <TableHead>Employee Name</TableHead>
+                      <TableHead>
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleSort("employeename")}
+                          className="flex items-center gap-1"
+                        >
+                          Employee Name
+                          <ArrowUpDown className="h-4 w-4" />
+                        </Button>
+                      </TableHead>
                       <TableHead>Position</TableHead>
                       <TableHead>Department</TableHead>
                       <TableHead>Start Date</TableHead>
@@ -698,30 +721,18 @@ export default function TranssionContractRenewalsIndex({
                             onClick={() => handleDownload(renewal.contract_id)}
                             title="Download Renewal Document & CV"
                           >
-                            <Download className="h-4 w-4 text-green-600" />
+                            <Download className="h-4 w-4" />
                           </Button>
-                        </TableCell>
-                        <TableCell>
-                          {renewal.signature ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-950/60 dark:text-green-300">
-                              <CheckCircle className="h-3 w-3 mr-1" /> Signed
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-950/60 dark:text-green-300">
-                              <CheckCircle className="h-3 w-3 mr-1" /> Activated
-                            </span>
-                          )}
                         </TableCell>
                         <TableCell>{renewal.id || "—"}</TableCell>
                         <TableCell>{renewal.employeename}</TableCell>
                         <TableCell>{renewal.position1}</TableCell>
-                        <TableCell>{renewal.department}</TableCell>
+                        <TableCell>{renewal.department || "—"}</TableCell>
                         <TableCell>{renewal.startdate?.substring(0, 10) || "—"}</TableCell>
                         <TableCell>{renewal.enddate?.substring(0, 10) || "—"}</TableCell>
                         <TableCell>{renewal.issuedate?.substring(0, 10) || "—"}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">
-
                             {/* Preview */}
                             <Button
                               variant="outline"
@@ -751,7 +762,6 @@ export default function TranssionContractRenewalsIndex({
                             >
                               <Trash className="h-4 w-4" />
                             </Button>
-
                           </div>
                         </TableCell>
                       </TableRow>

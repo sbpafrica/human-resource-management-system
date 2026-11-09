@@ -12,7 +12,7 @@ import { useState } from "react";
 interface Props {
   clientName: string;
   clientSlug: string;
-  type: "contracts" | "renewals" | "petra";
+  type: "contracts" | "renewals" | "petra" | "stat";
 }
 
 export default function EmptyState({ clientName, clientSlug, type }: Props) {
@@ -31,6 +31,10 @@ export default function EmptyState({ clientName, clientSlug, type }: Props) {
     sectionTitle = "PETRA Payment";
     sectionParent = "PETRA Payment";
     sectionHref = `/${clientSlug}petrapay`;
+  } else if (type === "stat") {
+    sectionTitle = "GRA Statutory Report";
+    sectionParent = "Statutory Reports";
+    sectionHref = `/${clientSlug}stat`;
   }
 
   const title = `${clientName} ${sectionTitle}`;

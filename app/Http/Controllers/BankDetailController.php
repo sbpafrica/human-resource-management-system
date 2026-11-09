@@ -414,6 +414,11 @@ class BankDetailController extends Controller
     // FIXED: Template with FULL numbers
     public function downloadTemplate()
     {
+        $clientDb = request('client') ?: request('client_dbname');
+        if ($clientDb && \App\Models\ClientTemplateColumn::where('client_dbname', $clientDb)->where('module', 'bank')->exists()) {
+            return (new \App\Services\Payroll\TemplateBuilderService())->downloadResponse($clientDb, 'bank');
+        }
+
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
