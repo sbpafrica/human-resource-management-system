@@ -14,6 +14,9 @@ import {
   XCircle,
   Download,
   Upload,
+  Calendar,
+  Filter,
+  X,
 } from "lucide-react";
 import AppLayout from "@/layouts/app-layout";
 import {
@@ -59,6 +62,7 @@ interface BankDetail {
   branch: string | null;
   momonum: string | null;
   momoname: string | null;
+  created_at?: string | null;
 }
 
 interface BankCode {
@@ -75,8 +79,10 @@ interface Props {
   };
   bankCodes: BankCode[];
   clients: string[];                    // ← ADDED: from controller
+  availableUploadDates?: { date: string; count: number }[];
   filters: {
     search: string;
+    upload_date?: string;
     sort: string;
     order: string;
   };
@@ -132,6 +138,7 @@ export default function BankDetailIndex({
   bankDetails,
   bankCodes,
   clients,
+  availableUploadDates = [],
   filters,
   totalRecords,
   searchCount,
@@ -151,6 +158,7 @@ export default function BankDetailIndex({
   const [search, setSearch] = useState(filters.search || "");
   const [sort, setSort] = useState(filters.sort || "employid");
   const [order, setOrder] = useState(filters.order || "asc");
+  const [uploadDate, setUploadDate] = useState(filters.upload_date || "");
   const [availableBranches, setAvailableBranches] = useState<BankCode[]>([]);
 
   // ────────────────────────────────────────────────────────────────
@@ -347,13 +355,31 @@ const { data, setData, post, put, processing, delete: destroy, get, errors, rese
     });
   };
 
-  const handleSearchSort = () => {
-    get(route("bankdetails.index", { search, sort, order }), { preserveState: true });
+  const handleSearchSort = (override?: { search?: string; sort?: string; order?: string; upload_date?: string }) => {
+    const s = override?.search !== undefined ? override.search : search;
+    const st = override?.sort !== undefined ? override.sort : sort;
+    const ord = override?.order !== undefined ? override.order : order;
+    const ud = override?.upload_date !== undefined ? override.upload_date : uploadDate;
+
+    router.get(route("bankdetails.index"), {
+      search: s || undefined,
+      sort: st,
+      order: ord,
+      upload_date: ud || undefined,
+    }, {
+      preserveState: true,
+      preserveScroll: true,
+    });
   };
 
   const handleExport = () => {
     const link = document.createElement("a");
-    link.href = route("bankdetails.export", { search, sort, order });
+    link.href = route("bankdetails.export", {
+      search: search || undefined,
+      sort,
+      order,
+      upload_date: uploadDate || undefined,
+    });
     link.download = "bank_details.xlsx";
     link.click();
   };
@@ -410,20 +436,83 @@ const { data, setData, post, put, processing, delete: destroy, get, errors, rese
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <h1 className="text-2xl font-bold">Bank Details</h1>
 
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-wrap items-center gap-3">
                 <ShadcnInput
                   placeholder="Search..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  onKeyUp={handleSearchSort}
-                  className="w-full sm:w-64"
+                  onKeyDown={e => { if (e.key === 'Enter') handleSearchSort(); }}
+                  onBlur={() => handleSearchSort()}
+                  className="w-full sm:w-56"
                 />
 
-                <Select value={`${sort}:${order}`} onValueChange={v => { const [s, o] = v.split(":"); setSort(s); setOrder(o); handleSearchSort(); }}>
+                {/* Upload Date Filter */}
+                <div className="flex items-center gap-1">
+                  <Select
+                    value={uploadDate || "all"}
+                    onValueChange={v => {
+                      const newDate = v === "all" ? "" : v;
+                      setUploadDate(newDate);
+                      handleSearchSort({ upload_date: newDate });
+                    }}
+                  >
+                    <SelectTrigger className="w-full sm:w-48">
+                      <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+                      <SelectValue placeholder="Upload Date" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Upload Dates</SelectItem>
+                      {availableUploadDates.map(item => (
+                        <SelectItem key={item.date} value={item.date}>
+                          {item.date} ({item.count})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Input
+                    type="date"
+                    value={uploadDate}
+                    onChange={e => {
+                      const newDate = e.target.value;
+                      setUploadDate(newDate);
+                      handleSearchSort({ upload_date: newDate });
+                    }}
+                    title="Or pick specific upload date"
+                    className="w-36 h-9"
+                  />
+
+                  {uploadDate && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setUploadDate("");
+                        handleSearchSort({ upload_date: "" });
+                      }}
+                      title="Clear upload date filter"
+                      className="px-2"
+                    >
+                      <X className="h-4 w-4 text-red-500" />
+                    </Button>
+                  )}
+                </div>
+
+                <Select
+                  value={`${sort}:${order}`}
+                  onValueChange={v => {
+                    const [s, o] = v.split(":");
+                    setSort(s);
+                    setOrder(o);
+                    handleSearchSort({ sort: s, order: o });
+                  }}
+                >
                   <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Sort by" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="employid:asc">Employee ID (A-Z)</SelectItem>
                     <SelectItem value="employid:desc">Employee ID (Z-A)</SelectItem>
+                    <SelectItem value="created_at:desc">Upload Date (Newest)</SelectItem>
+                    <SelectItem value="created_at:asc">Upload Date (Oldest)</SelectItem>
                     <SelectItem value="shop:asc">Shop (A-Z)</SelectItem>
                     <SelectItem value="bank:asc">Bank (A-Z)</SelectItem>
                     <SelectItem value="branch:asc">Branch (A-Z)</SelectItem>
@@ -734,6 +823,40 @@ placeholder={data.bank ? "Enter account" : "Select bank"}
                 <Trash className="h-4 w-4 mr-2" /> Delete ({selectedEmployIds.length})
               </Button>
             </div>
+
+            {/* Active Date Filter Alert Banner */}
+            {uploadDate && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg text-sm text-blue-900 dark:text-blue-100 gap-2">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span>
+                    Filtered by Upload Date: <strong>{uploadDate}</strong> ({searchCount !== null ? searchCount : bankDetails.data.length} record(s) found).
+                    Select records and click <strong>Delete ({selectedEmployIds.length})</strong> to remove this batch.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedEmployIds(bankDetails.data.map(b => b.employid.trim()));
+                    }}
+                  >
+                    Select All On Page
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setUploadDate("");
+                      handleSearchSort({ upload_date: "" });
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5 mr-1" /> Clear Date Filter
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Table */}
@@ -768,6 +891,7 @@ placeholder={data.bank ? "Enter account" : "Select bank"}
                         <TableHead>Branch</TableHead>
                         <TableHead>Momo #</TableHead>
                         <TableHead>Momo Name</TableHead>
+                        <TableHead>Upload Date</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -789,6 +913,9 @@ placeholder={data.bank ? "Enter account" : "Select bank"}
                           <TableCell>{bd.branch || "—"}</TableCell>
                           <TableCell>{bd.momonum || "—"}</TableCell>
                           <TableCell>{bd.momoname || "—"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                            {bd.created_at ? new Date(bd.created_at).toLocaleDateString() : "—"}
+                          </TableCell>
                           <TableCell className="text-right">
                             <Button variant="outline" size="sm" onClick={() => handleEdit(bd)}>
                               <Pencil className="h-4 w-4" />
@@ -819,6 +946,7 @@ placeholder={data.bank ? "Enter account" : "Select bank"}
                       <div className="text-sm text-muted-foreground">Bank: {bd.bank || "—"}</div>
                       <div className="text-sm text-muted-foreground">Account: {bd.account || "—"}</div>
                       <div className="text-sm text-muted-foreground">Branch: {bd.branch || "—"}</div>
+                      <div className="text-sm text-muted-foreground">Upload Date: {bd.created_at ? new Date(bd.created_at).toLocaleDateString() : "—"}</div>
                       <div className="flex gap-2 mt-2">
                         <Button variant="outline" size="sm" onClick={() => handleEdit(bd)}><Pencil /></Button>
                         <Button variant="destructive" size="sm" onClick={() => handleDelete(bd.employid)}><Trash /></Button>

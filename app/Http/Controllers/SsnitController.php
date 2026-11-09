@@ -58,20 +58,40 @@ class SsnitController extends Controller
         $totalRecords = Ssnit::count();
         $searchCount = null;
 
-        if ($search = $request->input('search')) {
+        $search = $request->input('search');
+        $uploadDate = $request->input('upload_date');
+
+        if ($uploadDate) {
+            $query->whereDate('created_at', $uploadDate);
+        }
+
+        if ($search) {
             $this->applySearchFilter($query, $search);
+        }
+
+        if ($search || $uploadDate) {
             $searchCount = (clone $query)->count();
         }
 
-        $sort = $request->input('sort', 'staffid');
+        $allowedSorts = ['staffid', 'shop', 'lastname', 'firstname', 'created_at'];
+        $sort = in_array($request->input('sort'), $allowedSorts) ? $request->input('sort') : 'staffid';
         $order = $request->input('order', 'asc');
         $query->orderBy($sort, $order);
-        $ssnits = $query->paginate(10)->withQueryString();
+        $ssnits = $query->paginate(15)->withQueryString();
+
+        $availableUploadDates = Ssnit::whereNotNull('created_at')
+            ->selectRaw('DATE(created_at) as date, count(*) as count')
+            ->groupBy('date')
+            ->orderBy('date', 'desc')
+            ->get()
+            ->map(fn($d) => ['date' => (string)$d->date, 'count' => (int)$d->count]);
 
         return Inertia::render('Ssnit/Index', [
             'ssnits' => $ssnits,
+            'availableUploadDates' => $availableUploadDates,
             'filters' => [
                 'search' => $search,
+                'upload_date' => $uploadDate,
                 'sort' => $sort,
                 'order' => $order,
             ],
@@ -189,6 +209,9 @@ class SsnitController extends Controller
         $order = $request->input('order', 'asc');
 
         $query = Ssnit::query();
+        if ($uploadDate = $request->input('upload_date')) {
+            $query->whereDate('created_at', $uploadDate);
+        }
         if ($search) {
             $this->applySearchFilter($query, $search);
         }
@@ -462,6 +485,11 @@ class SsnitController extends Controller
             }
 
             foreach ($validRecords as $record) {
+                $existing = Ssnit::where('staffid', $record['staffid'])->first();
+                if (!$existing) {
+                    $record['created_at'] = now();
+                }
+                $record['updated_at'] = now();
                 Ssnit::updateOrCreate(['staffid' => $record['staffid']], $record);
             }
 

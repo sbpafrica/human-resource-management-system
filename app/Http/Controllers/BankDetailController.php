@@ -62,12 +62,17 @@ class BankDetailController extends Controller
         });
 
         $search = $request->input('search');
+        $uploadDate = $request->input('upload_date');
         $sort = $request->input('sort', 'employid');
         $order = $request->input('order', 'asc');
 
         $query = BankDetail::query()
-            ->select(['employid', 'shop', 'name', 'bank', 'account', 'code', 'branch', 'momonum', 'momoname'])
+            ->select(['employid', 'shop', 'name', 'bank', 'account', 'code', 'branch', 'momonum', 'momoname', 'created_at'])
             ->whereNotIn('shop', $excludedShops);
+
+        if ($uploadDate) {
+            $query->whereDate('created_at', $uploadDate);
+        }
 
         $searchCount = null;
 
@@ -84,12 +89,17 @@ class BankDetailController extends Controller
                   ->orWhere('momonum',  'like', "%{$search}%")
                   ->orWhere('momoname', 'like', "%{$search}%");
             });
-
-            $searchCount = Cache::remember("bankdetails_search_count_{$search}", 300, fn() => $query->count());
         }
 
+        if ($search || $uploadDate) {
+            $searchCount = (clone $query)->count();
+        }
+
+        $allowedSorts = ['employid', 'shop', 'name', 'bank', 'branch', 'created_at'];
+        $sort = in_array($sort, $allowedSorts) ? $sort : 'employid';
+
         $query->orderBy($sort, $order);
-        $bankDetails = $query->paginate(10)->withQueryString();
+        $bankDetails = $query->paginate(15)->withQueryString();
 
 
         $bankCodes = Cache::remember('bank_codes_all', 3600, function () {
@@ -112,13 +122,24 @@ class BankDetailController extends Controller
                   ->toArray()
         );
 
-
+        $availableUploadDates = BankDetail::whereNotNull('created_at')
+            ->selectRaw('DATE(created_at) as date, count(*) as count')
+            ->groupBy('date')
+            ->orderBy('date', 'desc')
+            ->get()
+            ->map(fn($d) => ['date' => (string)$d->date, 'count' => (int)$d->count]);
 
         return Inertia::render('BankDetail/Index', [
             'bankDetails' => $bankDetails,
             'bankCodes' => $bankCodes,
-            'clients' => $clients, // ← NEW
-            'filters' => compact('search', 'sort', 'order'),
+            'clients' => $clients,
+            'availableUploadDates' => $availableUploadDates,
+            'filters' => [
+                'search' => $search,
+                'upload_date' => $uploadDate,
+                'sort' => $sort,
+                'order' => $order,
+            ],
             'totalRecords' => $totalRecords,
             'searchCount' => $searchCount,
             'flash' => [
@@ -340,6 +361,9 @@ class BankDetailController extends Controller
     $order = $request->input('order', 'asc');
 
     $query = BankDetail::query();
+    if ($uploadDate = $request->input('upload_date')) {
+        $query->whereDate('created_at', $uploadDate);
+    }
     if ($search) {
         $query->where(function ($q) use ($search) {
             $q->where('employid',  'like', "%{$search}%")
@@ -672,6 +696,11 @@ class BankDetailController extends Controller
             }
 
             foreach ($validRecords as $record) {
+                $existing = BankDetail::where('employid', $record['employid'])->first();
+                if (!$existing) {
+                    $record['created_at'] = now();
+                }
+                $record['updated_at'] = now();
                 BankDetail::updateOrCreate(['employid' => $record['employid']], $record);
             }
 

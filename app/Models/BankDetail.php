@@ -9,7 +9,7 @@ class BankDetail extends Model
     protected $primaryKey = 'employid';
     public $incrementing = false;
     protected $keyType = 'string';
-     public $timestamps = false;
+    public $timestamps = true;
 
     protected $fillable = [
         'employid',
@@ -21,6 +21,13 @@ class BankDetail extends Model
         'branch',
         'momonum',
         'momoname',
+        'created_at',
+        'updated_at',
+    ];
+
+    protected $casts = [
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
 

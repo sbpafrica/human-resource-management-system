@@ -1,7 +1,7 @@
 import { Head, Link, useForm } from "@inertiajs/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Pencil, Trash, CheckCircle2, XCircle, Download, Upload } from "lucide-react";
+import { Plus, Pencil, Trash, CheckCircle2, XCircle, Download, Upload, Calendar, Filter, X } from "lucide-react";
 import AppLayout from "@/layouts/app-layout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ interface Ssnit {
   othername: string | null;
   ssnit1a: string;
   national: string | null;
+  created_at?: string | null;
 }
 
 interface Props {
@@ -28,8 +29,10 @@ interface Props {
     data: Ssnit[];
     links: any[];
   };
+  availableUploadDates?: { date: string; count: number }[];
   filters: {
     search: string;
+    upload_date?: string;
     sort: string;
     order: string;
   };
@@ -45,7 +48,7 @@ const breadcrumbs = [
   { title: "SSNIT Details", href: "/ssnitdetails" },
 ];
 
-export default function SsnitIndex({ ssnits, filters, totalRecords, searchCount, flash }: Props) {
+export default function SsnitIndex({ ssnits, availableUploadDates = [], filters, totalRecords, searchCount, flash }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [editingSsnit, setEditingSsnit] = useState<Ssnit | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -58,6 +61,7 @@ export default function SsnitIndex({ ssnits, filters, totalRecords, searchCount,
   const [search, setSearch] = useState(filters.search || "");
   const [sort, setSort] = useState(filters.sort || "staffid");
   const [order, setOrder] = useState(filters.order || "asc");
+  const [uploadDate, setUploadDate] = useState(filters.upload_date || "");
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
 
   const { data, setData, post, put, processing, reset, delete: destroy, get, errors } = useForm({
@@ -205,19 +209,35 @@ export default function SsnitIndex({ ssnits, filters, totalRecords, searchCount,
     });
   };
 
-  const handleSearchSort = (overrideSearch?: string, overrideSort?: string, overrideOrder?: string) => {
+  const handleSearchSort = (
+    overrideSearch?: string,
+    overrideSort?: string,
+    overrideOrder?: string,
+    overrideUploadDate?: string
+  ) => {
     const s = overrideSearch !== undefined ? overrideSearch : search;
     const st = overrideSort !== undefined ? overrideSort : sort;
     const ord = overrideOrder !== undefined ? overrideOrder : order;
+    const ud = overrideUploadDate !== undefined ? overrideUploadDate : uploadDate;
 
-    get(route("ssnitdetails.index", { search: s, sort: st, order: ord }), {
+    get(route("ssnitdetails.index", {
+      search: s || undefined,
+      sort: st,
+      order: ord,
+      upload_date: ud || undefined,
+    }), {
       preserveState: true,
       preserveScroll: true,
     });
   };
 
   const handleExport = () => {
-    const url = route("ssnitdetails.export", { search, sort, order });
+    const url = route("ssnitdetails.export", {
+      search: search || undefined,
+      sort,
+      order,
+      upload_date: uploadDate || undefined,
+    });
     const link = document.createElement("a");
     link.href = url;
     link.download = "ssnit_records.xlsx";
@@ -281,7 +301,7 @@ export default function SsnitIndex({ ssnits, filters, totalRecords, searchCount,
           <div className="flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <h1 className="text-2xl font-bold">SSNIT Details</h1>
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-wrap items-center gap-3">
                 <ShadcnInput
                   placeholder="Search by staff ID, name, SSNIT, or shop..."
                   value={search}
@@ -297,12 +317,66 @@ export default function SsnitIndex({ ssnits, filters, totalRecords, searchCount,
                   }}
                   className="w-full sm:w-64"
                 />
+
+                {/* Upload Date Filter */}
+                <div className="flex items-center gap-1">
+                  <Select
+                    value={uploadDate || "all"}
+                    onValueChange={(v) => {
+                      const newDate = v === "all" ? "" : v;
+                      setUploadDate(newDate);
+                      handleSearchSort(undefined, undefined, undefined, newDate);
+                    }}
+                  >
+                    <SelectTrigger className="w-full sm:w-48">
+                      <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+                      <SelectValue placeholder="Upload Date" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Upload Dates</SelectItem>
+                      {availableUploadDates.map((item) => (
+                        <SelectItem key={item.date} value={item.date}>
+                          {item.date} ({item.count})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Input
+                    type="date"
+                    value={uploadDate}
+                    onChange={(e) => {
+                      const newDate = e.target.value;
+                      setUploadDate(newDate);
+                      handleSearchSort(undefined, undefined, undefined, newDate);
+                    }}
+                    title="Or pick specific upload date"
+                    className="w-36 h-9"
+                  />
+
+                  {uploadDate && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setUploadDate("");
+                        handleSearchSort(undefined, undefined, undefined, "");
+                      }}
+                      title="Clear upload date filter"
+                      className="px-2"
+                    >
+                      <X className="h-4 w-4 text-red-500" />
+                    </Button>
+                  )}
+                </div>
+
                 <Select
                   value={`${sort}:${order}`}
                   onValueChange={(value) => {
-                    setSort(value.split(":")[0]);
-                    setOrder(value.split(":")[1]);
-                    handleSearchSort();
+                    const [s, o] = value.split(":");
+                    setSort(s);
+                    setOrder(o);
+                    handleSearchSort(undefined, s, o);
                   }}
                 >
                   <SelectTrigger className="w-full sm:w-48">
@@ -311,14 +385,14 @@ export default function SsnitIndex({ ssnits, filters, totalRecords, searchCount,
                   <SelectContent>
                     <SelectItem value="staffid:asc">Staff ID (A-Z)</SelectItem>
                     <SelectItem value="staffid:desc">Staff ID (Z-A)</SelectItem>
+                    <SelectItem value="created_at:desc">Upload Date (Newest)</SelectItem>
+                    <SelectItem value="created_at:asc">Upload Date (Oldest)</SelectItem>
                     <SelectItem value="lastname:asc">Last Name (A-Z)</SelectItem>
                     <SelectItem value="lastname:desc">Last Name (Z-A)</SelectItem>
                     <SelectItem value="firstname:asc">First Name (A-Z)</SelectItem>
                     <SelectItem value="firstname:desc">First Name (Z-A)</SelectItem>
                     <SelectItem value="shop:asc">Shop (A-Z)</SelectItem>
                     <SelectItem value="shop:desc">Shop (Z-A)</SelectItem>
-                    <SelectItem value="created_at:asc">Created (Oldest)</SelectItem>
-                    <SelectItem value="created_at:desc">Created (Newest)</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button onClick={handleExport} className="w-full sm:w-auto">
@@ -498,6 +572,40 @@ export default function SsnitIndex({ ssnits, filters, totalRecords, searchCount,
                 Delete Selected
               </Button>
             </div>
+
+            {/* Active Date Filter Alert Banner */}
+            {uploadDate && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg text-sm text-blue-900 dark:text-blue-100 gap-2">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span>
+                    Filtered by Upload Date: <strong>{uploadDate}</strong> ({searchCount !== null ? searchCount : ssnits.data.length} record(s) found).
+                    Select records and click <strong>Delete Selected ({selectedStaffIds.length})</strong> to remove this batch.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedStaffIds(ssnits.data.map(s => s.staffid));
+                    }}
+                  >
+                    Select All On Page
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setUploadDate("");
+                      handleSearchSort(undefined, undefined, undefined, "");
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5 mr-1" /> Clear Date Filter
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {ssnits.data.length > 0 ? (
@@ -529,6 +637,9 @@ export default function SsnitIndex({ ssnits, filters, totalRecords, searchCount,
                         <div className="text-sm text-muted-foreground">SSNIT: {ssnit.ssnit1a}</div>
                         <div className="text-sm text-muted-foreground">
                           National ID: {ssnit.national || "N/A"}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Upload Date: {ssnit.created_at ? new Date(ssnit.created_at).toLocaleDateString() : "—"}
                         </div>
                         <div className="flex gap-2">
                           <Button variant="outline" size="sm" onClick={() => handleEdit(ssnit)}>
@@ -563,6 +674,7 @@ export default function SsnitIndex({ ssnits, filters, totalRecords, searchCount,
                         <TableHead>Other Name</TableHead>
                         <TableHead>SSNIT Number</TableHead>
                         <TableHead>National ID</TableHead>
+                        <TableHead>Upload Date</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -582,6 +694,9 @@ export default function SsnitIndex({ ssnits, filters, totalRecords, searchCount,
                           <TableCell>{ssnit.othername || "N/A"}</TableCell>
                           <TableCell>{ssnit.ssnit1a}</TableCell>
                           <TableCell>{ssnit.national || "N/A"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                            {ssnit.created_at ? new Date(ssnit.created_at).toLocaleDateString() : "—"}
+                          </TableCell>
                           <TableCell className="text-right">
                             <div className="flex gap-2 justify-end">
                               <Button variant="outline" size="sm" onClick={() => handleEdit(ssnit)}>
