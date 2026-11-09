@@ -29,6 +29,7 @@ import {
   Globe,
   Clock,
   ClipboardCheck,
+  LifeBuoy,
 } from 'lucide-react';
 import AppLogo from './app-logo';
 import { useEffect, useState, useRef } from 'react';
@@ -119,6 +120,10 @@ export function AppSidebar() {
 
     if (user.is_super_admin || isHrManager || can('view documents') || can('view contracts') || can('view database')) {
       items.push({ title: 'Documents', href: '/documents', icon: FileText });
+    }
+
+    if (user.is_super_admin || isHrManager || can('view complaints') || can('view hr audit') || hasRole('HR Officer')) {
+      items.push({ title: 'Complaints', href: '/complaints', icon: LifeBuoy });
     }
 
     if (can('view database') || can('view employees')) {

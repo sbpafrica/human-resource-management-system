@@ -402,6 +402,12 @@ Route::post('/employeeportal/{staffid}/archive', [EmployeePortalController::clas
 Route::post('/employeeportal/bulk-archive', [EmployeePortalController::class, 'bulkArchive'])->name('employeeportal.bulk-archive');
 
 
+    // Public Employee Complaints Portal (No login required)
+    Route::get('/complaints/submit', [App\Http\Controllers\ComplaintSubmissionController::class, 'create'])->name('complaints.submit');
+    Route::post('/complaints/verify-staff', [App\Http\Controllers\ComplaintSubmissionController::class, 'verifyStaff'])->name('complaints.verify-staff');
+    Route::post('/complaints/submit', [App\Http\Controllers\ComplaintSubmissionController::class, 'store'])->name('complaints.store-public');
+    Route::get('/complaints/track', [App\Http\Controllers\ComplaintSubmissionController::class, 'track'])->name('complaints.track');
+
     // Employee Documents & Auto-Email Dispatch
     Route::get('/documents', [App\Http\Controllers\EmployeeDocumentController::class, 'index'])->name('documents.index');
     Route::get('/documents/search-employees', [App\Http\Controllers\EmployeeDocumentController::class, 'searchEmployees'])->name('documents.search-employees');
@@ -409,6 +415,15 @@ Route::post('/employeeportal/bulk-archive', [EmployeePortalController::class, 'b
     Route::post('/documents/bulk-upload', [App\Http\Controllers\EmployeeDocumentController::class, 'bulkUpload'])->name('documents.bulk-upload');
     Route::get('/documents/{id}/download', [App\Http\Controllers\EmployeeDocumentController::class, 'download'])->name('documents.download');
     Route::post('/documents/{id}/resend', [App\Http\Controllers\EmployeeDocumentController::class, 'resend'])->name('documents.resend');
+
+    // HR Complaints Management (Authenticated)
+    Route::middleware(['auth'])->group(function () {
+        Route::get('/complaints', [App\Http\Controllers\ComplaintController::class, 'index'])->name('complaints.index');
+        Route::post('/complaints', [App\Http\Controllers\ComplaintController::class, 'store'])->name('complaints.store');
+        Route::put('/complaints/{id}', [App\Http\Controllers\ComplaintController::class, 'update'])->name('complaints.update');
+        Route::delete('/complaints/{id}', [App\Http\Controllers\ComplaintController::class, 'destroy'])->name('complaints.destroy');
+        Route::get('/complaints-export', [App\Http\Controllers\ComplaintController::class, 'export'])->name('complaints.export');
+    });
 
     Route::middleware(['auth'])->group(function () {
     Route::get('/employeecontact', [EmployeeContactController::class, 'index'])->name('employeecontact.index');
