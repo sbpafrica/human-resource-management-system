@@ -30,12 +30,13 @@ interface Props {
   clients: ClientOption[];
   months: string[];
   categories: string[];
+  prefillClient?: string;
 }
 
-export default function ComplaintSubmit({ clients, months, categories }: Props) {
+export default function ComplaintSubmit({ clients, months, categories, prefillClient = "" }: Props) {
   const [staffId, setStaffId] = useState("");
   const [employeeName, setEmployeeName] = useState("");
-  const [clientName, setClientName] = useState("");
+  const [clientName, setClientName] = useState(prefillClient || "");
   const [shopName, setShopName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");

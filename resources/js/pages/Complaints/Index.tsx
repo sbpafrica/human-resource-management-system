@@ -37,6 +37,7 @@ import {
   Building2,
   User,
   Layers,
+  Copy,
 } from "lucide-react";
 import debounce from "lodash/debounce";
 
@@ -143,6 +144,16 @@ export default function ComplaintsIndex({
   const [manPriority, setManPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
   const [manText, setManText] = useState("");
   const [creatingManual, setCreatingManual] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const handleCopyLink = () => {
+    const baseUrl = window.location.origin + "/complaints/submit";
+    const shareUrl = selectedClient ? `${baseUrl}?client=${encodeURIComponent(selectedClient)}` : baseUrl;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 3000);
+    });
+  };
 
   // Debounced search
   const debouncedSearch = useCallback(
@@ -303,6 +314,30 @@ export default function ComplaintsIndex({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCopyLink}
+              className={`inline-flex items-center gap-1.5 text-xs h-9 font-semibold transition-all shadow-sm ${
+                copiedLink
+                  ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
+                  : "bg-white text-blue-700 border-blue-300 hover:bg-blue-50"
+              }`}
+              title="Copy public link to share with employees via WhatsApp or Email"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-white" />
+                  Link Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-blue-600" />
+                  Copy Link for Employees
+                </>
+              )}
+            </Button>
+
             <a
               href="/complaints/submit"
               target="_blank"
@@ -310,7 +345,7 @@ export default function ComplaintsIndex({
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              Public Submission Portal
+              Open Portal
             </a>
 
             <a
@@ -329,6 +364,32 @@ export default function ComplaintsIndex({
               Log Walk-in Complaint
             </Button>
           </div>
+        </div>
+
+        {/* Public Share Info Banner */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 rounded-xl text-xs text-blue-900 gap-3 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-blue-600 text-white rounded-lg shadow-sm">
+              <LifeBuoy className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-semibold text-blue-950">
+                Employees do NOT need to log in to raise a complaint!
+              </p>
+              <p className="text-blue-700 mt-0.5">
+                Click <strong>"Copy Link for Employees"</strong> to copy the public link and share it on WhatsApp, SMS, or Email. Staff IDs are automatically verified against the database.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleCopyLink}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs whitespace-nowrap h-8 font-medium shadow-sm flex items-center gap-1.5 self-start sm:self-auto"
+          >
+            {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copiedLink ? "Link Copied!" : "Copy Link"}
+          </Button>
         </div>
 
         {/* KPI Metrics */}

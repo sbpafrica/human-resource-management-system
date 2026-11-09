@@ -16,7 +16,7 @@ class ComplaintSubmissionController extends Controller
     /**
      * Show public complaint submission portal.
      */
-    public function create()
+    public function create(Request $request)
     {
         $clients = Client::where('is_active', 1)
             ->orderBy('client_name')
@@ -40,9 +40,10 @@ class ComplaintSubmissionController extends Controller
         ];
 
         return Inertia::render('Complaints/Submit', [
-            'clients'    => $clients,
-            'months'     => $months,
-            'categories' => $categories,
+            'clients'       => $clients,
+            'months'        => $months,
+            'categories'    => $categories,
+            'prefillClient' => $request->query('client', ''),
         ]);
     }
 
