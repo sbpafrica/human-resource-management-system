@@ -402,6 +402,14 @@ Route::post('/employeeportal/{staffid}/archive', [EmployeePortalController::clas
 Route::post('/employeeportal/bulk-archive', [EmployeePortalController::class, 'bulkArchive'])->name('employeeportal.bulk-archive');
 
 
+    // Employee Documents & Auto-Email Dispatch
+    Route::get('/documents', [App\Http\Controllers\EmployeeDocumentController::class, 'index'])->name('documents.index');
+    Route::get('/documents/search-employees', [App\Http\Controllers\EmployeeDocumentController::class, 'searchEmployees'])->name('documents.search-employees');
+    Route::post('/documents', [App\Http\Controllers\EmployeeDocumentController::class, 'store'])->name('documents.store');
+    Route::post('/documents/bulk-upload', [App\Http\Controllers\EmployeeDocumentController::class, 'bulkUpload'])->name('documents.bulk-upload');
+    Route::get('/documents/{id}/download', [App\Http\Controllers\EmployeeDocumentController::class, 'download'])->name('documents.download');
+    Route::post('/documents/{id}/resend', [App\Http\Controllers\EmployeeDocumentController::class, 'resend'])->name('documents.resend');
+
     Route::middleware(['auth'])->group(function () {
     Route::get('/employeecontact', [EmployeeContactController::class, 'index'])->name('employeecontact.index');
     Route::post('/employeecontact', [EmployeeContactController::class, 'store'])->name('employeecontact.store');

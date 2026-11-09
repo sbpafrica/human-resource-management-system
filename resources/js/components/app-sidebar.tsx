@@ -117,6 +117,10 @@ export function AppSidebar() {
       items.push({ title: 'Attendance', href: '/attendance', icon: Clock });
     }
 
+    if (user.is_super_admin || isHrManager || can('view documents') || can('view contracts') || can('view database')) {
+      items.push({ title: 'Documents', href: '/documents', icon: FileText });
+    }
+
     if (can('view database') || can('view employees')) {
       items.push({
         title: 'Database',
