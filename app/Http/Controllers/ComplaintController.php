@@ -14,13 +14,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class ComplaintController extends Controller
 {
     /**
-     * Display a listing of complaints in the HR management dashboard.
+     * Get accessible client names and models for the given user.
+     *
+     * @return array{0: \Illuminate\Support\Collection, 1: array<string>}
      */
-    public function index(Request $request)
+    private function getAccessibleClients($user): array
     {
-        $user = $request->user();
-
-        // Accessible clients query
         $clientsQuery = ($user->is_super_admin || !$user->clients()->exists())
             ? Client::where('client.is_active', 1)
             : $user->clients()->where('client.is_active', 1);
@@ -32,6 +31,18 @@ class ComplaintController extends Controller
         $clientNames = $accessibleClients->pluck('client_name')->toArray();
         $shortNames  = $accessibleClients->pluck('short_name')->toArray();
         $allowedClientNames = array_values(array_unique(array_filter(array_merge($clientNames, $shortNames))));
+
+        return [$accessibleClients, $allowedClientNames];
+    }
+
+    /**
+     * Display a listing of complaints in the HR management dashboard.
+     */
+    public function index(Request $request)
+    {
+        $user = $request->user();
+
+        [$accessibleClients, $allowedClientNames] = $this->getAccessibleClients($user);
 
         $query = Complaint::query()
             ->leftJoin('users', 'complaints.resolved_by', '=', 'users.id')
@@ -98,11 +109,14 @@ class ComplaintController extends Controller
             'resolved'     => (clone $metricsBase)->where('status', 'resolved')->count(),
         ];
 
-        // Available months for dropdown
-        $availableMonths = Complaint::select('month_period')
+        // Available months for dropdown (scoped to accessible clients)
+        $availableMonthsQuery = Complaint::select('month_period')
             ->whereNotNull('month_period')
-            ->distinct()
-            ->orderBy('month_period', 'desc')
+            ->distinct();
+        if (!$user->is_super_admin && $user->clients()->exists()) {
+            $availableMonthsQuery->whereIn('client_name', $allowedClientNames);
+        }
+        $availableMonths = $availableMonthsQuery->orderBy('month_period', 'desc')
             ->pluck('month_period')
             ->toArray();
 
@@ -133,7 +147,15 @@ class ComplaintController extends Controller
      */
     public function update(Request $request, $id)
     {
+        $user = $request->user();
         $complaint = Complaint::findOrFail($id);
+
+        if (!$user->is_super_admin && $user->clients()->exists()) {
+            [, $allowedClientNames] = $this->getAccessibleClients($user);
+            if (!in_array($complaint->client_name, $allowedClientNames)) {
+                abort(403, 'Unauthorized: You do not have permission to manage complaints for this client.');
+            }
+        }
 
         $validated = $request->validate([
             'status'           => ['required', 'in:pending,under_review,resolved,rejected'],
@@ -162,6 +184,15 @@ class ComplaintController extends Controller
      */
     public function store(Request $request)
     {
+        $user = $request->user();
+
+        if (!$user->is_super_admin && $user->clients()->exists()) {
+            [, $allowedClientNames] = $this->getAccessibleClients($user);
+            if (!in_array($request->input('client_name'), $allowedClientNames)) {
+                return redirect()->back()->withErrors(['client_name' => 'You do not have permission to register complaints for this client.']);
+            }
+        }
+
         $validated = $request->validate([
             'staff_id'       => ['required', 'string', 'max:50'],
             'employee_name'  => ['required', 'string', 'max:200'],
@@ -218,11 +249,7 @@ class ComplaintController extends Controller
     {
         $user = $request->user();
 
-        $clientsQuery = ($user->is_super_admin || !$user->clients()->exists())
-            ? Client::where('client.is_active', 1)
-            : $user->clients()->where('client.is_active', 1);
-
-        $allowedClientNames = $clientsQuery->pluck('client_name')->toArray();
+        [, $allowedClientNames] = $this->getAccessibleClients($user);
 
         $query = Complaint::query()->with('resolver:id,name');
 
