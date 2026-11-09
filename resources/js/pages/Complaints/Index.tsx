@@ -423,7 +423,6 @@ export default function ComplaintsIndex({
                       {c.client_name}
                     </option>
                   ))}
-                  <option value="Melcom">Melcom</option>
                 </select>
               </div>
 

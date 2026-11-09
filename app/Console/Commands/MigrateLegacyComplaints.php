@@ -18,6 +18,20 @@ class MigrateLegacyComplaints extends Command
 
         if ($this->option('force')) {
             $this->warn('Truncating previously imported legacy complaints...');
+        }
+
+        $totalImported = self::syncLegacy((bool)$this->option('force'));
+
+        $this->info("Legacy complaints migration completed! Total records imported: {$totalImported}");
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Programmatically sync legacy complaint tables into the unified complaints table.
+     */
+    public static function syncLegacy(bool $force = false): int
+    {
+        if ($force) {
             Complaint::where('submission_source', 'legacy_import')->delete();
         }
 
@@ -25,22 +39,18 @@ class MigrateLegacyComplaints extends Command
         $tableNames = array_map(fn($t) => array_values((array)$t)[0], $tables);
 
         $totalImported = 0;
-        $totalTables = count($tableNames);
-
-        $this->info("Found {$totalTables} legacy tables to process.");
 
         foreach ($tableNames as $tableName) {
-            $monthPeriod = $this->parseMonthYear($tableName);
+            $monthPeriod = self::resolveMonthYear($tableName);
             $rows = DB::table($tableName)->get();
 
             if ($rows->isEmpty()) {
                 continue;
             }
 
-            $countInTable = 0;
             $ticketPrefix = 'LEG-MEL-' . preg_replace('/[^a-zA-Z0-9]/', '', $tableName) . '-';
-
             $insertData = [];
+
             foreach ($rows as $index => $row) {
                 $staffId = trim($row->staffid ?? '');
                 $name = trim($row->name ?? '');
@@ -60,7 +70,7 @@ class MigrateLegacyComplaints extends Command
 
                 $insertData[] = [
                     'ticket_number'     => $ticketNumber,
-                    'client_name'       => 'Melcom',
+                    'client_name'       => 'MELCOM LTD.',
                     'staff_id'          => $staffId ?: 'N/A',
                     'employee_name'     => $name ?: 'Unknown Staff',
                     'shop_name'         => $shopName ?: null,
@@ -76,25 +86,23 @@ class MigrateLegacyComplaints extends Command
                     'created_at'        => now(),
                     'updated_at'        => now(),
                 ];
-
-                $countInTable++;
             }
 
             if (!empty($insertData)) {
-                // Chunk insert
                 foreach (array_chunk($insertData, 500) as $chunk) {
                     DB::table('complaints')->insert($chunk);
                 }
-                $totalImported += $countInTable;
-                $this->line("Processed {$tableName} ({$monthPeriod}): {$countInTable} records.");
+                $totalImported += count($insertData);
             }
         }
 
-        $this->info("Legacy complaints migration completed! Total records imported: {$totalImported}");
-        return Command::SUCCESS;
+        // Also normalize any existing legacy records that were stored as 'Melcom'
+        Complaint::where('client_name', 'Melcom')->update(['client_name' => 'MELCOM LTD.']);
+
+        return $totalImported;
     }
 
-    private function parseMonthYear(string $name): string
+    public static function resolveMonthYear(string $name): string
     {
         if (preg_match('/^commel([a-z]+)(\d{2})$/i', $name, $m)) {
             $monthPart = $m[1];

@@ -42,6 +42,11 @@ class ComplaintController extends Controller
     {
         $user = $request->user();
 
+        // Auto-seed legacy complaints if complaints table is currently empty
+        if (Complaint::count() === 0) {
+            \App\Console\Commands\MigrateLegacyComplaints::syncLegacy();
+        }
+
         [$accessibleClients, $allowedClientNames] = $this->getAccessibleClients($user);
 
         $query = Complaint::query()
@@ -65,9 +70,27 @@ class ComplaintController extends Controller
             });
         }
 
+        // Helper to resolve all alias variations for a client name (e.g. "MELCOM LTD." <=> "Melcom")
+        $resolveClientAliases = function ($clientInput) {
+            $matchedClient = Client::where('client_name', $clientInput)
+                ->orWhere('short_name', $clientInput)
+                ->first();
+
+            $possible = [$clientInput];
+            if ($matchedClient) {
+                if ($matchedClient->client_name) $possible[] = $matchedClient->client_name;
+                if ($matchedClient->short_name)  $possible[] = $matchedClient->short_name;
+            }
+            if (stripos($clientInput, 'melcom') !== false) {
+                $possible = array_merge($possible, ['Melcom', 'MELCOM', 'MELCOM LTD.', 'MELCOM LTD DRIVERS']);
+            }
+            return array_values(array_unique(array_filter($possible)));
+        };
+
         // Client filter
         if ($client = $request->input('client')) {
-            $query->where('complaints.client_name', $client);
+            $aliases = $resolveClientAliases($client);
+            $query->whereIn('complaints.client_name', $aliases);
         }
 
         // Month period filter
@@ -101,6 +124,9 @@ class ComplaintController extends Controller
         if (!$user->is_super_admin && $user->clients()->exists()) {
             $metricsBase->whereIn('client_name', $allowedClientNames);
         }
+        if ($client = $request->input('client')) {
+            $metricsBase->whereIn('client_name', $resolveClientAliases($client));
+        }
 
         $metrics = [
             'total'        => (clone $metricsBase)->count(),
@@ -109,16 +135,31 @@ class ComplaintController extends Controller
             'resolved'     => (clone $metricsBase)->where('status', 'resolved')->count(),
         ];
 
-        // Available months for dropdown (scoped to accessible clients)
+        // Available months for dropdown (scoped to accessible clients and active client filter)
         $availableMonthsQuery = Complaint::select('month_period')
             ->whereNotNull('month_period')
+            ->where('month_period', '!=', '')
             ->distinct();
+
         if (!$user->is_super_admin && $user->clients()->exists()) {
             $availableMonthsQuery->whereIn('client_name', $allowedClientNames);
         }
-        $availableMonths = $availableMonthsQuery->orderBy('month_period', 'desc')
-            ->pluck('month_period')
-            ->toArray();
+
+        if ($client = $request->input('client')) {
+            $availableMonthsQuery->whereIn('client_name', $resolveClientAliases($client));
+        }
+
+        $availableMonths = $availableMonthsQuery->pluck('month_period')->toArray();
+
+        // Sort months chronologically (newest first)
+        usort($availableMonths, function ($a, $b) {
+            $tA = strtotime("01 " . $a);
+            $tB = strtotime("01 " . $b);
+            if ($tA && $tB) {
+                return $tB <=> $tA;
+            }
+            return strcmp($b, $a);
+        });
 
         $categories = [
             'Salary Discrepancy / Underpayment',
@@ -266,7 +307,16 @@ class ComplaintController extends Controller
             });
         }
         if ($client = $request->input('client')) {
-            $query->where('client_name', $client);
+            $matchedClient = Client::where('client_name', $client)->orWhere('short_name', $client)->first();
+            $possible = [$client];
+            if ($matchedClient) {
+                if ($matchedClient->client_name) $possible[] = $matchedClient->client_name;
+                if ($matchedClient->short_name)  $possible[] = $matchedClient->short_name;
+            }
+            if (stripos($client, 'melcom') !== false) {
+                $possible = array_merge($possible, ['Melcom', 'MELCOM', 'MELCOM LTD.', 'MELCOM LTD DRIVERS']);
+            }
+            $query->whereIn('complaints.client_name', array_values(array_unique(array_filter($possible))));
         }
         if ($month = $request->input('month')) {
             $query->where('month_period', $month);
