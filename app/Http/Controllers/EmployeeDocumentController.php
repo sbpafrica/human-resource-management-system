@@ -26,10 +26,12 @@ class EmployeeDocumentController extends Controller
 
         // Determine accessible clients
         $clientsQuery = ($user->is_super_admin || !$user->clients()->exists())
-            ? Client::where('is_active', 1)
-            : $user->clients()->where('is_active', 1);
+            ? Client::where('client.is_active', 1)
+            : $user->clients()->where('client.is_active', 1);
 
-        $accessibleClients = $clientsQuery->orderBy('client_name')->get(['id', 'client_name', 'short_name']);
+        $accessibleClients = $clientsQuery->orderBy('client.client_name')
+            ->select(['client.id', 'client.client_name', 'client.short_name'])
+            ->get();
         $clientNames = $accessibleClients->pluck('client_name')->toArray();
         $shortNames  = $accessibleClients->pluck('short_name')->toArray();
         $allowedClientNames = array_values(array_unique(array_filter(array_merge($clientNames, $shortNames))));
