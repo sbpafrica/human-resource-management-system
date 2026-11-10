@@ -68,6 +68,19 @@ class MigrateLegacyComplaints extends Command
                     continue;
                 }
 
+                // October 2026 and later cycles have not been dealt with yet,
+                // so their status must ALWAYS be 'pending'.
+                $isPendingCycle = (
+                    stripos($tableName, 'october26') !== false ||
+                    stripos($tableName, 'oct26') !== false ||
+                    stripos($monthPeriod, 'October 2026') !== false ||
+                    stripos($monthPeriod, 'November 2026') !== false
+                );
+                $status = $isPendingCycle ? 'pending' : 'resolved';
+                $resolutionNotes = $isPendingCycle 
+                    ? null 
+                    : 'Historical record imported from legacy system (' . $tableName . ')';
+
                 $insertData[] = [
                     'ticket_number'     => $ticketNumber,
                     'client_name'       => 'MELCOM LTD.',
@@ -79,10 +92,10 @@ class MigrateLegacyComplaints extends Command
                     'month_period'      => $monthPeriod,
                     'category'          => 'Salary Discrepancy',
                     'complaint_text'    => $complaintText ?: 'Complaint logged without description',
-                    'status'            => 'resolved',
+                    'status'            => $status,
                     'priority'          => 'medium',
                     'submission_source' => 'legacy_import',
-                    'resolution_notes'  => 'Historical record imported from legacy system (' . $tableName . ')',
+                    'resolution_notes'  => $resolutionNotes,
                     'created_at'        => now(),
                     'updated_at'        => now(),
                 ];

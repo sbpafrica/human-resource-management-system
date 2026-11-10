@@ -767,7 +767,8 @@ export default function ComplaintsIndex({
                     <select
                       value={modalStatus}
                       onChange={(e: any) => setModalStatus(e.target.value)}
-                      className="w-full h-10 px-3 py-2 text-sm bg-white border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={!canManage}
+                      className="w-full h-10 px-3 py-2 text-sm bg-white border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
                     >
                       <option value="pending">Pending</option>
                       <option value="under_review">Under Review</option>
@@ -783,7 +784,8 @@ export default function ComplaintsIndex({
                     <select
                       value={modalPriority}
                       onChange={(e: any) => setModalPriority(e.target.value)}
-                      className="w-full h-10 px-3 py-2 text-sm bg-white border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={!canManage}
+                      className="w-full h-10 px-3 py-2 text-sm bg-white border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
                     >
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
@@ -802,13 +804,20 @@ export default function ComplaintsIndex({
                     rows={3}
                     value={modalNotes}
                     onChange={(e) => setModalNotes(e.target.value)}
+                    disabled={!canManage}
                     placeholder="e.g. Attendance records checked with shop manager; discrepancy confirmed and 2 days salary adjusted in supplementary payroll."
-                    className="w-full p-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
                   />
                   <p className="text-[11px] text-gray-400">
                     This note will be visible to HR and shown on the employee's tracking portal.
                   </p>
                 </div>
+
+                {!canManage && (
+                  <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                    View only: HR Managers and HR Officers have permission to update status and resolution notes.
+                  </p>
+                )}
 
                 <DialogFooter className="pt-2">
                   <Button
@@ -817,25 +826,27 @@ export default function ComplaintsIndex({
                     onClick={() => setActiveComplaint(null)}
                     disabled={updating}
                   >
-                    Cancel
+                    {canManage ? "Cancel" : "Close"}
                   </Button>
-                  <Button
-                    type="submit"
-                    disabled={updating}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2"
-                  >
-                    {updating ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" />
-                        Save Updates
-                      </>
-                    )}
-                  </Button>
+                  {canManage && (
+                    <Button
+                      type="submit"
+                      disabled={updating}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2"
+                    >
+                      {updating ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          Save Updates
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </DialogFooter>
               </form>
             )}

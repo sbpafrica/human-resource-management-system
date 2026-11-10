@@ -151,6 +151,13 @@ class ComplaintController extends Controller
 
         $availableMonths = $availableMonthsQuery->pluck('month_period')->toArray();
 
+        // Always include current and recent months (November 2026, October 2026, etc.) in dropdown
+        $recentMonths = [];
+        for ($i = 0; $i < 6; $i++) {
+            $recentMonths[] = date('F Y', strtotime("-{$i} month"));
+        }
+        $availableMonths = array_values(array_unique(array_merge($recentMonths, $availableMonths)));
+
         // Sort months chronologically (newest first)
         usort($availableMonths, function ($a, $b) {
             $tA = strtotime("01 " . $a);
@@ -172,6 +179,13 @@ class ComplaintController extends Controller
             'General HR / Workplace Query',
         ];
 
+        $canManage = $user->is_super_admin 
+            || $user->hasRole('Super Admin')
+            || $user->hasRole('HR Manager') 
+            || $user->hasRole('HR Officer') 
+            || $user->hasRole('HRAudit')
+            || $user->hasRole('Payroll Officer');
+
         return Inertia::render('Complaints/Index', [
             'complaints'      => $complaints,
             'filters'         => $request->only(['search', 'client', 'month', 'category', 'status', 'priority']),
@@ -179,7 +193,7 @@ class ComplaintController extends Controller
             'metrics'         => $metrics,
             'availableMonths' => $availableMonths,
             'categories'      => $categories,
-            'canManage'       => $user->is_super_admin || $user->hasRole('HR Manager') || $user->hasRole('HR Officer') || $user->hasRole('HRAudit'),
+            'canManage'       => $canManage,
         ]);
     }
 
@@ -191,8 +205,23 @@ class ComplaintController extends Controller
         $user = $request->user();
         $complaint = Complaint::findOrFail($id);
 
+        $canManage = $user->is_super_admin 
+            || $user->hasRole('Super Admin')
+            || $user->hasRole('HR Manager') 
+            || $user->hasRole('HR Officer') 
+            || $user->hasRole('HRAudit')
+            || $user->hasRole('Payroll Officer');
+
+        if (!$canManage) {
+            abort(403, 'Unauthorized: Only HR managers and officers can review and resolve complaints.');
+        }
+
         if (!$user->is_super_admin && $user->clients()->exists()) {
             [, $allowedClientNames] = $this->getAccessibleClients($user);
+            if (!in_array($complaint->client_name, $allowedClientNames)) {
+                abort(403, 'Unauthorized: You do not have permission to manage complaints for this client.');
+            }
+        }
             if (!in_array($complaint->client_name, $allowedClientNames)) {
                 abort(403, 'Unauthorized: You do not have permission to manage complaints for this client.');
             }

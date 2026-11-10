@@ -35,6 +35,30 @@ class Complaint extends Model
         'resolved_at' => 'datetime',
     ];
 
+    protected $attributes = [
+        'status'   => 'pending',
+        'priority' => 'medium',
+    ];
+
+    protected static function booted()
+    {
+        static::creating(function ($complaint) {
+            if (empty($complaint->ticket_number)) {
+                $complaint->ticket_number = static::generateTicketNumber();
+            }
+
+            // All launched complaints always start under 'pending' status
+            if (empty($complaint->status) || $complaint->submission_source === 'portal') {
+                $complaint->status = 'pending';
+            }
+
+            // October 2026 and later cycles have not been dealt with yet
+            if (in_array($complaint->month_period, ['October 2026', 'November 2026']) && $complaint->submission_source !== 'manual_review') {
+                $complaint->status = 'pending';
+            }
+        });
+    }
+
     public function resolver()
     {
         return $this->belongsTo(User::class, 'resolved_by')->withDefault([
