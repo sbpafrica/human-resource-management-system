@@ -220,6 +220,12 @@ Route::get('/payslips/{client}/download/{month}/{staffId}', [PayslipController::
 Route::get('/receipts/verify-payment', [ReceiptController::class, 'verifyPayment'])->name('receipts.verify-payment');
 Route::post('/receipts/paystack-webhook', [ReceiptController::class, 'handleWebhook'])->name('receipts.paystack-webhook');
 
+// Public Employee Complaints Portal (No login required - public access for all employees)
+Route::get('/complaints/submit', [App\Http\Controllers\ComplaintSubmissionController::class, 'create'])->name('complaints.submit');
+Route::post('/complaints/verify-staff', [App\Http\Controllers\ComplaintSubmissionController::class, 'verifyStaff'])->name('complaints.verify-staff');
+Route::post('/complaints/submit', [App\Http\Controllers\ComplaintSubmissionController::class, 'store'])->name('complaints.store-public');
+Route::get('/complaints/track', [App\Http\Controllers\ComplaintSubmissionController::class, 'track'])->name('complaints.track');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::resource('lists', ListController::class);
@@ -400,13 +406,6 @@ Route::post('/employeeportal/{staffid}/archive', [EmployeePortalController::clas
     ->where('staffid', '.*')
     ->name('employeeportal.archive');
 Route::post('/employeeportal/bulk-archive', [EmployeePortalController::class, 'bulkArchive'])->name('employeeportal.bulk-archive');
-
-
-    // Public Employee Complaints Portal (No login required)
-    Route::get('/complaints/submit', [App\Http\Controllers\ComplaintSubmissionController::class, 'create'])->name('complaints.submit');
-    Route::post('/complaints/verify-staff', [App\Http\Controllers\ComplaintSubmissionController::class, 'verifyStaff'])->name('complaints.verify-staff');
-    Route::post('/complaints/submit', [App\Http\Controllers\ComplaintSubmissionController::class, 'store'])->name('complaints.store-public');
-    Route::get('/complaints/track', [App\Http\Controllers\ComplaintSubmissionController::class, 'track'])->name('complaints.track');
 
     // Employee Documents & Auto-Email Dispatch
     Route::get('/documents', [App\Http\Controllers\EmployeeDocumentController::class, 'index'])->name('documents.index');
