@@ -222,10 +222,6 @@ class ComplaintController extends Controller
                 abort(403, 'Unauthorized: You do not have permission to manage complaints for this client.');
             }
         }
-            if (!in_array($complaint->client_name, $allowedClientNames)) {
-                abort(403, 'Unauthorized: You do not have permission to manage complaints for this client.');
-            }
-        }
 
         $validated = $request->validate([
             'status'           => ['required', 'in:pending,under_review,resolved,rejected'],
