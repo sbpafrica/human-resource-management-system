@@ -36,6 +36,8 @@ return Application::configure(basePath: dirname(__DIR__))
         'payslips/*/download-multiple',
         'receipts/verify-payment',
         'receipts/paystack-webhook',
+        'complaints/verify-staff',
+        'complaints/verify-staff*',
     ]);
 })
 

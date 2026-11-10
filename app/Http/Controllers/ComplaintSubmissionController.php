@@ -6,6 +6,8 @@ use App\Models\Client;
 use App\Models\Complaint;
 use App\Models\Employee;
 use App\Models\Contract;
+use App\Models\BankDetail;
+use App\Models\Ssnit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -48,51 +50,150 @@ class ComplaintSubmissionController extends Controller
     }
 
     /**
-     * Instant Staff ID Verification endpoint.
+     * Instant Staff ID Verification endpoint across all employee records.
      */
     public function verifyStaff(Request $request)
     {
-        $staffId = trim($request->input('staff_id', ''));
+        $rawStaffId = $request->input('staff_id') ?? $request->query('staff_id') ?? '';
+        $staffId = trim(preg_replace('/[\x00-\x1F\x7F\xC2\xA0]/u', '', (string)$rawStaffId));
+
         if (empty($staffId)) {
             return response()->json(['found' => false]);
         }
 
-        // Try exact match first in newemployeedata
-        $employee = Employee::where('staffid', $staffId)->first();
+        $variations = array_unique(array_filter([
+            $staffId,
+            strtoupper($staffId),
+            strtolower($staffId),
+            str_replace(['-', ' '], '', $staffId),
+            preg_replace('/^SBP/i', '', $staffId),
+            'SBP' . preg_replace('/^SBP/i', '', $staffId),
+        ]));
 
-        // Try case-insensitive or trimmed match
-        if (!$employee) {
-            $employee = Employee::whereRaw('LOWER(TRIM(staffid)) = ?', [strtolower($staffId)])->first();
-        }
-
-        // Try contracts table fallback
-        if (!$employee) {
-            $contract = Contract::where('id', $staffId)
-                ->orWhereRaw('LOWER(TRIM(id)) = ?', [strtolower($staffId)])
+        $normalizeClient = function ($rawClient) {
+            if (empty($rawClient)) {
+                return '';
+            }
+            $clean = trim($rawClient);
+            $client = Client::where('is_active', 1)
+                ->where(function ($q) use ($clean) {
+                    $q->where('client_name', $clean)
+                      ->orWhere('short_name', $clean)
+                      ->orWhere('client_name', 'like', "%{$clean}%")
+                      ->orWhere('short_name', 'like', "%{$clean}%");
+                })
                 ->first();
 
-            if ($contract) {
-                return response()->json([
-                    'found'         => true,
-                    'staff_id'      => $contract->id,
-                    'employee_name' => $contract->employeename,
-                    'client_name'   => $contract->client ?: 'Melcom',
-                    'shop_name'     => $contract->location,
-                    'phone'         => null,
-                    'email'         => $contract->email,
-                ]);
+            if ($client) {
+                return $client->client_name;
             }
-        }
+
+            if (stripos($clean, 'melcom') !== false) {
+                return 'MELCOM LTD.';
+            }
+            if (stripos($clean, 'nyonkopa') !== false) {
+                return 'NYONKOPA COCOA BUYING LTD';
+            }
+            if (stripos($clean, 'twellium') !== false) {
+                return 'TWELLIUM INDUSTRIAL COMPANY GHANA';
+            }
+
+            return $clean;
+        };
+
+        // 1. Check Employee (newemployeedata)
+        $employee = Employee::whereIn('staffid', $variations)
+            ->orWhere(function ($q) use ($staffId) {
+                $q->whereRaw('LOWER(TRIM(staffid)) = ?', [strtolower($staffId)]);
+            })
+            ->first();
 
         if ($employee) {
             return response()->json([
                 'found'         => true,
                 'staff_id'      => $employee->staffid,
-                'employee_name' => $employee->employeename,
-                'client_name'   => $employee->company,
-                'shop_name'     => $employee->shop,
-                'phone'         => $employee->phone1 ?: $employee->phone2,
-                'email'         => $employee->email,
+                'employee_name' => trim($employee->employeename),
+                'client_name'   => $normalizeClient($employee->company),
+                'shop_name'     => trim($employee->shop ?? ''),
+                'phone'         => trim($employee->phone1 ?: ($employee->phone2 ?: '')),
+                'email'         => trim($employee->email ?? ''),
+                'source'        => 'master_employee',
+            ]);
+        }
+
+        // 2. Check Contract (contracts)
+        $contract = Contract::whereIn('id', $variations)
+            ->orWhere(function ($q) use ($staffId) {
+                $q->whereRaw('LOWER(TRIM(id)) = ?', [strtolower($staffId)]);
+            })
+            ->first();
+
+        if ($contract) {
+            return response()->json([
+                'found'         => true,
+                'staff_id'      => $contract->id,
+                'employee_name' => trim($contract->employeename),
+                'client_name'   => $normalizeClient($contract->client ?: 'Melcom'),
+                'shop_name'     => trim($contract->location ?? ''),
+                'phone'         => trim($contract->contact ?? ''),
+                'email'         => trim($contract->email ?? ''),
+                'source'        => 'contract',
+            ]);
+        }
+
+        // 3. Check BankDetail (bankdetails)
+        $bank = BankDetail::whereIn('employid', $variations)
+            ->orWhere(function ($q) use ($staffId) {
+                $q->whereRaw('LOWER(TRIM(employid)) = ?', [strtolower($staffId)]);
+            })
+            ->first();
+
+        if ($bank) {
+            return response()->json([
+                'found'         => true,
+                'staff_id'      => $bank->employid,
+                'employee_name' => trim($bank->name),
+                'client_name'   => $normalizeClient($bank->shop),
+                'shop_name'     => trim($bank->shop ?? ''),
+                'phone'         => trim($bank->momonum ?? ''),
+                'email'         => '',
+                'source'        => 'bank_detail',
+            ]);
+        }
+
+        // 4. Check Ssnit (ssnit)
+        $ssnit = Ssnit::whereIn('staffid', $variations)
+            ->orWhere(function ($q) use ($staffId) {
+                $q->whereRaw('LOWER(TRIM(staffid)) = ?', [strtolower($staffId)]);
+            })
+            ->first();
+
+        if ($ssnit) {
+            $name = trim("{$ssnit->firstname} {$ssnit->othername} {$ssnit->lastname}");
+            return response()->json([
+                'found'         => true,
+                'staff_id'      => $ssnit->staffid,
+                'employee_name' => $name,
+                'client_name'   => $normalizeClient($ssnit->shop),
+                'shop_name'     => trim($ssnit->shop ?? ''),
+                'phone'         => '',
+                'email'         => '',
+                'source'        => 'ssnit',
+            ]);
+        }
+
+        // 5. Check historical complaints table
+        $pastComplaint = Complaint::whereIn('staff_id', $variations)->latest()->first();
+        if ($pastComplaint) {
+            return response()->json([
+                'found'         => true,
+                'staff_id'      => $pastComplaint->staff_id,
+                'employee_name' => trim($pastComplaint->employee_name),
+                'client_name'   => $normalizeClient($pastComplaint->client_name),
+                'shop_name'     => trim($pastComplaint->shop_name ?? ''),
+                'phone'         => trim($pastComplaint->phone ?? ''),
+                'email'         => trim($pastComplaint->email ?? ''),
+                'source'        => 'historical_complaint',
             ]);
         }
 

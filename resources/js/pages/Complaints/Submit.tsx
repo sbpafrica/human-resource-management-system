@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Head, Link, router } from "@inertiajs/react";
 import {
   LifeBuoy,
@@ -51,46 +51,62 @@ export default function ComplaintSubmit({ clients, months, categories, prefillCl
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleVerifyStaff = async () => {
-    if (!staffId.trim()) {
-      setVerifyMsg("Please enter your Staff ID first.");
-      setVerified(false);
+  const handleVerifyStaff = useCallback(async (idToVerify?: string) => {
+    const targetId = (idToVerify !== undefined ? idToVerify : staffId).trim();
+    if (!targetId || targetId.length < 2) {
+      setVerified(null);
+      setVerifyMsg("");
       return;
     }
     setVerifying(true);
     setVerifyMsg("");
     try {
-      const res = await fetch("/complaints/verify-staff", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-TOKEN":
-            (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)
-              ?.content || "",
-        },
-        body: JSON.stringify({ staff_id: staffId.trim() }),
+      const res = await fetch(`/complaints/verify-staff?staff_id=${encodeURIComponent(targetId)}`, {
+        headers: { "Accept": "application/json" }
       });
       const data = await res.json();
-      if (data.found) {
+      if (data && data.found) {
         setVerified(true);
-        setEmployeeName(data.employee_name || "");
-        if (data.client_name) setClientName(data.client_name);
+        if (data.employee_name) setEmployeeName(data.employee_name);
+        if (data.client_name) {
+          // If a client match exists in clients prop, match its exact name
+          const matched = clients.find(
+            (c) =>
+              c.client_name.toLowerCase() === data.client_name.toLowerCase() ||
+              (c.short_name && c.short_name.toLowerCase() === data.client_name.toLowerCase())
+          );
+          setClientName(matched ? matched.client_name : data.client_name);
+        }
         if (data.shop_name) setShopName(data.shop_name);
-        if (data.phone && !phone) setPhone(data.phone);
-        if (data.email && !email) setEmail(data.email);
-        setVerifyMsg(`Verified: ${data.employee_name} (${data.client_name || "Employee"})`);
+        if (data.phone) setPhone(data.phone);
+        if (data.email) setEmail(data.email);
+        setVerifyMsg(`✓ Verified: ${data.employee_name} (${data.client_name || "Employee"})`);
       } else {
         setVerified(false);
-        setVerifyMsg("Staff ID not found in master records. You can still proceed by entering your name manually.");
+        setVerifyMsg("Staff ID not found in master records. You can still proceed by entering your details manually.");
       }
     } catch (err) {
-      console.error(err);
+      console.warn(err);
       setVerified(false);
       setVerifyMsg("Could not verify Staff ID automatically. Please fill your details manually.");
     } finally {
       setVerifying(false);
     }
-  };
+  }, [staffId, clients]);
+
+  // Debounced auto-verify when typing Staff ID
+  useEffect(() => {
+    const clean = staffId.trim();
+    if (clean.length < 3) {
+      setVerified(null);
+      setVerifyMsg("");
+      return;
+    }
+    const timer = setTimeout(() => {
+      handleVerifyStaff(clean);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [staffId, handleVerifyStaff]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -259,6 +275,15 @@ export default function ComplaintSubmit({ clients, months, categories, prefillCl
                       {c.client_name}
                     </option>
                   ))}
+                  {clientName &&
+                    !clients.some(
+                      (c) =>
+                        c.client_name.toLowerCase() === clientName.toLowerCase() ||
+                        (c.short_name && c.short_name.toLowerCase() === clientName.toLowerCase())
+                    ) &&
+                    clientName.toLowerCase() !== "melcom" && (
+                      <option value={clientName}>{clientName}</option>
+                    )}
                   <option value="Melcom">Melcom</option>
                 </select>
                 {errors.client_name && (

@@ -222,7 +222,7 @@ Route::post('/receipts/paystack-webhook', [ReceiptController::class, 'handleWebh
 
 // Public Employee Complaints Portal (No login required - public access for all employees)
 Route::get('/complaints/submit', [App\Http\Controllers\ComplaintSubmissionController::class, 'create'])->name('complaints.submit');
-Route::post('/complaints/verify-staff', [App\Http\Controllers\ComplaintSubmissionController::class, 'verifyStaff'])->name('complaints.verify-staff');
+Route::match(['GET', 'POST'], '/complaints/verify-staff', [App\Http\Controllers\ComplaintSubmissionController::class, 'verifyStaff'])->name('complaints.verify-staff');
 Route::post('/complaints/submit', [App\Http\Controllers\ComplaintSubmissionController::class, 'store'])->name('complaints.store-public');
 Route::get('/complaints/track', [App\Http\Controllers\ComplaintSubmissionController::class, 'track'])->name('complaints.track');
 
