@@ -109,19 +109,54 @@ class ComplaintSubmissionController extends Controller
             ->first();
 
         if ($employee) {
+            $phone = trim($employee->phone1 ?: ($employee->phone2 ?: ''));
+            $shop  = trim($employee->shop ?? '');
+
+            // Fallback enrichment if shop or phone is missing in master record
+            if (empty($phone) || empty($shop)) {
+                $contact = DB::table('employeecontact')
+                    ->whereIn('staffid', $variations)
+                    ->first();
+                if ($contact) {
+                    if (empty($phone) && !empty($contact->phone)) $phone = trim($contact->phone);
+                    if (empty($shop) && !empty($contact->shop))   $shop  = trim($contact->shop);
+                }
+            }
+
             return response()->json([
                 'found'         => true,
                 'staff_id'      => $employee->staffid,
                 'employee_name' => trim($employee->employeename),
                 'client_name'   => $normalizeClient($employee->company),
-                'shop_name'     => trim($employee->shop ?? ''),
-                'phone'         => trim($employee->phone1 ?: ($employee->phone2 ?: '')),
+                'shop_name'     => $shop,
+                'phone'         => $phone,
                 'email'         => trim($employee->email ?? ''),
                 'source'        => 'master_employee',
             ]);
         }
 
-        // 2. Check Contract (contracts)
+        // 2. Check Employee Contact table (employeecontact)
+        $contact = DB::table('employeecontact')
+            ->whereIn('staffid', $variations)
+            ->orWhere(function ($q) use ($staffId) {
+                $q->whereRaw('LOWER(TRIM(staffid)) = ?', [strtolower($staffId)]);
+            })
+            ->first();
+
+        if ($contact) {
+            return response()->json([
+                'found'         => true,
+                'staff_id'      => $contact->staffid,
+                'employee_name' => trim($contact->name),
+                'client_name'   => $normalizeClient($contact->shop),
+                'shop_name'     => trim($contact->shop ?? ''),
+                'phone'         => trim($contact->phone ?? ''),
+                'email'         => '',
+                'source'        => 'employee_contact',
+            ]);
+        }
+
+        // 3. Check Contract (contracts)
         $contract = Contract::whereIn('id', $variations)
             ->orWhere(function ($q) use ($staffId) {
                 $q->whereRaw('LOWER(TRIM(id)) = ?', [strtolower($staffId)]);

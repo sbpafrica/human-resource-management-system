@@ -69,11 +69,14 @@ export default function ComplaintSubmit({ clients, months, categories, prefillCl
         setVerified(true);
         if (data.employee_name) setEmployeeName(data.employee_name);
         if (data.client_name) {
-          // If a client match exists in clients prop, match its exact name
+          // If a client match exists in clients prop, match its exact or partial name
+          const targetLower = data.client_name.toLowerCase();
           const matched = clients.find(
             (c) =>
-              c.client_name.toLowerCase() === data.client_name.toLowerCase() ||
-              (c.short_name && c.short_name.toLowerCase() === data.client_name.toLowerCase())
+              c.client_name.toLowerCase() === targetLower ||
+              (c.short_name && c.short_name.toLowerCase() === targetLower) ||
+              c.client_name.toLowerCase().includes(targetLower) ||
+              targetLower.includes(c.client_name.toLowerCase())
           );
           setClientName(matched ? matched.client_name : data.client_name);
         }

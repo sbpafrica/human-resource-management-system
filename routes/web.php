@@ -422,6 +422,7 @@ Route::post('/employeeportal/bulk-archive', [EmployeePortalController::class, 'b
         Route::put('/complaints/{id}', [App\Http\Controllers\ComplaintController::class, 'update'])->name('complaints.update');
         Route::delete('/complaints/{id}', [App\Http\Controllers\ComplaintController::class, 'destroy'])->name('complaints.destroy');
         Route::get('/complaints-export', [App\Http\Controllers\ComplaintController::class, 'export'])->name('complaints.export');
+        Route::post('/complaints-sync-legacy', [App\Http\Controllers\ComplaintController::class, 'syncLegacy'])->name('complaints.sync-legacy');
     });
 
     Route::middleware(['auth'])->group(function () {

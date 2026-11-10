@@ -20,7 +20,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -153,6 +155,71 @@ export default function PayrollColumnsIndex({
   const [stdSearchQuery, setStdSearchQuery] = useState('');
   const [stdSectionFilter, setStdSectionFilter] = useState<string>('all');
   const [stdStatusFilter, setStdStatusFilter] = useState<'all' | 'customized' | 'default'>('all');
+
+  // Dynamic Map of column_name -> active display_label (instantly reflects standard column edits)
+  const columnLabelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    (standardColumns || []).forEach((sc) => {
+      map[sc.column_name.toLowerCase()] = sc.display_label || sc.default_label;
+    });
+    (columns || []).forEach((cc) => {
+      map[cc.column_name.toLowerCase()] = cc.display_label;
+    });
+    return map;
+  }, [standardColumns, columns]);
+
+  // Normalize position values so legacy values without prefix seamlessly match 'after:'
+  const normalizePosValue = (pos: string | null | undefined): string => {
+    if (!pos || pos === 'END') return 'END';
+    if (pos === 'FIRST') return 'FIRST';
+    if (pos.startsWith('after:') || pos.startsWith('before:')) return pos;
+    return `after:${pos}`;
+  };
+
+  // Helper to format position nicely with colored badges and dynamic standard column labels
+  const formatPosition = (pos: string | null | undefined) => {
+    if (!pos || pos === 'END') {
+      return <span className="text-gray-400 italic">End of Table</span>;
+    }
+    if (pos === 'FIRST') {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-purple-700 bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800 font-medium">
+          Beginning of Table
+        </span>
+      );
+    }
+
+    let isBefore = false;
+    let colKey = pos;
+    if (pos.startsWith('before:')) {
+      isBefore = true;
+      colKey = pos.substring(7);
+    } else if (pos.startsWith('after:')) {
+      isBefore = false;
+      colKey = pos.substring(6);
+    }
+
+    const label = columnLabelMap[colKey.toLowerCase()] || colKey;
+    const hasLabel = label !== colKey;
+
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs">
+        <span
+          className={`px-1.5 py-0.5 rounded font-bold uppercase text-[10px] tracking-wide ${
+            isBefore
+              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300'
+              : 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300'
+          }`}
+        >
+          {isBefore ? 'Before' : 'After'}
+        </span>
+        <span className="font-semibold text-gray-900 dark:text-gray-100">{label}</span>
+        {hasLabel && (
+          <code className="text-[11px] text-gray-500 font-mono">({colKey})</code>
+        )}
+      </span>
+    );
+  };
 
   // Sync state when dialog opens or client changes
   useEffect(() => {
@@ -561,21 +628,45 @@ export default function PayrollColumnsIndex({
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor="positionAfter">Physical Position (AFTER)</Label>
-                      <Select value={positionAfter} onValueChange={setPositionAfter}>
+                      <Label htmlFor="positionAfter">Position in Table & Template</Label>
+                      <Select value={normalizePosValue(positionAfter)} onValueChange={setPositionAfter}>
                         <SelectTrigger id="positionAfter">
-                          <SelectValue placeholder="Select position" />
+                          <SelectValue placeholder="Select position (After / Before)" />
                         </SelectTrigger>
-                        <SelectContent className="max-h-56">
+                        <SelectContent className="max-h-72">
                           <SelectItem value="END">At the end of table (Default)</SelectItem>
-                          {dialogExistingCols.map((col) => (
-                            <SelectItem key={col} value={col}>
-                              After: {col}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="FIRST">At the beginning of table (First)</SelectItem>
+
+                          <SelectGroup>
+                            <SelectLabel className="text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2 py-1 mt-1 rounded">
+                              Place AFTER (Right of Column)
+                            </SelectLabel>
+                            {dialogExistingCols.map((col) => {
+                              const label = columnLabelMap[col.toLowerCase()] || col;
+                              return (
+                                <SelectItem key={`after:${col}`} value={`after:${col}`}>
+                                  After: {label} {label !== col ? `(${col})` : ''}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectGroup>
+
+                          <SelectGroup>
+                            <SelectLabel className="text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-1 mt-1 rounded">
+                              Place BEFORE (Left of Column)
+                            </SelectLabel>
+                            {dialogExistingCols.map((col) => {
+                              const label = columnLabelMap[col.toLowerCase()] || col;
+                              return (
+                                <SelectItem key={`before:${col}`} value={`before:${col}`}>
+                                  Before: {label} {label !== col ? `(${col})` : ''}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectGroup>
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground">Where to place column in the table structure.</p>
+                      <p className="text-xs text-muted-foreground">Choose whether this custom column sits before or after an existing standard column.</p>
                     </div>
                   </div>
 
@@ -837,14 +928,8 @@ export default function PayrollColumnsIndex({
                               {col.data_type}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-sm text-gray-500">
-                            {col.position_after ? (
-                              <span>
-                                After <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{col.position_after}</code>
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 italic">End of Table</span>
-                            )}
+                          <TableCell className="text-sm">
+                            {formatPosition(col.position_after)}
                           </TableCell>
                           <TableCell>
                             {col.show_in_payslip ? (
@@ -1281,17 +1366,41 @@ export default function PayrollColumnsIndex({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="editPositionAfter">Template Physical Position</Label>
-                    <Select value={editPositionAfter} onValueChange={setEditPositionAfter}>
+                    <Select value={normalizePosValue(editPositionAfter)} onValueChange={setEditPositionAfter}>
                       <SelectTrigger id="editPositionAfter">
-                        <SelectValue placeholder="Select position" />
+                        <SelectValue placeholder="Select position (After / Before)" />
                       </SelectTrigger>
-                      <SelectContent className="max-h-56">
+                      <SelectContent className="max-h-72">
                         <SelectItem value="END">At the end of table (Default)</SelectItem>
-                        {dialogExistingCols.map((col) => (
-                          <SelectItem key={col} value={col}>
-                            After: {col}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="FIRST">At the beginning of table (First)</SelectItem>
+
+                        <SelectGroup>
+                          <SelectLabel className="text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2 py-1 mt-1 rounded">
+                            Place AFTER (Right of Column)
+                          </SelectLabel>
+                          {dialogExistingCols.map((col) => {
+                            const label = columnLabelMap[col.toLowerCase()] || col;
+                            return (
+                              <SelectItem key={`after:${col}`} value={`after:${col}`}>
+                                After: {label} {label !== col ? `(${col})` : ''}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectGroup>
+
+                        <SelectGroup>
+                          <SelectLabel className="text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-1 mt-1 rounded">
+                            Place BEFORE (Left of Column)
+                          </SelectLabel>
+                          {dialogExistingCols.map((col) => {
+                            const label = columnLabelMap[col.toLowerCase()] || col;
+                            return (
+                              <SelectItem key={`before:${col}`} value={`before:${col}`}>
+                                Before: {label} {label !== col ? `(${col})` : ''}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectGroup>
                       </SelectContent>
                     </Select>
                   </div>

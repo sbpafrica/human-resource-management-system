@@ -145,6 +145,17 @@ export default function ComplaintsIndex({
   const [manText, setManText] = useState("");
   const [creatingManual, setCreatingManual] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncLegacy = () => {
+    if (confirm("Sync or refresh historical complaints from legacy tables into the unified complaints system?")) {
+      setIsSyncing(true);
+      router.post("/complaints-sync-legacy", {}, {
+        preserveScroll: true,
+        onFinish: () => setIsSyncing(false),
+      });
+    }
+  };
 
   const handleCopyLink = () => {
     const baseUrl = window.location.origin + "/complaints/submit";
@@ -355,6 +366,20 @@ export default function ComplaintsIndex({
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
               Export to Excel
             </a>
+
+            {canManage && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSyncLegacy}
+                disabled={isSyncing}
+                className="text-xs h-9 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-1.5"
+                title="Sync or refresh historical complaints from legacy tables"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-gray-500 ${isSyncing ? "animate-spin" : ""}`} />
+                {isSyncing ? "Syncing..." : "Sync Legacy Records"}
+              </Button>
+            )}
 
             <Button
               onClick={() => setIsManualModalOpen(true)}

@@ -38,6 +38,9 @@ class MigrateLegacyComplaints extends Command
         $tables = DB::select('SHOW TABLES LIKE "commel%"');
         $tableNames = array_map(fn($t) => array_values((array)$t)[0], $tables);
 
+        // Preload all existing tickets into memory for blazing-fast O(1) duplicate checks
+        $existingTickets = array_flip(Complaint::pluck('ticket_number')->toArray());
+
         $totalImported = 0;
 
         foreach ($tableNames as $tableName) {
@@ -63,10 +66,11 @@ class MigrateLegacyComplaints extends Command
 
                 $ticketNumber = $ticketPrefix . str_pad((string)($index + 1), 4, '0', STR_PAD_LEFT);
 
-                // Avoid duplicate ticket numbers
-                if (Complaint::where('ticket_number', $ticketNumber)->exists()) {
+                // Avoid duplicate ticket numbers (fast O(1) in-memory check)
+                if (isset($existingTickets[$ticketNumber])) {
                     continue;
                 }
+                $existingTickets[$ticketNumber] = true;
 
                 // October 2026 and later cycles have not been dealt with yet,
                 // so their status must ALWAYS be 'pending'.

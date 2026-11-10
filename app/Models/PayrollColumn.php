@@ -83,8 +83,30 @@ class PayrollColumn extends Model
             $typeSql = self::resolveSqlType($col->data_type);
             $afterSql = '';
 
-            if (!empty($col->position_after) && Schema::hasColumn($tableName, $col->position_after)) {
-                $afterSql = " AFTER `{$col->position_after}`";
+            if (!empty($col->position_after)) {
+                $pos = trim($col->position_after);
+                if (str_starts_with($pos, 'before:')) {
+                    $target = substr($pos, 7);
+                    if (Schema::hasColumn($tableName, $target)) {
+                        $tableCols = Schema::getColumnListing($tableName);
+                        $targetIdx = array_search($target, $tableCols);
+                        if ($targetIdx === 0) {
+                            $afterSql = " FIRST";
+                        } elseif ($targetIdx !== false && $targetIdx > 0) {
+                            $prevCol = $tableCols[$targetIdx - 1];
+                            $afterSql = " AFTER `{$prevCol}`";
+                        }
+                    }
+                } elseif (str_starts_with($pos, 'after:')) {
+                    $target = substr($pos, 6);
+                    if (Schema::hasColumn($tableName, $target)) {
+                        $afterSql = " AFTER `{$target}`";
+                    }
+                } elseif ($pos === 'FIRST') {
+                    $afterSql = " FIRST";
+                } elseif ($pos !== 'END' && Schema::hasColumn($tableName, $pos)) {
+                    $afterSql = " AFTER `{$pos}`";
+                }
             }
 
             DB::statement("ALTER TABLE `{$tableName}` ADD COLUMN `{$col->column_name}` {$typeSql} NULL DEFAULT NULL{$afterSql}");
@@ -452,15 +474,33 @@ class PayrollColumn extends Model
                 continue;
             }
 
-            // Determine insert position if position_after is configured
+            // Determine insert position if position_after is configured (supports before:, after:, FIRST, END)
             $insertIdx = null;
             if (!empty($col->position_after)) {
-                $cleanPos = self::normalizeHeader($col->position_after);
-                foreach ($headers as $idx => $h) {
-                    $normH = self::normalizeHeader((string)$h);
-                    if ($normH === $cleanPos || str_contains($normH, $cleanPos)) {
-                        $insertIdx = $idx + 1;
-                        break;
+                $pos = trim($col->position_after);
+                $isBefore = str_starts_with($pos, 'before:');
+                $isAfter = str_starts_with($pos, 'after:');
+                $isFirst = ($pos === 'FIRST');
+
+                if ($isFirst) {
+                    $insertIdx = 0;
+                } else {
+                    $targetCol = $isBefore ? substr($pos, 7) : ($isAfter ? substr($pos, 6) : $pos);
+                    $cleanPos = self::normalizeHeader($targetCol);
+
+                    // Check if standard column has an active display label override
+                    $targetLabel = null;
+                    $canonical = self::getCanonicalStandardColumns();
+                    if (isset($canonical[strtolower($targetCol)])) {
+                        $targetLabel = self::normalizeHeader($canonical[strtolower($targetCol)]['display_label']);
+                    }
+
+                    foreach ($headers as $idx => $h) {
+                        $normH = self::normalizeHeader((string)$h);
+                        if ($normH === $cleanPos || str_contains($normH, $cleanPos) || ($targetLabel && ($normH === $targetLabel || str_contains($normH, $targetLabel)))) {
+                            $insertIdx = $isBefore ? $idx : ($idx + 1);
+                            break;
+                        }
                     }
                 }
             }

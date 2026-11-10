@@ -105,7 +105,7 @@ class PayrollColumnController extends Controller
             'display_label'   => ['required', 'string', 'max:128'],
             'column_name'     => ['nullable', 'string', 'max:64', 'regex:/^[a-zA-Z0-9_]+$/'],
             'data_type'       => ['required', 'string', 'max:32'],
-            'position_after'  => ['nullable', 'string', 'max:64'],
+            'position_after'  => ['nullable', 'string', 'max:80'],
             'show_in_payslip' => ['boolean'],
             'payslip_section' => ['required', 'string', 'in:earnings,deductions,tax_reference,info'],
         ]);
@@ -131,7 +131,7 @@ class PayrollColumnController extends Controller
             'column_name'     => $colName,
             'display_label'   => $validated['display_label'],
             'data_type'       => $validated['data_type'],
-            'position_after'  => $validated['position_after'] ?: null,
+            'position_after'  => ($validated['position_after'] === 'END' || empty($validated['position_after'])) ? null : $validated['position_after'],
             'show_in_payslip' => $request->boolean('show_in_payslip', false),
             'payslip_section' => $validated['payslip_section'] ?? 'earnings',
             'is_active'       => true,
@@ -159,7 +159,7 @@ class PayrollColumnController extends Controller
         $validated = $request->validate([
             'display_label'   => ['required', 'string', 'max:128'],
             'header_aliases'  => ['nullable', 'string', 'max:500'],
-            'position_after'  => ['nullable', 'string', 'max:64'],
+            'position_after'  => ['nullable', 'string', 'max:80'],
             'show_in_payslip' => ['boolean'],
             'payslip_section' => ['required', 'string', 'in:earnings,deductions,tax_reference,info'],
         ]);

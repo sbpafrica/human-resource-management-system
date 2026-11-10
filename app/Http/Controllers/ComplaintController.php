@@ -309,6 +309,15 @@ class ComplaintController extends Controller
     }
 
     /**
+     * Re-sync historical complaints from legacy commel tables.
+     */
+    public function syncLegacy(Request $request)
+    {
+        $count = \App\Console\Commands\MigrateLegacyComplaints::syncLegacy();
+        return redirect()->back()->with('success', "Synced {$count} historical records from legacy tables.");
+    }
+
+    /**
      * Export filtered complaints to Excel spreadsheet.
      */
     public function export(Request $request): StreamedResponse
