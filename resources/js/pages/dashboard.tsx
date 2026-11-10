@@ -110,6 +110,23 @@ noContactDetails: { count: 0, list: [] },
         ...partialComplianceData,
     };
 
+    // Filter out any entries related to Benin, Togo, or CIV
+    const filteredClientSummary = useMemo(() => {
+        return (clientSummary || []).filter(item => {
+            const name = (item.client_name || "").toLowerCase();
+            const table = (item.table || "").toLowerCase();
+            return !name.includes("benin") && !name.includes("togo") && !name.includes("civ") &&
+                   !table.includes("benin") && !table.includes("togo") && !table.includes("civ");
+        });
+    }, [clientSummary]);
+
+    const filteredAllClientHeadcount = useMemo(() => {
+        return (allClientHeadcount || []).filter(item => {
+            const name = (item.client_name || "").toLowerCase();
+            return !name.includes("benin") && !name.includes("togo") && !name.includes("civ");
+        });
+    }, [allClientHeadcount]);
+
     const [showToast, setShowToast] = useState(false);
     const [toastMessage, setToastMessage] = useState("");
     const [toastType, setToastType] = useState<"success" | "error">("success");
@@ -375,7 +392,7 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
                     </div>
 
                     {/* HEADCOUNT & PAYROLL BREAKDOWN BY CLIENT */}
-                    {(allClientHeadcount.length > 0 || clientSummary.length > 0) && (
+                    {(filteredAllClientHeadcount.length > 0 || filteredClientSummary.length > 0) && (
                         <div className="grid gap-6 lg:grid-cols-2">
                             {/* TOTAL STAFF HEADCOUNT BY CLIENT */}
                             <Card className="shadow-lg hover:shadow-xl transition-shadow">
@@ -392,8 +409,8 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
                                 </CardHeader>
                                 <CardContent className="p-4">
                                     <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800 pr-1">
-                                        {allClientHeadcount.length > 0 ? (
-                                            allClientHeadcount.map((item, idx) => (
+                                        {filteredAllClientHeadcount.length > 0 ? (
+                                            filteredAllClientHeadcount.map((item, idx) => (
                                                 <div
                                                     key={idx}
                                                     className="flex items-center justify-between py-2.5 px-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors"
@@ -445,8 +462,8 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
                                 </CardHeader>
                                 <CardContent className="p-4">
                                     <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800 pr-1">
-                                        {clientSummary.length > 0 ? (
-                                            clientSummary.map((item, idx) => (
+                                        {filteredClientSummary.length > 0 ? (
+                                            filteredClientSummary.map((item, idx) => (
                                                 <div
                                                     key={idx}
                                                     className="flex items-center justify-between py-2.5 px-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-colors"

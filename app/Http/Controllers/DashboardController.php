@@ -23,12 +23,24 @@ class DashboardController extends Controller
         // Super-admin  → every active client in the system.
         // Regular user → only their own assigned active clients.
         // Inactive clients are excluded everywhere on this dashboard.
+        // BENIN, TOGO, and CIV are strictly excluded from the dashboard.
         // ====================================================================
         if ($isSuperAdmin) {
             $allowedClients = \App\Models\Client::where('is_active', true)->get();
         } else {
             $allowedClients = $user->clients()->where('is_active', true)->get();
         }
+
+        // Exclude foreign branches (Benin, Togo, CIV) completely from the dashboard
+        $allowedClients = $allowedClients->reject(function ($client) {
+            $name  = strtolower($client->client_name ?? '');
+            $short = strtolower($client->short_name ?? '');
+            $db    = strtolower($client->client_dbname ?? '');
+
+            return str_contains($name, 'benin') || str_contains($short, 'benin') || str_contains($db, 'benin')
+                || str_contains($name, 'togo')  || str_contains($short, 'togo')  || str_contains($db, 'togo')
+                || str_contains($name, 'civ')   || str_contains($short, 'civ')   || str_contains($db, 'civ');
+        })->values();
 
         if ($allowedClients->isEmpty()) {
             $userPermissions = $user ? $user->getAllPermissions()->pluck('name')->toArray() : [];
@@ -268,6 +280,10 @@ class DashboardController extends Controller
                 ];
 
                 foreach ($candidates as $cand) {
+                    $candLower = strtolower($cand);
+                    if (str_contains($candLower, 'benin') || str_contains($candLower, 'togo') || str_contains($candLower, 'civ') || str_contains($candLower, 'transburkina')) {
+                        continue;
+                    }
                     if (Schema::hasTable($cand) && DB::table($cand)->count() > 0) {
                         $clientTables[] = ['table' => $cand, 'date' => $m['date']];
                         $tableToClientMap[$cand] = $client;
@@ -293,13 +309,31 @@ class DashboardController extends Controller
         // TOTAL EMPLOYEES — scoped to the user's allowed active clients.
         // We reuse the already-computed $allClientHeadcount to avoid a second
         // full scan of newemployeedata.
-        // Super-admin: full count from newemployeedata.
+        // Super-admin: full count from newemployeedata (excluding Benin, Togo, CIV).
         // Regular user: sum of counts across their allowed-client buckets only
         //   (excludes "No Clientele" and employees belonging to other clients).
         // ====================================================================
         if ($isSuperAdmin) {
-            $totalEmployeesCount = DB::table('newemployeedata')->count();
-            $totalEmployeesList  = DB::table('newemployeedata')
+            $totalEmployeesQuery = DB::table('newemployeedata')
+                ->where(function ($q) {
+                    $q->whereNull('company')
+                      ->orWhere(function ($sub) {
+                          $sub->where('company', 'not like', '%benin%')
+                              ->where('company', 'not like', '%togo%')
+                              ->where('company', 'not like', '%civ%');
+                      });
+                })
+                ->where(function ($q) {
+                    $q->whereNull('shop')
+                      ->orWhere(function ($sub) {
+                          $sub->where('shop', 'not like', '%benin%')
+                              ->where('shop', 'not like', '%togo%')
+                              ->where('shop', 'not like', '%civ%');
+                      });
+                });
+
+            $totalEmployeesCount = $totalEmployeesQuery->count();
+            $totalEmployeesList  = $totalEmployeesQuery
                 ->select('staffid', 'employeename', 'company')
                 ->get()
                 ->map(fn($e) => (object)[
@@ -338,9 +372,13 @@ class DashboardController extends Controller
         // ====================================================================
         $clientSummary = [];
 
-        // Define tables to exclude Burkina Faso for compliance checks (bank, SSNIT, Petra, Ghana Card, No Contact, Incomplete Profiles)
+        // Define tables to exclude foreign tables (Burkina Faso, Benin, Togo, CIV) for compliance checks
         $ghanaComplianceTables = array_values(array_filter($currentTables, function ($table) {
-            return !str_contains($table, 'transburkina');
+            $tbl = strtolower($table);
+            return !str_contains($tbl, 'transburkina')
+                && !str_contains($tbl, 'benin')
+                && !str_contains($tbl, 'togo')
+                && !str_contains($tbl, 'civ');
         }));
 
 
@@ -534,16 +572,88 @@ class DashboardController extends Controller
             'incompleteProfiles' => ['count' => count($notOnboardedList),      'list' => $notOnboardedList],
             'pendingDocuments'   => ['count' => 0, 'list' => collect()],
             'upcomingBirthdays'  => [
-                'count' => \App\Models\Employee::whereNotNull('dateofbirth')->whereRaw("SUBSTR(dateofbirth, 6, 2) = ?", [now()->format('m')])->count(),
-                'list'  => \App\Models\Employee::whereNotNull('dateofbirth')->whereRaw("SUBSTR(dateofbirth, 6, 2) = ?", [now()->format('m')])->get(['staffid', 'employeename', 'company'])->map(fn($e) => ['staffid' => $e->staffid, 'employeename' => $e->employeename ?? 'Unknown', 'company' => $e->company ?? 'N/A'])->values(),
+                'count' => \App\Models\Employee::whereNotNull('dateofbirth')
+                    ->whereRaw("SUBSTR(dateofbirth, 6, 2) = ?", [now()->format('m')])
+                    ->where(function ($q) {
+                        $q->whereNull('company')
+                          ->orWhere(function ($sub) {
+                              $sub->where('company', 'not like', '%benin%')
+                                  ->where('company', 'not like', '%togo%')
+                                  ->where('company', 'not like', '%civ%');
+                          });
+                    })
+                    ->count(),
+                'list'  => \App\Models\Employee::whereNotNull('dateofbirth')
+                    ->whereRaw("SUBSTR(dateofbirth, 6, 2) = ?", [now()->format('m')])
+                    ->where(function ($q) {
+                        $q->whereNull('company')
+                          ->orWhere(function ($sub) {
+                              $sub->where('company', 'not like', '%benin%')
+                                  ->where('company', 'not like', '%togo%')
+                                  ->where('company', 'not like', '%civ%');
+                          });
+                    })
+                    ->get(['staffid', 'employeename', 'company'])
+                    ->map(fn($e) => ['staffid' => $e->staffid, 'employeename' => $e->employeename ?? 'Unknown', 'company' => $e->company ?? 'N/A'])
+                    ->values(),
             ],
             'employeesOnLeave'   => [
-                'count' => \Illuminate\Support\Facades\DB::table('leaveapplications')->where('status', 'approved')->whereDate('start_date', '<=', now()->toDateString())->whereDate('end_date', '>=', now()->toDateString())->count(),
-                'list'  => \Illuminate\Support\Facades\DB::table('leaveapplications')->leftJoin('newemployeedata', 'leaveapplications.staffid', '=', 'newemployeedata.staffid')->where('leaveapplications.status', 'approved')->whereDate('leaveapplications.start_date', '<=', now()->toDateString())->whereDate('leaveapplications.end_date', '>=', now()->toDateString())->select('leaveapplications.staffid', \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.employeename, "Staff") as employeename'), \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.company, "N/A") as company'))->get(),
+                'count' => \Illuminate\Support\Facades\DB::table('leaveapplications')
+                    ->leftJoin('newemployeedata', 'leaveapplications.staffid', '=', 'newemployeedata.staffid')
+                    ->where('leaveapplications.status', 'approved')
+                    ->whereDate('leaveapplications.start_date', '<=', now()->toDateString())
+                    ->whereDate('leaveapplications.end_date', '>=', now()->toDateString())
+                    ->where(function ($q) {
+                        $q->whereNull('newemployeedata.company')
+                          ->orWhere(function ($sub) {
+                              $sub->where('newemployeedata.company', 'not like', '%benin%')
+                                  ->where('newemployeedata.company', 'not like', '%togo%')
+                                  ->where('newemployeedata.company', 'not like', '%civ%');
+                          });
+                    })
+                    ->count(),
+                'list'  => \Illuminate\Support\Facades\DB::table('leaveapplications')
+                    ->leftJoin('newemployeedata', 'leaveapplications.staffid', '=', 'newemployeedata.staffid')
+                    ->where('leaveapplications.status', 'approved')
+                    ->whereDate('leaveapplications.start_date', '<=', now()->toDateString())
+                    ->whereDate('leaveapplications.end_date', '>=', now()->toDateString())
+                    ->where(function ($q) {
+                        $q->whereNull('newemployeedata.company')
+                          ->orWhere(function ($sub) {
+                              $sub->where('newemployeedata.company', 'not like', '%benin%')
+                                  ->where('newemployeedata.company', 'not like', '%togo%')
+                                  ->where('newemployeedata.company', 'not like', '%civ%');
+                          });
+                    })
+                    ->select('leaveapplications.staffid', \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.employeename, "Staff") as employeename'), \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.company, "N/A") as company'))
+                    ->get(),
             ],
             'pendingLeaveRequests' => [
-                'count' => \Illuminate\Support\Facades\DB::table('leaveapplications')->where('status', 'pending')->count(),
-                'list'  => \Illuminate\Support\Facades\DB::table('leaveapplications')->leftJoin('newemployeedata', 'leaveapplications.staffid', '=', 'newemployeedata.staffid')->where('leaveapplications.status', 'pending')->select('leaveapplications.staffid', \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.employeename, "Staff") as employeename'), \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.company, "N/A") as company'))->get(),
+                'count' => \Illuminate\Support\Facades\DB::table('leaveapplications')
+                    ->leftJoin('newemployeedata', 'leaveapplications.staffid', '=', 'newemployeedata.staffid')
+                    ->where('leaveapplications.status', 'pending')
+                    ->where(function ($q) {
+                        $q->whereNull('newemployeedata.company')
+                          ->orWhere(function ($sub) {
+                              $sub->where('newemployeedata.company', 'not like', '%benin%')
+                                  ->where('newemployeedata.company', 'not like', '%togo%')
+                                  ->where('newemployeedata.company', 'not like', '%civ%');
+                          });
+                    })
+                    ->count(),
+                'list'  => \Illuminate\Support\Facades\DB::table('leaveapplications')
+                    ->leftJoin('newemployeedata', 'leaveapplications.staffid', '=', 'newemployeedata.staffid')
+                    ->where('leaveapplications.status', 'pending')
+                    ->where(function ($q) {
+                        $q->whereNull('newemployeedata.company')
+                          ->orWhere(function ($sub) {
+                              $sub->where('newemployeedata.company', 'not like', '%benin%')
+                                  ->where('newemployeedata.company', 'not like', '%togo%')
+                                  ->where('newemployeedata.company', 'not like', '%civ%');
+                          });
+                    })
+                    ->select('leaveapplications.staffid', \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.employeename, "Staff") as employeename'), \Illuminate\Support\Facades\DB::raw('COALESCE(newemployeedata.company, "N/A") as company'))
+                    ->get(),
             ],
             'trend' => $trendData,
         ];
@@ -589,6 +699,10 @@ class DashboardController extends Controller
 
         foreach ($employees as $emp) {
             $companyRaw = trim($emp->company ?? $emp->shop ?? '');
+            $companyLower = strtolower($companyRaw);
+            if (str_contains($companyLower, 'benin') || str_contains($companyLower, 'togo') || str_contains($companyLower, 'civ')) {
+                continue;
+            }
             $matched    = $this->matchClientName($companyRaw, $knownClients);
 
             $row = [
