@@ -47,6 +47,22 @@ class ComplaintController extends Controller
             \App\Console\Commands\MigrateLegacyComplaints::syncLegacy();
         }
 
+        // Auto-heal: Ensure all October 2026 complaints remain strictly pending
+        Complaint::where(function ($q) {
+            $q->where('month_period', 'like', '%October 2026%')
+              ->orWhere('month_period', 'like', '%October%26%')
+              ->orWhere('month_period', 'October')
+              ->orWhere('ticket_number', 'like', '%october26%')
+              ->orWhere('ticket_number', 'like', '%oct26%');
+        })
+        ->where('status', '!=', 'pending')
+        ->update([
+            'status'           => 'pending',
+            'resolution_notes' => null,
+            'resolved_by'      => null,
+            'resolved_at'      => null,
+        ]);
+
         [$accessibleClients, $allowedClientNames] = $this->getAccessibleClients($user);
 
         $query = Complaint::query()

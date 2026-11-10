@@ -116,6 +116,20 @@ class MigrateLegacyComplaints extends Command
         // Also normalize any existing legacy records that were stored as 'Melcom'
         Complaint::where('client_name', 'Melcom')->update(['client_name' => 'MELCOM LTD.']);
 
+        // Enforce that all October 2026 complaints are strictly 'pending'
+        Complaint::where(function ($q) {
+            $q->where('month_period', 'like', '%October 2026%')
+              ->orWhere('month_period', 'like', '%October%26%')
+              ->orWhere('month_period', 'October')
+              ->orWhere('ticket_number', 'like', '%october26%')
+              ->orWhere('ticket_number', 'like', '%oct26%');
+        })->update([
+            'status'           => 'pending',
+            'resolution_notes' => null,
+            'resolved_by'      => null,
+            'resolved_at'      => null,
+        ]);
+
         return $totalImported;
     }
 
