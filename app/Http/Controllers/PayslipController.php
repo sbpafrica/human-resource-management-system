@@ -497,6 +497,9 @@ class PayslipController extends Controller
         if (str_contains($dbName, 'transburkina') || str_contains($slug, 'transburkina') || str_contains($slug, 'transsion-bfa') || str_contains($dbName, 'transsionbfa') || str_contains($shortName, 'burkina')) {
             return 'payslip.transburkina-bulk-pdf';
         }
+        if (str_contains($dbName, 'jkay') || str_contains($dbName, 'jaykay') || str_contains($slug, 'jaykay') || str_contains($shortName, 'jay kay')) {
+            return 'payslip.jaykay-bulk-pdf';
+        }
 
         return 'payslip.general-bulk-pdf';
     }

@@ -450,6 +450,55 @@ class PayrollColumn extends Model
             }
         }
 
+        // 2. Filter out any deleted / inactive columns from template headers so they never appear on Excel sheets
+        $inactiveCols = static::where('is_active', false)
+            ->where(function ($q) use ($clientDb) {
+                $q->where('client_dbname', $clientDb)->orWhere('client_dbname', 'all');
+            })
+            ->get();
+
+        if ($inactiveCols->isNotEmpty()) {
+            $inactiveAliases = [];
+            foreach ($inactiveCols as $ic) {
+                $inactiveAliases[self::normalizeHeader($ic->column_name)] = true;
+                $inactiveAliases[self::normalizeHeader($ic->display_label)] = true;
+                foreach (self::getAllAliasesForColumn($ic) as $a) {
+                    $inactiveAliases[$a] = true;
+                }
+            }
+
+            $newHeaders = [];
+            $newExampleRow = ($exampleRow !== null) ? [] : null;
+
+            foreach ($headers as $idx => $h) {
+                $norm = self::normalizeHeader((string)$h);
+                $isInactive = isset($inactiveAliases[$norm]);
+                if (!$isInactive && isset($aliasMap[$norm])) {
+                    $targetDbCol = $aliasMap[$norm];
+                    if (isset($inactiveAliases[self::normalizeHeader($targetDbCol)])) {
+                        $isInactive = true;
+                    }
+                }
+
+                // Never remove primary identifier staff_id
+                if (in_array($norm, ['staff_id', 'staffid', 'staff_ida', 'employid', 'id'], true)) {
+                    $isInactive = false;
+                }
+
+                if (!$isInactive) {
+                    $newHeaders[] = $h;
+                    if ($newExampleRow !== null && array_key_exists($idx, $exampleRow)) {
+                        $newExampleRow[] = $exampleRow[$idx];
+                    }
+                }
+            }
+
+            $headers = array_values($newHeaders);
+            if ($exampleRow !== null) {
+                $exampleRow = array_values($newExampleRow);
+            }
+        }
+
         $customCols = static::getColumnsForClient($clientDb);
         if ($customCols->isEmpty()) {
             return;
@@ -3564,7 +3613,6 @@ class PayrollColumn extends Model
 
         // Fetch overrides stored in database for this client (and 'all')
         $overrides = static::where('is_custom', false)
-            ->where('is_active', true)
             ->where(function ($q) use ($clientDb) {
                 $q->where('client_dbname', $clientDb)->orWhere('client_dbname', 'all');
             })
@@ -3592,6 +3640,8 @@ class PayrollColumn extends Model
                     'description'     => $def['description'] ?? '',
                     'has_override'    => $override !== null,
                     'locked'          => $isLocked,
+                    'is_active'       => $override ? (bool)$override->is_active : true,
+                    'is_deleted'      => $override ? !(bool)$override->is_active : false,
                 ];
             }
             return $result;
@@ -3679,6 +3729,8 @@ class PayrollColumn extends Model
                     'description'     => $def['description'] ?? '',
                     'has_override'    => $override !== null,
                     'locked'          => $isLocked,
+                    'is_active'       => $override ? (bool)$override->is_active : true,
+                    'is_deleted'      => $override ? !(bool)$override->is_active : false,
                 ];
                 $processedKeys[$norm] = true;
                 $processedKeys[$colName] = true;
@@ -3712,6 +3764,8 @@ class PayrollColumn extends Model
                     'description'     => "Physical payroll column '{$origCol}' for {$clientDb}.",
                     'has_override'    => $override !== null,
                     'locked'          => $isId,
+                    'is_active'       => $override ? (bool)$override->is_active : true,
+                    'is_deleted'      => $override ? !(bool)$override->is_active : false,
                 ];
                 $processedKeys[$norm] = true;
             }
@@ -3796,6 +3850,80 @@ class PayrollColumn extends Model
         ];
 
         return $templates[strtolower(trim($clientDb))] ?? [];
+    }
+
+    /**
+     * Mark a standard column as deleted/inactive for a specific client (or global).
+     * Excludes the column from Excel templates and exports, while preserving
+     * physical MySQL database columns and past records completely untouched.
+     */
+    public static function deleteStandardColumn(string $clientDb, string $columnName): bool
+    {
+        $colName = strtolower(trim($columnName));
+        if (in_array($colName, ['staff_id', 'staffid', 'staffida', 'employ', 'id', 'employid'], true)) {
+            return false;
+        }
+
+        $canonical = self::getCanonicalStandardColumns();
+        $def = $canonical[$colName] ?? null;
+        $label = $def['display_label'] ?? ucwords(str_replace('_', ' ', $colName));
+        $dataType = $def['data_type'] ?? 'varchar(100)';
+        $aliases = $def['header_aliases'] ?? null;
+
+        // 1. Mark inactive in payroll_columns registry
+        static::updateOrCreate(
+            [
+                'client_dbname' => $clientDb,
+                'column_name'   => $colName,
+                'is_custom'     => false,
+            ],
+            [
+                'display_label'   => $label,
+                'header_aliases'  => $aliases,
+                'data_type'       => $dataType,
+                'is_active'       => false,
+                'show_in_payslip' => false,
+            ]
+        );
+
+        // 2. Also deactivate in client_template_columns so TemplateBuilderService excludes it
+        try {
+            ClientTemplateColumn::where('client_dbname', $clientDb)
+                ->where(function ($q) use ($colName, $label) {
+                    $q->where('column_key', $colName)
+                      ->orWhere('display_label', $label);
+                })
+                ->update(['is_active' => false]);
+        } catch (\Throwable $e) {
+            // Ignore if table not present
+        }
+
+        return true;
+    }
+
+    /**
+     * Restore a deleted/inactive standard column back to system defaults.
+     */
+    public static function restoreStandardColumn(string $clientDb, string $columnName): bool
+    {
+        $colName = strtolower(trim($columnName));
+
+        // Delete override row so it reverts to canonical default
+        static::where('client_dbname', $clientDb)
+            ->where('column_name', $colName)
+            ->where('is_custom', false)
+            ->delete();
+
+        // Reactivate in client_template_columns
+        try {
+            ClientTemplateColumn::where('client_dbname', $clientDb)
+                ->where('column_key', $colName)
+                ->update(['is_active' => true]);
+        } catch (\Throwable $e) {
+            // Ignore
+        }
+
+        return true;
     }
 
     /**

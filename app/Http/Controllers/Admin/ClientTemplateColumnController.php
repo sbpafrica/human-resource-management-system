@@ -191,6 +191,80 @@ class ClientTemplateColumnController extends Controller
     }
 
     /**
+     * Delete a column from a client module template.
+     * Excludes it from Excel downloads and templates while preserving physical database tables.
+     */
+    public function deleteColumn(Request $request, Client $client): JsonResponse
+    {
+        $validated = $request->validate([
+            'module'     => ['required', 'string', 'in:payroll,ssnit,petra,bank,gra,contract'],
+            'column_key' => ['required', 'string', 'max:100'],
+        ]);
+
+        $module = $validated['module'];
+        $columnKey = strtolower(trim($validated['column_key']));
+
+        // Protect primary staff identifier
+        if (in_array($columnKey, ['staff_id', 'staffid', 'id', 'employid'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The primary employee identity column (staff_id) is permanently protected and cannot be deleted.',
+            ], 422);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $colRecord = ClientTemplateColumn::where('client_dbname', $client->client_dbname)
+                ->where('module', $module)
+                ->where('column_key', $columnKey)
+                ->first();
+
+            $displayLabel = $colRecord?->display_label ?? $columnKey;
+
+            // Remove from ClientTemplateColumn so it won't appear on downloaded Excel templates
+            ClientTemplateColumn::where('client_dbname', $client->client_dbname)
+                ->where('module', $module)
+                ->where('column_key', $columnKey)
+                ->delete();
+
+            // If module is payroll, also sync with PayrollColumn so augmentTemplate excludes it
+            if ($module === 'payroll') {
+                if ($colRecord && $colRecord->is_custom) {
+                    \App\Models\PayrollColumn::where('client_dbname', $client->client_dbname)
+                        ->where(function ($q) use ($columnKey, $displayLabel) {
+                            $cleanKey = str_replace('custom_', '', $columnKey);
+                            $q->where('column_name', $columnKey)
+                              ->orWhere('column_name', $cleanKey)
+                              ->orWhere('display_label', $displayLabel);
+                        })
+                        ->delete();
+                } else {
+                    \App\Models\PayrollColumn::deleteStandardColumn($client->client_dbname, $columnKey);
+                }
+            }
+
+            DB::commit();
+
+            $updatedColumns = ClientTemplateColumn::forClientAndModule($client->client_dbname, $module)->get();
+
+            return response()->json([
+                'success' => true,
+                'message' => "Column '{$displayLabel}' deleted from {$module} template. It will not appear on Excel downloads. Database records remain safe.",
+                'columns' => $updatedColumns,
+            ]);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Delete column failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete column: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Clone template column configuration from another client.
      */
     public function cloneFrom(Request $request, Client $client): JsonResponse

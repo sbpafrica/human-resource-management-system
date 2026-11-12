@@ -202,6 +202,8 @@ class ComplaintController extends Controller
             || $user->hasRole('HRAudit')
             || $user->hasRole('Payroll Officer');
 
+        $canDelete = $this->canDeleteComplaints($user);
+
         return Inertia::render('Complaints/Index', [
             'complaints'      => $complaints,
             'filters'         => $request->only(['search', 'client', 'month', 'category', 'status', 'priority']),
@@ -210,6 +212,7 @@ class ComplaintController extends Controller
             'availableMonths' => $availableMonths,
             'categories'      => $categories,
             'canManage'       => $canManage,
+            'canDelete'       => $canDelete,
         ]);
     }
 
@@ -310,15 +313,56 @@ class ComplaintController extends Controller
     }
 
     /**
-     * Delete complaint (Super Admin only).
+     * Check if user is authorized to delete complaints (HR Managers, Officers, and Super Admin).
+     */
+    private function canDeleteComplaints($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        if ($user->is_super_admin || (method_exists($user, 'hasRole') && $user->hasRole('Super Admin'))) {
+            return true;
+        }
+
+        if (method_exists($user, 'hasRole')) {
+            if ($user->hasRole(['HR Manager', 'HR Officer', 'HRAudit', 'Payroll Officer', 'Receipt Officer', 'Receipt Manager'])) {
+                return true;
+            }
+        }
+
+        if (method_exists($user, 'roles')) {
+            foreach ($user->roles as $role) {
+                $roleName = strtolower($role->name ?? '');
+                if (str_contains($roleName, 'manager') || str_contains($roleName, 'officer') || str_contains($roleName, 'admin') || str_contains($roleName, 'hr')) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Delete complaint (HR Managers, Officers, and Super Admin).
      */
     public function destroy(Request $request, $id)
     {
-        if (!$request->user()->is_super_admin) {
-            abort(403, 'Unauthorized action.');
+        $user = $request->user();
+
+        if (!$this->canDeleteComplaints($user)) {
+            abort(403, 'Unauthorized action. Only HR Managers, Officers, and Super Admins can delete complaints.');
         }
 
         $complaint = Complaint::findOrFail($id);
+
+        if (!$user->is_super_admin && $user->clients()->exists()) {
+            [, $allowedClientNames] = $this->getAccessibleClients($user);
+            if (!in_array($complaint->client_name, $allowedClientNames)) {
+                abort(403, 'Unauthorized: You do not have permission to delete complaints for this client.');
+            }
+        }
+
         $complaint->delete();
 
         return redirect()->back()->with('success', "Complaint record deleted.");

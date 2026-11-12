@@ -206,11 +206,25 @@ class PayrollColumnController extends Controller
         $column = PayrollColumn::findOrFail($id);
         $clientDb = $column->client_dbname;
         $name = $column->display_label;
+        $colName = $column->column_name;
 
         $column->delete();
 
+        // Also clean up from ClientTemplateColumn so it never appears in templates
+        try {
+            \App\Models\ClientTemplateColumn::where('client_dbname', $clientDb)
+                ->where(function ($q) use ($colName, $name) {
+                    $q->where('column_key', $colName)
+                      ->orWhere('column_key', 'custom_' . $colName)
+                      ->orWhere('display_label', $name);
+                })
+                ->delete();
+        } catch (\Throwable $e) {
+            // Ignore
+        }
+
         return redirect()->route('admin.payroll-columns.index', ['client' => $clientDb])
-            ->with('success', "Column '{$name}' removed from custom payroll columns registry.");
+            ->with('success', "Column '{$name}' removed from registry. It will not appear on Excel sheets. Database tables remain safe.");
     }
 
     /**
@@ -298,7 +312,33 @@ class PayrollColumnController extends Controller
     }
 
     /**
-     * Reset a standard column override back to system default.
+     * Delete/exclude a standard column for a client.
+     * Prevents the column from appearing in Excel templates or exports,
+     * while preserving physical MySQL tables and production data.
+     */
+    public function deleteStandard(Request $request)
+    {
+        $this->authorizeUser($request);
+
+        $validated = $request->validate([
+            'client_dbname' => ['required', 'string', 'max:64'],
+            'column_name'   => ['required', 'string', 'max:64'],
+        ]);
+
+        $colName = strtolower(trim($validated['column_name']));
+        if (in_array($colName, ['staff_id', 'staffid', 'staffida', 'employ', 'id', 'employid'], true)) {
+            return redirect()->back()->with('error', 'The primary employee identity column (staff_id) is permanently protected and cannot be deleted.');
+        }
+
+        $clientDb = $validated['client_dbname'];
+        PayrollColumn::deleteStandardColumn($clientDb, $colName);
+
+        return redirect()->route('admin.payroll-columns.index', ['client' => $clientDb])
+            ->with('success', "Standard column '{$colName}' deleted for {$clientDb}. It will not appear on Excel templates or exports. Database tables and production data remain safe.");
+    }
+
+    /**
+     * Reset / restore a standard column override back to system default.
      */
     public function resetStandard(Request $request)
     {
@@ -309,13 +349,13 @@ class PayrollColumnController extends Controller
             'column_name'   => ['required', 'string', 'max:64'],
         ]);
 
-        PayrollColumn::where('client_dbname', $validated['client_dbname'])
-            ->where('column_name', $validated['column_name'])
-            ->where('is_custom', false)
-            ->delete();
+        $clientDb = $validated['client_dbname'];
+        $colName = $validated['column_name'];
 
-        return redirect()->route('admin.payroll-columns.index', ['client' => $validated['client_dbname']])
-            ->with('success', "Standard column '{$validated['column_name']}' reset to system default.");
+        PayrollColumn::restoreStandardColumn($clientDb, $colName);
+
+        return redirect()->route('admin.payroll-columns.index', ['client' => $clientDb])
+            ->with('success', "Standard column '{$colName}' restored to system default.");
     }
 
     /**

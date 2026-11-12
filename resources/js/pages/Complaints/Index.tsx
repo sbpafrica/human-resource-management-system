@@ -103,6 +103,7 @@ interface Props {
   availableMonths: string[];
   categories: string[];
   canManage: boolean;
+  canDelete?: boolean;
 }
 
 export default function ComplaintsIndex({
@@ -113,6 +114,7 @@ export default function ComplaintsIndex({
   availableMonths,
   categories,
   canManage,
+  canDelete,
 }: Props) {
   const { flash, auth } = usePage().props as any;
 
@@ -686,12 +688,12 @@ export default function ComplaintsIndex({
                               Review / Resolve
                             </Button>
 
-                            {auth?.user?.is_super_admin && (
+                            {(canDelete || auth?.user?.is_super_admin) && (
                               <button
                                 type="button"
                                 onClick={() => handleDelete(item.id, item.ticket_number)}
-                                className="p-1 text-gray-400 hover:text-rose-600 rounded"
-                                title="Delete record"
+                                className="p-1 text-gray-400 hover:text-rose-600 rounded transition-colors"
+                                title="Delete complaint record"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -844,34 +846,54 @@ export default function ComplaintsIndex({
                   </p>
                 )}
 
-                <DialogFooter className="pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setActiveComplaint(null)}
-                    disabled={updating}
-                  >
-                    {canManage ? "Cancel" : "Close"}
-                  </Button>
-                  {canManage && (
+                <DialogFooter className="pt-2 flex items-center justify-between">
+                  <div>
+                    {(canDelete || auth?.user?.is_super_admin) && activeComplaint && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          const id = activeComplaint.id;
+                          const tkt = activeComplaint.ticket_number;
+                          setActiveComplaint(null);
+                          handleDelete(id, tkt);
+                        }}
+                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 text-xs flex items-center gap-1.5 h-8 px-2.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete Complaint
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
                     <Button
-                      type="submit"
+                      type="button"
+                      variant="outline"
+                      onClick={() => setActiveComplaint(null)}
                       disabled={updating}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2"
                     >
-                      {updating ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Check className="w-4 h-4" />
-                          Save Updates
-                        </>
-                      )}
+                      {canManage ? "Cancel" : "Close"}
                     </Button>
-                  )}
+                    {canManage && (
+                      <Button
+                        type="submit"
+                        disabled={updating}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-medium flex items-center gap-2"
+                      >
+                        {updating ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4" />
+                            Save Updates
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </DialogFooter>
               </form>
             )}

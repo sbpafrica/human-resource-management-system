@@ -86,6 +86,8 @@ interface StandardColumnItem {
   description: string;
   has_override: boolean;
   locked?: boolean;
+  is_active?: boolean;
+  is_deleted?: boolean;
 }
 
 interface Props {
@@ -154,7 +156,7 @@ export default function PayrollColumnsIndex({
   // Standard Columns Filter & Search State
   const [stdSearchQuery, setStdSearchQuery] = useState('');
   const [stdSectionFilter, setStdSectionFilter] = useState<string>('all');
-  const [stdStatusFilter, setStdStatusFilter] = useState<'all' | 'customized' | 'default'>('all');
+  const [stdStatusFilter, setStdStatusFilter] = useState<'all' | 'active' | 'deleted' | 'customized' | 'default'>('all');
 
   // Dynamic Map of column_name -> active display_label (instantly reflects standard column edits)
   const columnLabelMap = useMemo(() => {
@@ -414,10 +416,40 @@ export default function PayrollColumnsIndex({
     );
   };
 
-  const handleResetStandard = (col: StandardColumnItem) => {
+  const handleDeleteStandard = (col: StandardColumnItem) => {
+    if (col.locked || col.column_name === 'staff_id') {
+      alert('The primary employee identity column (staff_id) is permanently protected and cannot be deleted.');
+      return;
+    }
     if (
       confirm(
-        `Reset '${col.display_label}' back to default label '${col.default_label}' and default aliases?`
+        `Are you sure you want to delete the standard column '${col.display_label}' (${col.column_name}) for client '${selectedClient}'?\n\n• It will NOT appear on downloaded Excel templates or exports.\n• Database tables and existing payroll records remain 100% safe.\n• You can restore it at any time.`
+      )
+    ) {
+      router.post(
+        '/admin/payroll-columns/standard-delete',
+        {
+          client_dbname: selectedClient,
+          column_name: col.column_name,
+        },
+        {
+          preserveScroll: true,
+          onSuccess: () => {
+            if (editingStandardCol?.column_name === col.column_name) {
+              setIsStandardDialogOpen(false);
+              setEditingStandardCol(null);
+            }
+          },
+        }
+      );
+    }
+  };
+
+  const handleResetStandard = (col: StandardColumnItem) => {
+    const actionWord = col.is_deleted ? 'Restore' : 'Reset';
+    if (
+      confirm(
+        `${actionWord} '${col.display_label}' back to system default (label '${col.default_label}' and active in Excel)?`
       )
     ) {
       router.post(
@@ -461,10 +493,16 @@ export default function PayrollColumnsIndex({
       }
 
       // Status filter
-      if (stdStatusFilter === 'customized' && !col.has_override) {
+      if (stdStatusFilter === 'active' && col.is_deleted) {
         return false;
       }
-      if (stdStatusFilter === 'default' && col.has_override) {
+      if (stdStatusFilter === 'deleted' && !col.is_deleted) {
+        return false;
+      }
+      if (stdStatusFilter === 'customized' && (!col.has_override || col.is_deleted)) {
+        return false;
+      }
+      if (stdStatusFilter === 'default' && (col.has_override || col.is_deleted)) {
         return false;
       }
 
@@ -1055,6 +1093,8 @@ export default function PayrollColumnsIndex({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Columns</SelectItem>
+                    <SelectItem value="active">Active in Excel</SelectItem>
+                    <SelectItem value="deleted">Deleted / Excluded</SelectItem>
                     <SelectItem value="customized">Customized Only</SelectItem>
                     <SelectItem value="default">Default Only</SelectItem>
                   </SelectContent>
@@ -1147,16 +1187,20 @@ export default function PayrollColumnsIndex({
                         const isStaffId = Boolean(col.locked) || ['staff_id', 'staffid', 'staffida', 'employ', 'id', 'employid'].includes(col.column_name.toLowerCase());
 
                         return (
-                          <TableRow key={col.column_name} className={col.has_override ? 'bg-blue-50/30 dark:bg-blue-950/20' : ''}>
+                          <TableRow key={col.column_name} className={col.is_deleted ? 'bg-red-50/40 dark:bg-red-950/20 opacity-80' : col.has_override ? 'bg-blue-50/30 dark:bg-blue-950/20' : ''}>
                             {/* Display Label */}
                             <TableCell className="font-medium text-gray-900 dark:text-gray-100">
                               <div className="flex items-center gap-2">
-                                <span className="font-semibold">{col.display_label}</span>
-                                {col.has_override && (
+                                <span className={col.is_deleted ? 'line-through text-gray-400 font-semibold' : 'font-semibold'}>{col.display_label}</span>
+                                {col.is_deleted ? (
+                                  <Badge variant="destructive" className="bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 border-red-300 text-[10px] py-0 px-1.5">
+                                    Deleted
+                                  </Badge>
+                                ) : col.has_override ? (
                                   <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] py-0 px-1.5">
                                     Customized
                                   </Badge>
-                                )}
+                                ) : null}
                               </div>
                               {col.has_override && col.display_label !== col.default_label && (
                                 <div className="text-[11px] text-gray-500 mt-0.5">
@@ -1220,7 +1264,11 @@ export default function PayrollColumnsIndex({
 
                             {/* Status */}
                             <TableCell>
-                              {col.has_override ? (
+                              {col.is_deleted ? (
+                                <Badge variant="destructive" className="bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 border-red-300 text-xs">
+                                  Excluded from Excel
+                                </Badge>
+                              ) : col.has_override ? (
                                 <Badge variant="outline" className="text-blue-600 border-blue-300 text-xs">
                                   Overridden
                                 </Badge>
@@ -1236,6 +1284,19 @@ export default function PayrollColumnsIndex({
                                   <ShieldCheck className="w-4 h-4 text-amber-600" />
                                   <span>Protected ID</span>
                                 </div>
+                              ) : col.is_deleted ? (
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleResetStandard(col)}
+                                    className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-xs border-emerald-300"
+                                    title="Restore this column to Excel templates & exports"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                                    <span>Restore to Excel</span>
+                                  </Button>
+                                </div>
                               ) : (
                                 <div className="flex items-center justify-end gap-1">
                                   <Button
@@ -1247,6 +1308,17 @@ export default function PayrollColumnsIndex({
                                   >
                                     <Pencil className="w-4 h-4 mr-1" />
                                     <span>Edit</span>
+                                  </Button>
+
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteStandard(col)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
+                                    title="Delete column (excludes from Excel templates & sheets)"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-1" />
+                                    <span>Delete</span>
                                   </Button>
 
                                   {col.has_override && (
@@ -1566,19 +1638,33 @@ export default function PayrollColumnsIndex({
                 </div>
 
                 <DialogFooter className="pt-2 flex items-center justify-between">
-                  {editingStandardCol.has_override ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => handleResetStandard(editingStandardCol)}
-                      className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-xs flex items-center gap-1.5"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Reset to Default</span>
-                    </Button>
-                  ) : (
-                    <div />
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {editingStandardCol.has_override && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => handleResetStandard(editingStandardCol)}
+                        className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-xs flex items-center gap-1.5"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Reset to Default</span>
+                      </Button>
+                    )}
+                    {!editingStandardCol.locked && editingStandardCol.column_name !== 'staff_id' && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setIsStandardDialogOpen(false);
+                          handleDeleteStandard(editingStandardCol);
+                        }}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete from Excel</span>
+                      </Button>
+                    )}
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <Button

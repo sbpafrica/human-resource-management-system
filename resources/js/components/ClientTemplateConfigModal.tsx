@@ -26,6 +26,7 @@ import {
   FileSpreadsheet,
   Loader2,
   Lock,
+  Trash2,
 } from "lucide-react";
 
 export type ModuleType = "payroll" | "ssnit" | "petra" | "bank" | "gra" | "contract";
@@ -162,6 +163,65 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
       // Re-assign sort orders
       return next.map((col, idx) => ({ ...col, sort_order: idx }));
     });
+  };
+
+  const handleDeleteColumn = async (col: TemplateColumnItem, index: number) => {
+    if (col.is_required || ['staff_id', 'staffid', 'id', 'employid'].includes(col.column_key.toLowerCase())) {
+      alert("The primary employee identity column (staff_id) is permanently protected and cannot be deleted.");
+      return;
+    }
+
+    if (
+      !confirm(
+        `Are you sure you want to delete column '${col.display_label}' from the ${activeModule.toUpperCase()} template?\n\n• It will NOT appear on downloaded Excel templates.\n• Database tables and historical records remain 100% safe.`
+      )
+    ) {
+      return;
+    }
+
+    if (!client) return;
+
+    try {
+      // Optimistically remove from state
+      updateCurrentColumns(prev => prev.filter((_, idx) => idx !== index));
+
+      // Send delete request to backend
+      const res = await fetch(`/clients/${client.id}/template-columns`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-TOKEN": (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || "",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          module: activeModule,
+          column_key: col.column_key,
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.message || "Failed to delete column.");
+      }
+
+      setFeedback({
+        message: result.message || `Column '${col.display_label}' deleted successfully.`,
+        type: "success",
+      });
+
+      if (Array.isArray(result.columns)) {
+        setModulesData(prev => ({
+          ...prev,
+          [activeModule]: result.columns,
+        }));
+      }
+    } catch (err: any) {
+      setFeedback({
+        message: err.message || "Failed to delete column.",
+        type: "error",
+      });
+      loadClientColumns();
+    }
   };
 
   const handleToggleSelectAll = (activate: boolean) => {
@@ -631,7 +691,7 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
                     </div>
                   </div>
 
-                  {/* Right: Status indicator */}
+                  {/* Right: Status indicator & Delete action */}
                   <div className="flex items-center gap-2 text-xs">
                     <span
                       className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
@@ -640,6 +700,17 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
                     >
                       {col.is_active ? "In Excel" : "Excluded"}
                     </span>
+
+                    {!col.is_required && !['staff_id', 'staffid', 'id', 'employid'].includes(col.column_key.toLowerCase()) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteColumn(col, originalIndex)}
+                        className="text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 p-1 rounded transition-colors"
+                        title="Delete column (excludes from Excel template)"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );

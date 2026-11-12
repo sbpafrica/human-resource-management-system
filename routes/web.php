@@ -254,6 +254,7 @@ Route::post('/roles', [App\Http\Controllers\Admin\RoleController::class, 'store'
         Route::get('/payroll-columns/columns', [App\Http\Controllers\Admin\PayrollColumnController::class, 'getColumns'])->name('payroll-columns.columns');
         Route::post('/payroll-columns', [App\Http\Controllers\Admin\PayrollColumnController::class, 'store'])->name('payroll-columns.store');
         Route::post('/payroll-columns/standard', [App\Http\Controllers\Admin\PayrollColumnController::class, 'updateStandard'])->name('payroll-columns.standard-update');
+        Route::post('/payroll-columns/standard-delete', [App\Http\Controllers\Admin\PayrollColumnController::class, 'deleteStandard'])->name('payroll-columns.standard-delete');
         Route::post('/payroll-columns/standard-reset', [App\Http\Controllers\Admin\PayrollColumnController::class, 'resetStandard'])->name('payroll-columns.standard-reset');
         Route::put('/payroll-columns/{id}', [App\Http\Controllers\Admin\PayrollColumnController::class, 'update'])->name('payroll-columns.update');
         Route::delete('/payroll-columns/{id}', [App\Http\Controllers\Admin\PayrollColumnController::class, 'destroy'])->name('payroll-columns.destroy');
@@ -265,6 +266,7 @@ Route::post('/roles', [App\Http\Controllers\Admin\RoleController::class, 'store'
     Route::get('/payroll-columns/columns', [App\Http\Controllers\Admin\PayrollColumnController::class, 'getColumns'])->name('payroll-columns.direct-columns');
     Route::post('/payroll-columns', [App\Http\Controllers\Admin\PayrollColumnController::class, 'store'])->name('payroll-columns.direct-store');
     Route::post('/payroll-columns/standard', [App\Http\Controllers\Admin\PayrollColumnController::class, 'updateStandard'])->name('payroll-columns.direct-standard-update');
+    Route::post('/payroll-columns/standard-delete', [App\Http\Controllers\Admin\PayrollColumnController::class, 'deleteStandard'])->name('payroll-columns.direct-standard-delete');
     Route::post('/payroll-columns/standard-reset', [App\Http\Controllers\Admin\PayrollColumnController::class, 'resetStandard'])->name('payroll-columns.direct-standard-reset');
     Route::put('/payroll-columns/{id}', [App\Http\Controllers\Admin\PayrollColumnController::class, 'update'])->name('payroll-columns.direct-update');
     Route::delete('/payroll-columns/{id}', [App\Http\Controllers\Admin\PayrollColumnController::class, 'destroy'])->name('payroll-columns.direct-destroy');
@@ -390,6 +392,7 @@ Route::post('/clients/bulk-upload', [ClientsController::class, 'bulkUpload'])->n
     Route::get('/clients/{client}/template-columns', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'index'])->name('clients.template-columns.index');
     Route::post('/clients/{client}/template-columns', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'update'])->name('clients.template-columns.update');
     Route::post('/clients/{client}/template-columns/custom', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'addCustomColumn'])->name('clients.template-columns.custom');
+    Route::delete('/clients/{client}/template-columns', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'deleteColumn'])->name('clients.template-columns.delete');
     Route::post('/clients/{client}/template-columns/clone', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'cloneFrom'])->name('clients.template-columns.clone');
     Route::post('/clients/{client}/template-columns/reset', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'resetToStandard'])->name('clients.template-columns.reset');
     Route::get('/clients/{client_dbname}/download-template/{module}', [\App\Http\Controllers\Admin\ClientTemplateColumnController::class, 'download'])->name('clients.download-template.module');
