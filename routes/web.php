@@ -1420,7 +1420,105 @@ Route::get('/cpanel-setup', function (\Illuminate\Http\Request $request) {
 
     $results = [];
 
-    // 0. Auto-extract update zip if uploaded to root
+    // 0A. Emergency Disk Cleanup to Free Space & Inodes (fixes "Disk quota exceeded")
+    $cleanedCount = 0;
+    $cleanedBytes = 0;
+
+    // Clean cPanel trash if present
+    $trashPaths = [
+        dirname(base_path()) . '/.trash',
+        '/home/u1710176/.trash',
+    ];
+    foreach ($trashPaths as $trashPath) {
+        if (is_dir($trashPath)) {
+            try {
+                $it = new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator($trashPath, \RecursiveDirectoryIterator::SKIP_DOTS),
+                    \RecursiveIteratorIterator::CHILD_FIRST
+                );
+                foreach ($it as $fi) {
+                    if ($fi->isFile()) {
+                        $cleanedBytes += $fi->getSize();
+                        @unlink($fi->getRealPath());
+                        $cleanedCount++;
+                    } elseif ($fi->isDir()) {
+                        @rmdir($fi->getRealPath());
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+    }
+
+    // Clean old dumps, gz, and stale zips in project root (leave active update zips)
+    $rootItems = @scandir(base_path()) ?: [];
+    foreach ($rootItems as $item) {
+        if ($item === '.' || $item === '..') continue;
+        $fullPath = base_path($item);
+        if (is_file($fullPath)) {
+            if (preg_match('/\.(sql|sql\.gz|tar\.gz|bak)$/i', $item) ||
+                (preg_match('/\.zip$/i', $item) && !in_array($item, ['cpanel_update_with_build.zip', 'cpanel_update_today.zip']))) {
+                $cleanedBytes += @filesize($fullPath) ?: 0;
+                if (@unlink($fullPath)) {
+                    $cleanedCount++;
+                }
+            }
+        }
+    }
+
+    // Clean temp and partial downloads
+    $tempFolders = [
+        storage_path('app/temp'),
+        public_path('storage'),
+    ];
+    foreach ($tempFolders as $tf) {
+        if (is_dir($tf)) {
+            foreach (@scandir($tf) ?: [] as $f) {
+                if ($f === '.' || $f === '..') continue;
+                $fp = $tf . '/' . $f;
+                if (is_file($fp) && (preg_match('/\.part$/i', $f) || preg_match('/\.tmp$/i', $f) || preg_match('/^leaves_.*\.zip$/i', $f))) {
+                    $cleanedBytes += @filesize($fp) ?: 0;
+                    if (@unlink($fp)) {
+                        $cleanedCount++;
+                    }
+                }
+            }
+        }
+    }
+
+    // Prune obsolete/unreferenced assets from public/build/assets
+    $manifestPath = public_path('build/manifest.json');
+    if (file_exists($manifestPath)) {
+        $manifest = json_decode(file_get_contents($manifestPath), true) ?: [];
+        $activeFiles = [];
+        foreach ($manifest as $entry) {
+            if (!empty($entry['file'])) {
+                $activeFiles[basename($entry['file'])] = true;
+            }
+            if (!empty($entry['css'])) {
+                foreach ($entry['css'] as $c) {
+                    $activeFiles[basename($c)] = true;
+                }
+            }
+        }
+        $assetsDir = public_path('build/assets');
+        if (is_dir($assetsDir)) {
+            foreach (@scandir($assetsDir) ?: [] as $af) {
+                if ($af === '.' || $af === '..') continue;
+                if (!isset($activeFiles[$af])) {
+                    $cleanedBytes += @filesize($assetsDir . '/' . $af) ?: 0;
+                    if (@unlink($assetsDir . '/' . $af)) {
+                        $cleanedCount++;
+                    }
+                }
+            }
+        }
+    }
+
+    $freeSpace = @disk_free_space(base_path());
+    $freeMb = $freeSpace !== false ? round($freeSpace / (1024 * 1024), 2) . ' MB' : 'Unknown';
+    $results[] = "<b>[Disk Cleanup]</b> Removed {$cleanedCount} stale files (" . round($cleanedBytes / (1024 * 1024), 2) . " MB freed). Current disk free space: <strong>{$freeMb}</strong>.";
+
+    // 0B. Auto-extract update zip if uploaded to root
     foreach (['cpanel_update_with_build.zip', 'cpanel_update_today.zip'] as $zipFile) {
         $zipPath = base_path($zipFile);
         if (file_exists($zipPath)) {
@@ -1429,7 +1527,8 @@ Route::get('/cpanel-setup', function (\Illuminate\Http\Request $request) {
                 if ($zip->open($zipPath) === true) {
                     $zip->extractTo(base_path());
                     $zip->close();
-                    $results[] = "<b>[Auto-Unpack]</b> Successfully extracted <code>{$zipFile}</code> to project root.";
+                    @unlink($zipPath); // Delete zip immediately after extraction to free quota
+                    $results[] = "<b>[Auto-Unpack]</b> Successfully extracted and cleaned <code>{$zipFile}</code> to project root.";
                 }
             } catch (\Throwable $e) {
                 $results[] = "<b>[Auto-Unpack Note]</b> " . htmlspecialchars($e->getMessage());
