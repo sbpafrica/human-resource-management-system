@@ -601,10 +601,9 @@
         <table class="main-table">
             <thead>
                 <tr>
-                    <th style="width: 25%; text-align: left;">Earnings</th>
-                    <th style="width: 10%; text-align: right;">Hours/Days</th>
-                    <th style="width: 8%; text-align: right;">Rate</th>
-                    <th class="col-divider" style="width: 9%; text-align: right;">Amount</th>
+                    <th style="width: 28%; text-align: left;">Earnings</th>
+                    <th style="width: 12%; text-align: right;">Hours/Days</th>
+                    <th class="col-divider" style="width: 12%; text-align: right;">Amount</th>
                     <th style="width: 36%; text-align: left;">Deductions</th>
                     <th style="width: 12%; text-align: right;">Amount</th>
                 </tr>
@@ -618,7 +617,6 @@
                     <tr>
                         <td>{{ $er['label'] ?? '' }}</td>
                         <td style="text-align: right;">{{ $er['hours'] ?? '' }}</td>
-                        <td style="text-align: right;">{{ $er['rate'] ?? '' }}</td>
                         <td class="col-divider amount-blue">{{ $er['amount'] ?? '' }}</td>
                         <td>{{ $dr['label'] ?? '' }}</td>
                         <td class="amount-blue">{{ $dr['amount'] ?? '' }}</td>
@@ -633,7 +631,6 @@
                 <tr>
                     <td style="height: 14px;"></td>
                     <td></td>
-                    <td></td>
                     <td class="col-divider"></td>
                     <td></td>
                     <td></td>
@@ -644,7 +641,6 @@
                 <tr>
                     <td></td>
                     <td></td>
-                    <td></td>
                     <td class="col-divider"></td>
                     <td colspan="2" style="text-align: center; font-weight: bold; padding-top: 10px; padding-bottom: 4px;">
                         Company Contribution
@@ -653,13 +649,11 @@
                 <tr>
                     <td></td>
                     <td></td>
-                    <td></td>
                     <td class="col-divider"></td>
                     <td>Employer SSF 13%</td>
                     <td style="text-align: right; font-weight: normal; color: #111;">{{ number_format($employerSsf, 2) }}</td>
                 </tr>
                 <tr>
-                    <td></td>
                     <td></td>
                     <td></td>
                     <td class="col-divider"></td>
@@ -670,7 +664,6 @@
                 <!-- Extra spacer before totals -->
                 <tr>
                     <td style="height: 12px;"></td>
-                    <td></td>
                     <td></td>
                     <td class="col-divider"></td>
                     <td></td>

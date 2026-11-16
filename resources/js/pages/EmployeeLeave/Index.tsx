@@ -1,7 +1,7 @@
 import { Head, Link, useForm } from "@inertiajs/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, XCircle, Pencil, Trash, Plus } from "lucide-react";
+import { CheckCircle2, XCircle, Pencil, Trash, Plus, Building2, Search, Loader2 } from "lucide-react";
 import AppLayout from "@/layouts/app-layout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -17,13 +17,21 @@ interface LeaveApplication {
   id: number;
   ida: string;
   name: string | null;
+  company?: string | null;
   type: string | null;
   date_start: string | null;
   date_end: string | null;
   reason: string | null;
-  status: number;
+  status: number | string;
   managername: string | null;
   phone: string | null;
+}
+
+interface ClientOption {
+  id: number;
+  client_name: string;
+  short_name: string;
+  client_dbname?: string;
 }
 
 interface Props {
@@ -31,11 +39,13 @@ interface Props {
     data: LeaveApplication[];
     links: any[];
   };
+  clients?: ClientOption[];
   filters: {
     search: string;
     sort: string;
     order: string;
     ida_filter?: string;
+    client?: string;
   };
   leaveStats: {
     entitlement: number;
@@ -53,9 +63,7 @@ const breadcrumbs = [
   { title: "Leave Applications", href: "/employee-leaves" },
 ];
 
-export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveStats, flash }: Props) {
-  console.log('Props:', { leaveApplications, filters, leaveStats, flash });
-
+export default function EmployeeLeaveIndex({ leaveApplications, clients = [], filters, leaveStats, flash }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [editingLeave, setEditingLeave] = useState<LeaveApplication | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -67,10 +75,14 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
   const [sort, setSort] = useState(filters.sort || "date_start");
   const [order, setOrder] = useState(filters.order || "desc");
   const [idaFilter, setIdaFilter] = useState(filters.ida_filter || "");
+  const [selectedClient, setSelectedClient] = useState(filters.client || "all");
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lookupFeedback, setLookupFeedback] = useState<string | null>(null);
 
   const { data, setData, post, put, delete: destroy, processing, reset, errors } = useForm({
     ida: "",
     name: "",
+    company: "",
     type: "",
     date_start: "",
     date_end: "",
@@ -108,6 +120,40 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
     }
   }, [showToast, toastType]);
 
+  const isPending = (status: number | string) => {
+    const s = String(status).toLowerCase();
+    return s === "0" || s === "pending";
+  };
+
+  const handleLookupStaff = async (staffIdToLookup?: string) => {
+    const id = (staffIdToLookup || data.ida || "").trim();
+    if (!id) return;
+
+    setIsLookingUp(true);
+    setLookupFeedback(null);
+    try {
+      const res = await fetch(route("employee-leaves.lookup", encodeURIComponent(id)));
+      if (res.ok) {
+        const result = await res.json();
+        if (result.found) {
+          setData((prev) => ({
+            ...prev,
+            name: result.name || prev.name,
+            company: result.company || prev.company,
+            phone: result.phone || prev.phone,
+          }));
+          setLookupFeedback(`Found: ${result.name} (${result.company || 'No Company'})`);
+        } else {
+          setLookupFeedback("Staff ID not found in database. You can manually enter details.");
+        }
+      }
+    } catch (e) {
+      console.error("Lookup error:", e);
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (editingLeave) {
@@ -116,6 +162,7 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
           setIsOpen(false);
           reset();
           setEditingLeave(null);
+          setLookupFeedback(null);
         },
       });
     } else {
@@ -123,17 +170,19 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
         onSuccess: () => {
           setIsOpen(false);
           reset();
+          setLookupFeedback(null);
         },
       });
     }
   };
 
   const handleEdit = (leave: LeaveApplication) => {
-    if (leave.status !== 0) return;
+    if (!isPending(leave.status)) return;
     setEditingLeave(leave);
     setData({
       ida: leave.ida || "",
       name: leave.name || "",
+      company: leave.company || "",
       type: leave.type || "",
       date_start: leave.date_start || "",
       date_end: leave.date_end || "",
@@ -141,12 +190,13 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
       managername: leave.managername || "",
       phone: leave.phone || "",
     });
+    setLookupFeedback(null);
     setIsOpen(true);
   };
 
   const handleDelete = (id: number) => {
     const leave = leaveApplications.data.find((app) => app.id === id);
-    if (leave && leave.status === 0) {
+    if (leave && isPending(leave.status)) {
       setDeleteId(id);
       setIsDeleteOpen(true);
     }
@@ -163,26 +213,47 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
     }
   };
 
-  const handleSearchSort = () => {
-    post(route("employee-leaves.index", { search, sort, order, ida_filter: idaFilter }), {
+  const handleSearchSort = (customParams: Record<string, any> = {}) => {
+    post(route("employee-leaves.index", {
+      search,
+      sort,
+      order,
+      ida_filter: idaFilter,
+      client: selectedClient,
+      ...customParams,
+    }), {
       preserveState: true,
       preserveScroll: true,
     });
   };
 
-  const getStatusBadge = (status: number) => {
-    switch (status) {
-      case 0:
-        return <span className="badge bg-yellow-500 text-black">Pending</span>;
-      case 1:
-        return <span className="badge bg-green-500 text-white">Approved</span>;
-      case 2:
-        return <span className="badge bg-red-500 text-white">Denied</span>;
-      case 3:
-        return <span className="badge bg-gray-500 text-white">Cancelled</span>;
+  const getStatusBadge = (status: number | string) => {
+    const s = String(status).toLowerCase();
+    switch (s) {
+      case "0":
+      case "pending":
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Pending</span>;
+      case "1":
+      case "approved":
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">Approved</span>;
+      case "2":
+      case "denied":
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">Denied</span>;
+      case "3":
+      case "cancelled":
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300">Cancelled</span>;
       default:
-        return <span className="badge bg-gray-500 text-white">Unknown</span>;
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-800">Unknown</span>;
     }
+  };
+
+  const formatDate = (date: string | null) => {
+    if (!date) return "N/A";
+    return new Date(date).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
   };
 
   return (
@@ -212,47 +283,75 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
           )}
 
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <h1 className="text-2xl font-bold">Leave Applications</h1>
-              <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Leave Applications</h1>
+                <p className="text-sm text-muted-foreground">Submit and track leave applications for staff across managed clients & companies.</p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
                 <ShadcnInput
-                  placeholder="Search by leave type, reason, staff ID, or name..."
+                  placeholder="Search type, reason, staff ID..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  onKeyUp={handleSearchSort}
-                  className="w-full sm:w-64"
+                  onKeyUp={(e) => e.key === "Enter" && handleSearchSort()}
+                  className="w-full sm:w-56"
                 />
+
                 <ShadcnInput
                   placeholder="Filter by Staff ID"
                   value={idaFilter}
                   onChange={(e) => setIdaFilter(e.target.value)}
-                  onKeyUp={handleSearchSort}
-                  className="w-full sm:w-48"
+                  onKeyUp={(e) => e.key === "Enter" && handleSearchSort()}
+                  className="w-full sm:w-40"
                 />
+
+                {/* Client Filter */}
                 <Select
-                  value={`${sort}:${order}`}
-                  onValueChange={(value) => {
-                    setSort(value.split(":")[0]);
-                    setOrder(value.split(":")[1]);
-                    handleSearchSort();
+                  value={selectedClient}
+                  onValueChange={(val) => {
+                    setSelectedClient(val);
+                    handleSearchSort({ client: val });
                   }}
                 >
                   <SelectTrigger className="w-full sm:w-48">
+                    <Building2 className="h-4 w-4 mr-1.5 opacity-60" />
+                    <SelectValue placeholder="All Clients" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Clients / Companies</SelectItem>
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={c.client_name}>
+                        {c.short_name || c.client_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Sort */}
+                <Select
+                  value={`${sort}:${order}`}
+                  onValueChange={(value) => {
+                    const [s, o] = value.split(":");
+                    setSort(s);
+                    setOrder(o);
+                    handleSearchSort({ sort: s, order: o });
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-44">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ida:asc">Staff ID (A-Z)</SelectItem>
-                    <SelectItem value="ida:desc">Staff ID (Z-A)</SelectItem>
-                    <SelectItem value="name:asc">Name (A-Z)</SelectItem>
-                    <SelectItem value="name:desc">Name (Z-A)</SelectItem>
-                    <SelectItem value="type:asc">Leave Type (A-Z)</SelectItem>
-                    <SelectItem value="type:desc">Leave Type (Z-A)</SelectItem>
-                    <SelectItem value="date_start:asc">Start Date (Oldest)</SelectItem>
                     <SelectItem value="date_start:desc">Start Date (Newest)</SelectItem>
-                    <SelectItem value="status:asc">Status (A-Z)</SelectItem>
-                    <SelectItem value="status:desc">Status (Z-A)</SelectItem>
+                    <SelectItem value="date_start:asc">Start Date (Oldest)</SelectItem>
+                    <SelectItem value="ida:asc">Staff ID (A-Z)</SelectItem>
+                    <SelectItem value="name:asc">Name (A-Z)</SelectItem>
+                    <SelectItem value="company:asc">Company (A-Z)</SelectItem>
+                    <SelectItem value="type:asc">Leave Type (A-Z)</SelectItem>
+                    <SelectItem value="status:asc">Status</SelectItem>
                   </SelectContent>
                 </Select>
+
                 <Dialog
                   open={isOpen}
                   onOpenChange={(open) => {
@@ -260,32 +359,57 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
                     if (!open) {
                       reset();
                       setEditingLeave(null);
+                      setLookupFeedback(null);
                     }
                   }}
                 >
                   <DialogTrigger asChild>
-                    <Button className="w-full sm:w-auto">
-                      <Plus className="h-4 w-4 mr-2" />
+                    <Button className="w-full sm:w-auto bg-primary text-primary-foreground">
+                      <Plus className="h-4 w-4 mr-1.5" />
                       Apply for Leave
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="p-6 sm:max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+                  <DialogContent className="p-6 sm:max-w-2xl w-full max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>{editingLeave ? "Edit Leave Application" : "Apply for Leave"}</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={handleSubmit}>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
+                        {/* Staff ID with Lookup */}
                         <div className="grid gap-2">
                           <Label htmlFor="ida">Staff ID</Label>
-                          <Input
-                            id="ida"
-                            value={data.ida}
-                            onChange={(e) => setData("ida", e.target.value)}
-                            required
-                            className="w-full"
-                          />
+                          <div className="flex gap-2">
+                            <Input
+                              id="ida"
+                              value={data.ida}
+                              onChange={(e) => setData("ida", e.target.value)}
+                              onBlur={() => {
+                                if (data.ida && !data.name) {
+                                  handleLookupStaff(data.ida);
+                                }
+                              }}
+                              placeholder="e.g. SBP9102"
+                              required
+                              className="w-full"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleLookupStaff()}
+                              disabled={isLookingUp || !data.ida}
+                              title="Lookup Staff details"
+                            >
+                              {isLookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                          {lookupFeedback && (
+                            <p className="text-xs text-muted-foreground">{lookupFeedback}</p>
+                          )}
                           {errors.ida && <p className="text-red-500 text-sm">{errors.ida}</p>}
                         </div>
+
+                        {/* Employee Name */}
                         <div className="grid gap-2">
                           <Label htmlFor="name">Employee Name</Label>
                           <Input
@@ -293,10 +417,44 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
                             value={data.name}
                             onChange={(e) => setData("name", e.target.value)}
                             required
+                            placeholder="Full Name"
                             className="w-full"
                           />
                           {errors.name && <p className="text-red-500 text-sm">{errors.name}</p>}
                         </div>
+
+                        {/* Company / Client Selection */}
+                        <div className="grid gap-2">
+                          <Label htmlFor="company">Company / Client</Label>
+                          {clients.length > 0 ? (
+                            <Select
+                              value={data.company}
+                              onValueChange={(value) => setData("company", value)}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select Company / Client" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {clients.map((c) => (
+                                  <SelectItem key={c.id} value={c.client_name}>
+                                    {c.short_name || c.client_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              id="company"
+                              value={data.company}
+                              onChange={(e) => setData("company", e.target.value)}
+                              placeholder="e.g. SBP AFRICA LTD."
+                              className="w-full"
+                            />
+                          )}
+                          {errors.company && <p className="text-red-500 text-sm">{errors.company}</p>}
+                        </div>
+
+                        {/* Leave Type */}
                         <div className="grid gap-2">
                           <Label htmlFor="type">Leave Type</Label>
                           <Select
@@ -311,11 +469,15 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
                               <SelectItem value="Sick">Sick</SelectItem>
                               <SelectItem value="Maternity">Maternity</SelectItem>
                               <SelectItem value="Paternity">Paternity</SelectItem>
+                              <SelectItem value="Casual">Casual</SelectItem>
+                              <SelectItem value="Study">Study</SelectItem>
                               <SelectItem value="Other">Other</SelectItem>
                             </SelectContent>
                           </Select>
                           {errors.type && <p className="text-red-500 text-sm">{errors.type}</p>}
                         </div>
+
+                        {/* Dates */}
                         <div className="grid gap-2">
                           <Label htmlFor="date_start">Start Date</Label>
                           <Input
@@ -340,6 +502,8 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
                           />
                           {errors.date_end && <p className="text-red-500 text-sm">{errors.date_end}</p>}
                         </div>
+
+                        {/* Manager info */}
                         <div className="grid gap-2">
                           <Label htmlFor="managername">Manager Name</Label>
                           <Input
@@ -347,36 +511,44 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
                             value={data.managername}
                             onChange={(e) => setData("managername", e.target.value)}
                             required
+                            placeholder="Manager's Full Name"
                             className="w-full"
                           />
                           {errors.managername && <p className="text-red-500 text-sm">{errors.managername}</p>}
                         </div>
                         <div className="grid gap-2">
-                          <Label htmlFor="phone">Phone Number</Label>
+                          <Label htmlFor="phone">Manager Phone Number (for SMS Review)</Label>
                           <Input
                             id="phone"
                             value={data.phone}
                             onChange={(e) => setData("phone", e.target.value)}
                             required
+                            placeholder="0XXXXXXXXX (10 digits)"
                             className="w-full"
                           />
                           {errors.phone && <p className="text-red-500 text-sm">{errors.phone}</p>}
                         </div>
+
+                        {/* Reason */}
                         <div className="grid gap-2 sm:col-span-2">
-                          <Label htmlFor="reason">Reason</Label>
+                          <Label htmlFor="reason">Reason for Leave</Label>
                           <Textarea
                             id="reason"
                             value={data.reason}
                             onChange={(e) => setData("reason", e.target.value)}
                             required
+                            placeholder="Provide reason for leave application..."
                             className="w-full"
                           />
                           {errors.reason && <p className="text-red-500 text-sm">{errors.reason}</p>}
                         </div>
                       </div>
                       <DialogFooter className="flex flex-col sm:flex-row sm:justify-end gap-2">
+                        <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+                          Cancel
+                        </Button>
                         <Button type="submit" disabled={processing}>
-                          {editingLeave ? "Update" : "Submit"}
+                          {editingLeave ? "Update Application" : "Submit Leave Application"}
                         </Button>
                       </DialogFooter>
                     </form>
@@ -384,37 +556,39 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
                 </Dialog>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+            {/* Leave Entitlement Statistics */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className="bg-blue-600 text-white">
-                <CardHeader>
-                  <CardTitle>Leave Entitlement</CardTitle>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-blue-100">Annual Entitlement</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-4xl font-bold">{leaveStats.entitlement} days</p>
+                  <p className="text-3xl font-bold">{leaveStats.entitlement} days</p>
                 </CardContent>
               </Card>
-              <Card className="bg-green-600 text-white">
-                <CardHeader>
-                  <CardTitle>Used Leave</CardTitle>
+              <Card className="bg-emerald-600 text-white">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-emerald-100">Used Leave</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-4xl font-bold">{leaveStats.used} days</p>
+                  <p className="text-3xl font-bold">{leaveStats.used} days</p>
                 </CardContent>
               </Card>
-              <Card className={leaveStats.remaining === 0 ? "bg-red-600 text-white" : "bg-gray-600 text-white"}>
-                <CardHeader>
-                  <CardTitle>Remaining Leave</CardTitle>
+              <Card className={leaveStats.remaining === 0 ? "bg-rose-600 text-white" : "bg-slate-700 text-white"}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-200">Remaining Leave</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-4xl font-bold">{leaveStats.remaining} days</p>
+                  <p className="text-3xl font-bold">{leaveStats.remaining} days</p>
                 </CardContent>
               </Card>
-              <Card className="bg-yellow-500 text-black sm:col-span-3">
-                <CardHeader>
-                  <CardTitle>Pending Leave</CardTitle>
+              <Card className="bg-amber-500 text-white">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-amber-100">Pending Leave Days</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-4xl font-bold">{leaveStats.pending} days</p>
+                  <p className="text-3xl font-bold">{leaveStats.pending} days</p>
                 </CardContent>
               </Card>
             </div>
@@ -422,75 +596,98 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
 
           {leaveApplications.data.length > 0 ? (
             <Card>
-              <CardHeader>
-                <CardTitle>Leave Applications</CardTitle>
-                <div className="text-sm text-muted-foreground">
-                  {leaveApplications.data.length} records
-                </div>
+              <CardHeader className="py-3 flex flex-row items-center justify-between">
+                <CardTitle className="text-base font-semibold">Leave Applications</CardTitle>
+                <div className="text-xs text-muted-foreground">{leaveApplications.data.length} records on this page</div>
               </CardHeader>
-              <CardContent>
-                <div className="block md:hidden space-y-4">
+              <CardContent className="p-0 sm:p-4">
+                {/* Mobile View */}
+                <div className="block md:hidden space-y-3 p-3">
                   {leaveApplications.data.map((application) => (
-                    <div key={application.id} className="border rounded-lg p-4 bg-background">
-                      <div className="flex flex-col gap-2">
-                        <div className="font-semibold">{application.ida}</div>
-                        <div className="text-sm text-muted-foreground">Name: {application.name || "N/A"}</div>
-                        <div className="text-sm text-muted-foreground">Leave Type: {application.type || "N/A"}</div>
-                        <div className="text-sm text-muted-foreground">Start Date: {application.date_start || "N/A"}</div>
-                        <div className="text-sm text-muted-foreground">End Date: {application.date_end || "N/A"}</div>
-                        <div className="text-sm text-muted-foreground">Reason: {application.reason || "N/A"}</div>
-                        <div className="text-sm text-muted-foreground">Status: {getStatusBadge(application.status)}</div>
-                        <div className="text-sm text-muted-foreground">Manager: {application.managername || "N/A"}</div>
-                        <div className="text-sm text-muted-foreground">Phone: {application.phone || "N/A"}</div>
-                        {application.status === 0 && (
-                          <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={() => handleEdit(application)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleDelete(application.id)}>
-                              <Trash className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
+                    <div key={application.id} className="border rounded-lg p-3 bg-card space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">{application.ida}</span>
+                        <div>{getStatusBadge(application.status)}</div>
                       </div>
+                      <div className="text-sm"><span className="text-muted-foreground">Name:</span> <span className="font-medium">{application.name || "N/A"}</span></div>
+                      <div className="text-sm"><span className="text-muted-foreground">Company:</span> <span className="font-semibold text-primary">{application.company || "N/A"}</span></div>
+                      <div className="text-sm"><span className="text-muted-foreground">Type:</span> {application.type || "N/A"}</div>
+                      <div className="text-xs text-muted-foreground">Period: {formatDate(application.date_start)} — {formatDate(application.date_end)}</div>
+                      <div className="text-xs text-muted-foreground">Reason: {application.reason || "N/A"}</div>
+                      <div className="text-xs text-muted-foreground">Manager: {application.managername || "N/A"} ({application.phone || "N/A"})</div>
+                      {isPending(application.status) && (
+                        <div className="flex gap-2 pt-2 border-t">
+                          <Button variant="outline" size="sm" className="flex-1" onClick={() => handleEdit(application)}>
+                            <Pencil className="h-4 w-4 mr-1" /> Edit
+                          </Button>
+                          <Button variant="destructive" size="sm" className="flex-1" onClick={() => handleDelete(application.id)}>
+                            <Trash className="h-4 w-4 mr-1" /> Delete
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
+
+                {/* Desktop View */}
                 <div className="hidden md:block">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Staff ID</TableHead>
                         <TableHead>Name</TableHead>
+                        <TableHead>Company / Client</TableHead>
                         <TableHead>Leave Type</TableHead>
                         <TableHead>Start Date</TableHead>
                         <TableHead>End Date</TableHead>
                         <TableHead>Reason</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Manager</TableHead>
-                        <TableHead>Phone</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {leaveApplications.data.map((application) => (
                         <TableRow key={application.id}>
-                          <TableCell>{application.ida}</TableCell>
+                          <TableCell className="font-medium">{application.ida}</TableCell>
                           <TableCell>{application.name || "N/A"}</TableCell>
+                          <TableCell>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground border">
+                              {application.company || "N/A"}
+                            </span>
+                          </TableCell>
                           <TableCell>{application.type || "N/A"}</TableCell>
-                          <TableCell>{application.date_start || "N/A"}</TableCell>
-                          <TableCell>{application.date_end || "N/A"}</TableCell>
-                          <TableCell>{application.reason || "N/A"}</TableCell>
+                          <TableCell>{formatDate(application.date_start)}</TableCell>
+                          <TableCell>{formatDate(application.date_end)}</TableCell>
+                          <TableCell className="max-w-[200px] truncate" title={application.reason || ""}>
+                            {application.reason || "N/A"}
+                          </TableCell>
                           <TableCell>{getStatusBadge(application.status)}</TableCell>
-                          <TableCell>{application.managername || "N/A"}</TableCell>
-                          <TableCell>{application.phone || "N/A"}</TableCell>
+                          <TableCell>
+                            <div className="text-xs">
+                              <div>{application.managername || "N/A"}</div>
+                              <div className="text-muted-foreground">{application.phone || ""}</div>
+                            </div>
+                          </TableCell>
                           <TableCell className="text-right">
-                            {application.status === 0 && (
-                              <div className="flex gap-2 justify-end">
-                                <Button variant="outline" size="sm" onClick={() => handleEdit(application)}>
+                            {isPending(application.status) && (
+                              <div className="flex gap-1.5 justify-end">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 px-2"
+                                  onClick={() => handleEdit(application)}
+                                  title="Edit Application"
+                                >
                                   <Pencil className="h-4 w-4" />
                                 </Button>
-                                <Button variant="destructive" size="sm" onClick={() => handleDelete(application.id)}>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  className="h-8 px-2"
+                                  onClick={() => handleDelete(application.id)}
+                                  title="Delete Application"
+                                >
                                   <Trash className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -501,12 +698,15 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
                     </TableBody>
                   </Table>
                 </div>
-                <div className="flex justify-end mt-4">
-                  <div className="flex gap-2">
+
+                {/* Pagination */}
+                <div className="flex justify-end p-4 border-t">
+                  <div className="flex gap-1.5">
                     {leaveApplications.links.map((link, index) => (
                       <Button
                         key={index}
                         variant={link.active ? "default" : "outline"}
+                        size="sm"
                         disabled={!link.url}
                         asChild={!!link.url}
                       >
@@ -523,19 +723,20 @@ export default function EmployeeLeaveIndex({ leaveApplications, filters, leaveSt
             </Card>
           ) : (
             <Card>
-              <CardContent className="pt-6">
-                <p className="text-center text-gray-500">No leave applications found. Apply for a leave to get started!</p>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                <p>No leave applications found.</p>
               </CardContent>
             </Card>
           )}
 
+          {/* Delete Confirmation Dialog */}
           <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-            <DialogContent className="p-4 sm:max-w-md w-full">
+            <DialogContent>
               <DialogHeader>
-                <DialogTitle>Confirm Deletion</DialogTitle>
+                <DialogTitle>Confirm Delete</DialogTitle>
               </DialogHeader>
-              <p>Are you sure you want to delete this leave application? This action cannot be undone.</p>
-              <DialogFooter className="flex flex-col sm:flex-row sm:justify-end gap-2">
+              <p>Are you sure you want to delete this pending leave application? This action cannot be undone.</p>
+              <DialogFooter>
                 <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>
                   Cancel
                 </Button>

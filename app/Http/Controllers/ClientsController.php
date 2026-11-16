@@ -96,6 +96,11 @@ class ClientsController extends Controller
             // Automatically seed template columns for all modules (payroll, ssnit, petra, bank)
             ClientTemplateColumn::seedAllModulesForClient($client->id, $client->client_dbname);
 
+            // Automatically associate the newly created client with the creator if not super admin
+            if ($request->user() && !$request->user()->is_super_admin) {
+                $request->user()->clients()->syncWithoutDetaching([$client->id]);
+            }
+
             return redirect()->route('clients.index')
                 ->with('success', 'Client created successfully!')
                 ->with('newly_created_client', [

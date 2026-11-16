@@ -902,6 +902,7 @@ Route::get('/centurypay/export', [CenturyPayController::class, 'export'])
     Route::post('/leave-applications/download-multiple', [LeaveApplicationController::class, 'downloadMultipleLeavePdfs'])->name('leave-applications.download-multiple');
 
     Route::get('/employee-leaves', [EmployeeLeaveController::class, 'index'])->name('employee-leaves.index');
+    Route::get('/employee-leaves/lookup/{staffid}', [EmployeeLeaveController::class, 'lookupEmployee'])->name('employee-leaves.lookup')->where('staffid', '.*');
     Route::post('/employee-leaves', [EmployeeLeaveController::class, 'store'])->name('employee-leaves.store');
     Route::put('/employee-leaves/{id}', [EmployeeLeaveController::class, 'update'])->name('employee-leaves.update');
     Route::delete('/employee-leaves/{id}', [EmployeeLeaveController::class, 'destroy'])->name('employee-leaves.destroy');

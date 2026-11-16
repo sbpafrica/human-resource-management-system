@@ -45,7 +45,7 @@ class ManagerLeaveReviewController extends Controller
 
         $leaveApplication = $reviewToken->leaveApplication;
 
-        if (!$leaveApplication || $leaveApplication->status !== 0) {
+        if (!$leaveApplication || !$leaveApplication->isPending()) {
             Log::warning('Leave application already processed or not found', ['leave_id' => $leaveApplication?->id]);
             return Inertia::render('ManagerLeave/Review', [
                 'error' => 'This leave application has already been processed or does not exist.',
@@ -88,7 +88,7 @@ class ManagerLeaveReviewController extends Controller
 
         $leaveApplication = $reviewToken->leaveApplication;
 
-        if (!$leaveApplication || $leaveApplication->status !== 0) {
+        if (!$leaveApplication || !$leaveApplication->isPending()) {
             Log::warning('Leave application already processed or not found', ['leave_id' => $leaveApplication?->id]);
             return Inertia::render('ManagerLeave/Review', [
                 'error' => 'This leave application has already been processed or does not exist.',
@@ -107,7 +107,7 @@ class ManagerLeaveReviewController extends Controller
 
         try {
             DB::transaction(function () use ($request, $leaveApplication, $reviewToken) {
-                $status = $request->action === 'approve' ? 1 : 2;
+                $status = $request->action === 'approve' ? 'approved' : 'denied';
                 $leaveApplication->update(['status' => $status]);
                 $reviewToken->update(['used' => true]);
 
@@ -120,7 +120,7 @@ class ManagerLeaveReviewController extends Controller
                     }
                     $startDate = Carbon::parse($leaveApplication->date_start)->format('jS F, Y');
                     $endDate = Carbon::parse($leaveApplication->date_end)->format('jS F, Y');
-                    $msg = "Your leave request from {$startDate} to {$endDate} has been " . ($status === 1 ? 'approved' : 'denied') . " by {$leaveApplication->managername}.";
+                    $msg = "Your leave request from {$startDate} to {$endDate} has been " . ($status === 'approved' ? 'approved' : 'denied') . " by {$leaveApplication->managername}.";
                     $smsResponse = $this->sendSMS($employeePhone, $msg);
 
                     if ($smsResponse === false) {

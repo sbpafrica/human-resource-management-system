@@ -107,7 +107,11 @@
                 </div>
                 <div class="field">
                     <label>Employee Name</label>
-                    <span>{{ $employee->employeename ?? 'N/A' }}</span>
+                    <span>{{ $employee->employeename ?? ($leave->name ?? 'N/A') }}</span>
+                </div>
+                <div class="field">
+                    <label>Company / Client</label>
+                    <span>{{ $leave->company ?? ($employee->company ?? 'N/A') }}</span>
                 </div>
             </div>
         </div>
