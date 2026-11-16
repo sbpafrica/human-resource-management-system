@@ -1420,6 +1420,23 @@ Route::get('/cpanel-setup', function (\Illuminate\Http\Request $request) {
 
     $results = [];
 
+    // 0. Auto-extract update zip if uploaded to root
+    foreach (['cpanel_update_with_build.zip', 'cpanel_update_today.zip'] as $zipFile) {
+        $zipPath = base_path($zipFile);
+        if (file_exists($zipPath)) {
+            try {
+                $zip = new \ZipArchive();
+                if ($zip->open($zipPath) === true) {
+                    $zip->extractTo(base_path());
+                    $zip->close();
+                    $results[] = "<b>[Auto-Unpack]</b> Successfully extracted <code>{$zipFile}</code> to project root.";
+                }
+            } catch (\Throwable $e) {
+                $results[] = "<b>[Auto-Unpack Note]</b> " . htmlspecialchars($e->getMessage());
+            }
+        }
+    }
+
     // 1. Storage symlink
     try {
         $publicStorage = public_path('storage');
@@ -1447,6 +1464,32 @@ Route::get('/cpanel-setup', function (\Illuminate\Http\Request $request) {
         $results[] = '<b>[Cache Optimization]</b><pre>' . htmlspecialchars(\Illuminate\Support\Facades\Artisan::output()) . '</pre>';
     } catch (\Throwable $e) {
         $results[] = '<b>[Cache Clear Note]</b> ' . htmlspecialchars($e->getMessage());
+    }
+
+    // 4. Asset Integrity Check
+    try {
+        $manifestPath = public_path('build/manifest.json');
+        if (!file_exists($manifestPath)) {
+            $results[] = '<b>[Assets Check]</b> <span style="color:#ef4444;font-weight:bold;">Warning: public/build/manifest.json not found!</span> Frontend assets may be missing.';
+        } else {
+            $manifest = json_decode(file_get_contents($manifestPath), true);
+            $missing = [];
+            foreach ($manifest as $key => $entry) {
+                if (isset($entry['file'])) {
+                    $assetFile = public_path('build/' . $entry['file']);
+                    if (!file_exists($assetFile)) {
+                        $missing[] = $entry['file'];
+                    }
+                }
+            }
+            if (empty($missing)) {
+                $results[] = '<b>[Assets Check]</b> <span style="color:#16a34a;font-weight:bold;">All ' . count($manifest) . ' build assets verified on disk!</span>';
+            } else {
+                $results[] = '<b>[Assets Check]</b> <span style="color:#ef4444;font-weight:bold;">' . count($missing) . ' asset files missing from public/build/assets/!</span> (e.g. ' . implode(', ', array_slice($missing, 0, 5)) . ')<br><em>Please extract cpanel_update_with_build.zip or upload to root and refresh this page.</em>';
+            }
+        }
+    } catch (\Throwable $e) {
+        $results[] = '<b>[Assets Check Note]</b> ' . htmlspecialchars($e->getMessage());
     }
 
     $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>cPanel Deployment Setup | SBP HRMS</title><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:30px;background:#f8fafc;color:#1e293b}.card{background:#fff;padding:30px;border-radius:12px;box-shadow:0 4px 6px -1px rgb(0 0 0 / 0.1);max-width:800px;margin:0 auto}h2{color:#0284c7;margin-top:0}pre{background:#0f172a;color:#38bdf8;padding:15px;border-radius:8px;overflow-x:auto;font-size:13px}.success{color:#16a34a;font-weight:600;font-size:16px;margin-bottom:20px}hr{border:none;border-top:1px solid #e2e8f0;margin:20px 0}.btn{display:inline-block;margin-top:20px;background:#0284c7;color:#fff;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;transition:background 0.2s}.btn:hover{background:#0369a1}</style></head><body><div class="card"><h2>🚀 SBP Africa HRMS — cPanel Setup & Optimization</h2><p class="success">✓ All setup operations executed successfully!</p>' . implode('<hr>', $results) . '<p><a href="' . url('/dashboard') . '" class="btn">Proceed to HRMS Dashboard →</a></p></div></body></html>';
