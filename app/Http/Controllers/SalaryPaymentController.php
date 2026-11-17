@@ -253,10 +253,6 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
                             }
                         }
                     }
-
-                    if ($col->is_required) {
-                        $requiredDbCols[$dbCol] = $col->display_label;
-                    }
                 }
 
                 // Add robust aliases for core fields
@@ -350,6 +346,12 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
                     // Skip repeated header row
                     if (in_array(strtolower($staffId), ['staff id', 'staffid', 'staff_id', 'id', 'staff no'], true)) {
                         continue;
+                    }
+
+                    // Auto-calculate total deductions if gross and net are present and deductions was not uploaded
+                    if (!isset($record['otherdeduction']) && isset($record['grosspay']) && isset($record['netpay'])) {
+                        $diff = (float)$record['grosspay'] - (float)$record['netpay'];
+                        $record['otherdeduction'] = $diff > 0 ? round($diff, 2) : 0.0;
                     }
 
                     if (empty($staffId)) {
