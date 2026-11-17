@@ -58,10 +58,78 @@ class ClientTemplateColumnController extends Controller
     }
 
     /**
-     * Save/update column settings for a specific module of a client.
+     * Save/update column settings for a specific module of a client or all modules.
      */
     public function update(Request $request, Client $client): JsonResponse
     {
+        // Support saving all modules at once
+        if ($request->has('modules') && is_array($request->input('modules'))) {
+            $modulesPayload = $request->input('modules');
+            try {
+                DB::beginTransaction();
+                $updatedModules = [];
+
+                foreach ($modulesPayload as $moduleName => $submittedColumns) {
+                    if (!in_array($moduleName, self::MODULES, true) || !is_array($submittedColumns)) {
+                        continue;
+                    }
+
+                    ClientTemplateColumn::where('client_dbname', $client->client_dbname)
+                        ->where('module', $moduleName)
+                        ->delete();
+
+                    $insertRows = [];
+                    foreach ($submittedColumns as $idx => $col) {
+                        $rawKey = $col['column_key'] ?? '';
+                        if (!$rawKey) continue;
+                        $columnKey = Str::slug($rawKey, '_');
+
+                        $insertRows[] = [
+                            'client_id'      => $client->id,
+                            'client_dbname'  => $client->client_dbname,
+                            'module'         => $moduleName,
+                            'column_key'     => $columnKey,
+                            'display_label'  => trim($col['display_label'] ?? $columnKey),
+                            'header_aliases' => $col['header_aliases'] ?? null,
+                            'data_type'      => $col['data_type'] ?? 'string',
+                            'is_active'      => (bool) ($col['is_active'] ?? true),
+                            'is_required'    => (bool) ($col['is_required'] ?? false),
+                            'is_custom'      => (bool) ($col['is_custom'] ?? false),
+                            'sort_order'     => $col['sort_order'] ?? $idx,
+                            'sample_value'   => $col['sample_value'] ?? null,
+                            'created_at'     => now(),
+                            'updated_at'     => now(),
+                        ];
+                    }
+
+                    if (!empty($insertRows)) {
+                        ClientTemplateColumn::insert($insertRows);
+                    }
+
+                    $updatedModules[$moduleName] = ClientTemplateColumn::forClientAndModule($client->client_dbname, $moduleName)->get();
+                }
+
+                DB::commit();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'All template column configurations saved successfully!',
+                    'modules' => $updatedModules,
+                ]);
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                Log::error('Failed to bulk update template columns: ' . $e->getMessage(), [
+                    'client_id' => $client->id,
+                    'trace'     => $e->getTraceAsString(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to save template columns: ' . $e->getMessage(),
+                ], 500);
+            }
+        }
+
         $validated = $request->validate([
             'module'                  => ['required', 'string', 'in:payroll,ssnit,petra,bank,gra,contract'],
             'columns'                 => ['required', 'array', 'min:1'],
