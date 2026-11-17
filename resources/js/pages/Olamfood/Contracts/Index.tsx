@@ -14,7 +14,12 @@ import {
   ArrowUpDown,
   Eye,
   FileSpreadsheet,
+  Trash2,
+  KeyRound,
+  Wand2,
 } from "lucide-react";
+import StaffRangeDeleteModal from "@/components/StaffRangeDeleteModal";
+import EditStaffIdModal from "@/components/EditStaffIdModal";
 import AppLayout from "@/layouts/app-layout";
 import {
   Dialog,
@@ -111,6 +116,9 @@ export default function OlamfoodContracts({
   employeeSigImg?: string;
 } | null>(null);
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
+  const [isRangeDeleteOpen, setIsRangeDeleteOpen] = useState(false);
+  const [isRenameStaffOpen, setIsRenameStaffOpen] = useState(false);
+  const [targetRenameContract, setTargetRenameContract] = useState<OlamfoodContract | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
@@ -336,6 +344,17 @@ export default function OlamfoodContracts({
                 className="w-full sm:w-64"
               />
 
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsRangeDeleteOpen(true)}
+                className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                title="Delete staff contracts by numerical range or custom ID list"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete by Range / List
+              </Button>
+
               <Dialog
                 open={isOpen}
                 onOpenChange={(open) => {
@@ -359,7 +378,27 @@ export default function OlamfoodContracts({
                   <form onSubmit={handleSubmit}>
                     <div className="grid sm:grid-cols-2 gap-4 py-4">
                       <div className="grid gap-2">
-                        <Label htmlFor="id">Staff ID</Label>
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="id">Staff ID</Label>
+                          {!editingContract && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch('/staff-management/next-id?client=olamfood&prefix=SBPENM');
+                                  const json = await res.json();
+                                  if (json.success && json.next_id) {
+                                    setData("id", json.next_id);
+                                  }
+                                } catch (e) {}
+                              }}
+                              className="text-[11px] text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium"
+                              title="Auto-detect next sequential Staff ID"
+                            >
+                              <Wand2 className="h-3 w-3" /> Auto-Generate
+                            </button>
+                          )}
+                        </div>
                         <Input
                           id="id"
                           value={data.id}
@@ -699,8 +738,20 @@ export default function OlamfoodContracts({
                             <Button variant="outline" size="sm" onClick={() => handleView(contract.id)}>
                               <Eye className="h-4 w-4 text-blue-500" />
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleEdit(contract)}>
+                            <Button variant="outline" size="sm" onClick={() => handleEdit(contract)} title="Edit Contract">
                               <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setTargetRenameContract(contract);
+                                setIsRenameStaffOpen(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              title="Rename Staff ID across all records"
+                            >
+                              <KeyRound className="h-4 w-4" />
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => handleDelete(contract.id)}>
                               <Trash className="h-4 w-4" />
@@ -741,6 +792,31 @@ export default function OlamfoodContracts({
               </CardContent>
             </Card>
           )}
+
+          {/* Staff ID Range Deletion Modal */}
+          <StaffRangeDeleteModal
+            isOpen={isRangeDeleteOpen}
+            onClose={() => setIsRangeDeleteOpen(false)}
+            defaultClient="Olam Food Ingredients"
+            onDeleted={() => {
+              window.location.reload();
+            }}
+          />
+
+          {/* Cascading Staff ID Rename Modal */}
+          <EditStaffIdModal
+            isOpen={isRenameStaffOpen}
+            onClose={() => {
+              setIsRenameStaffOpen(false);
+              setTargetRenameContract(null);
+            }}
+            staffId={targetRenameContract?.id || ""}
+            employeeName={targetRenameContract?.employeename || ""}
+            companyName={targetRenameContract?.client || "Olam Food Ingredients"}
+            onRenamed={() => {
+              window.location.reload();
+            }}
+          />
         </div>
       </AppLayout>
     </ErrorBoundary>

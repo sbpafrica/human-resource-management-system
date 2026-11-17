@@ -418,6 +418,14 @@ Route::post('/employeeportal/bulk-archive', [EmployeePortalController::class, 'b
     Route::get('/documents/{id}/download', [App\Http\Controllers\EmployeeDocumentController::class, 'download'])->name('documents.download');
     Route::post('/documents/{id}/resend', [App\Http\Controllers\EmployeeDocumentController::class, 'resend'])->name('documents.resend');
 
+    // Staff ID Management & Range Tools (Super Admin, HR Manager, HR Officer)
+    Route::middleware(['auth'])->prefix('staff-management')->name('staff-management.')->group(function () {
+        Route::get('/next-id', [App\Http\Controllers\StaffManagementController::class, 'getNextStaffId'])->name('next-id');
+        Route::post('/preview-range', [App\Http\Controllers\StaffManagementController::class, 'previewRange'])->name('preview-range');
+        Route::post('/bulk-delete', [App\Http\Controllers\StaffManagementController::class, 'bulkDelete'])->name('bulk-delete');
+        Route::post('/rename-id', [App\Http\Controllers\StaffManagementController::class, 'renameStaffId'])->name('rename-id');
+    });
+
     // HR Complaints Management (Authenticated)
     Route::middleware(['auth'])->group(function () {
         Route::get('/complaints', [App\Http\Controllers\ComplaintController::class, 'index'])->name('complaints.index');

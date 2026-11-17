@@ -1,7 +1,9 @@
 import { Head, Link, useForm, InertiaFormProps, router } from "@inertiajs/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Pencil, Trash, CheckCircle, XCircle, Download, Upload, ArrowUpDown, Eye, Archive } from "lucide-react";
+import { Plus, Pencil, Trash, CheckCircle, XCircle, Download, Upload, ArrowUpDown, Eye, Archive, KeyRound, Wand2, Trash2 } from "lucide-react";
+import StaffRangeDeleteModal from "@/components/StaffRangeDeleteModal";
+import EditStaffIdModal from "@/components/EditStaffIdModal";
 
 import AppLayout from "@/layouts/app-layout";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -98,6 +100,9 @@ export default function EmployeePortal({ employees, filters, totalRecords, searc
   const [sort, setSort] = useState(filters.sort || "employeename");
   const [order, setOrder] = useState(filters.order || "asc");
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
+  const [isRangeDeleteOpen, setIsRangeDeleteOpen] = useState(false);
+  const [isRenameStaffOpen, setIsRenameStaffOpen] = useState(false);
+  const [targetRenameEmployee, setTargetRenameEmployee] = useState<Employee | null>(null);
 
   const { data, setData, get, post, put, delete: destroy, processing, reset, errors } = useForm({
     staffid: "",
@@ -521,6 +526,26 @@ const handleDownloadTemplate = () => {
                   <Download className="h-4 w-4 mr-2" />
                   Export to Excel
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsRangeDeleteOpen(true)}
+                  className="w-full sm:w-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  title="Delete staff by numerical range or custom ID list"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete by Range / List
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => { setTargetRenameEmployee(null); setIsRenameStaffOpen(true); }}
+                  className="w-full sm:w-auto border-blue-300 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                  title="Rename an existing Staff ID across all tables"
+                >
+                  <KeyRound className="h-4 w-4 mr-2" />
+                  Rename Staff ID
+                </Button>
                 <Dialog
                   open={isOpen}
                   onOpenChange={(open) => {
@@ -544,7 +569,27 @@ const handleDownloadTemplate = () => {
                     <form onSubmit={handleSubmit}>
                       <div className="grid sm:grid-cols-2 gap-4 py-4">
                         <div className="grid gap-2">
-                          <Label htmlFor="staffid">Staff ID</Label>
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="staffid">Staff ID</Label>
+                            {!editingEmployee && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(`/staff-management/next-id?client=${encodeURIComponent(data.company || "")}`);
+                                    const json = await res.json();
+                                    if (json.success && json.next_id) {
+                                      setData("staffid", json.next_id);
+                                    }
+                                  } catch (e) {}
+                                }}
+                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium"
+                                title="Auto-detect next sequential Staff ID for this company"
+                              >
+                                <Wand2 className="h-3 w-3" /> Auto-Generate
+                              </button>
+                            )}
+                          </div>
                           <Input
                             id="staffid"
                             value={data.staffid}
@@ -893,6 +938,18 @@ const handleDownloadTemplate = () => {
                           <Button variant="outline" size="sm" onClick={() => handleEdit(employee)} title="Edit Employee">
                             <Pencil className="h-4 w-4" />
                           </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setTargetRenameEmployee(employee);
+                              setIsRenameStaffOpen(true);
+                            }}
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            title="Rename Staff ID across all tables"
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
                           <Button variant="outline" size="sm" onClick={() => handleArchive(employee)} className="text-amber-600 hover:text-amber-700 hover:bg-amber-50" title="Archive Employee">
                             <Archive className="h-4 w-4" />
                           </Button>
@@ -980,6 +1037,18 @@ const handleDownloadTemplate = () => {
                             <div className="flex gap-2 justify-end">
                               <Button variant="outline" size="sm" onClick={() => handleEdit(employee)} title="Edit Employee">
                                 <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setTargetRenameEmployee(employee);
+                                  setIsRenameStaffOpen(true);
+                                }}
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                title="Rename Staff ID across all tables"
+                              >
+                                <KeyRound className="h-4 w-4" />
                               </Button>
                               <Button variant="outline" size="sm" onClick={() => handleArchive(employee)} className="text-amber-600 hover:text-amber-700 hover:bg-amber-50" title="Archive Employee">
                                 <Archive className="h-4 w-4" />
@@ -1095,6 +1164,30 @@ const handleDownloadTemplate = () => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* Staff ID Range Deletion Modal */}
+          <StaffRangeDeleteModal
+            isOpen={isRangeDeleteOpen}
+            onClose={() => setIsRangeDeleteOpen(false)}
+            onDeleted={() => {
+              router.reload({ preserveScroll: true });
+            }}
+          />
+
+          {/* Cascading Staff ID Rename Modal */}
+          <EditStaffIdModal
+            isOpen={isRenameStaffOpen}
+            onClose={() => {
+              setIsRenameStaffOpen(false);
+              setTargetRenameEmployee(null);
+            }}
+            staffId={targetRenameEmployee?.staffid || ""}
+            employeeName={targetRenameEmployee?.employeename || ""}
+            companyName={targetRenameEmployee?.company || ""}
+            onRenamed={() => {
+              router.reload({ preserveScroll: true });
+            }}
+          />
         </div>
       </AppLayout>
     </ErrorBoundary>
