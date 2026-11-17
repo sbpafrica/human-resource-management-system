@@ -6,11 +6,13 @@ use App\Services\Export\SpreadsheetExporter;
 
 use App\Models\MonthlySalary;
 use App\Models\Client;
+use App\Models\ClientTemplateColumn;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
@@ -201,6 +203,211 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
                 'twellium' => $this->getTwelliumHeaders(),
             ];
 
+            // Check if this client is using dynamic template columns (new clients or customized templates)
+            $dynamicColumns = ClientTemplateColumn::getActiveColumnsForTemplate($client_dbname, 'payroll');
+            $isLegacyExactMatch = isset($headerMaps[$client_dbname]) && empty(array_diff($headerMaps[$client_dbname], $uploadedHeaders));
+
+            if ($dynamicColumns->isNotEmpty() && !$isLegacyExactMatch) {
+                // DYNAMIC MODE: Build mapping from ClientTemplateColumn
+                $headerToDb = [];
+                $requiredDbCols = [
+                    'staffida' => 'Staff ID',
+                    'name'     => 'Employee Name',
+                    'netpay'   => 'Net Pay',
+                ];
+
+                foreach ($dynamicColumns as $col) {
+                    $dbCol = match ($col->column_key) {
+                        'staff_id'                                  => 'staffida',
+                        'name', 'employee_name', 'full_name'        => 'name',
+                        'net_pay', 'take_home', 'take_home_pay'     => 'netpay',
+                        'basic_salary', 'basic'                     => 'basic',
+                        'days_worked', 'workdays'                   => 'workdays',
+                        'gross_salary', 'gross_pay', 'gross'        => 'grosspay',
+                        'employer_ssnit', 'ssnit_er', 'ssnitamt'    => 'ssnitamt',
+                        'employee_ssnit', 'ssnit_ee', 'ssnit'       => 'ssnit',
+                        'petra', 'tier_2', 'tier2'                  => 'petra',
+                        'taxable_income'                            => 'taxbase',
+                        'paye', 'income_tax'                        => 'paye',
+                        'total_deductions', 'deductions'            => 'otherdeduction',
+                        'salary_loan', 'loan'                       => 'loan',
+                        'department'                                => 'department',
+                        'position'                                  => 'position',
+                        'shop', 'location', 'workplace'             => 'workplace',
+                        'bank_name', 'bank'                         => 'bankname',
+                        'account_number', 'account'                 => 'alcnum',
+                        'branch'                                    => 'branch',
+                        'start_date'                                => 'constart',
+                        'end_date'                                  => 'conend',
+                        'total_overtime', 'overtime'                => 'otworkingday',
+                        'total_allowance', 'allowance'              => 'allowance',
+                        default => preg_replace('/[^a-zA-Z0-9_]/', '', strtolower($col->column_key)),
+                    };
+
+                    $headerToDb[strtolower(trim($col->display_label))] = $dbCol;
+                    if (!empty($col->header_aliases)) {
+                        foreach (explode(',', $col->header_aliases) as $alias) {
+                            $cleanAlias = strtolower(trim($alias));
+                            if (!empty($cleanAlias)) {
+                                $headerToDb[$cleanAlias] = $dbCol;
+                            }
+                        }
+                    }
+
+                    if ($col->is_required) {
+                        $requiredDbCols[$dbCol] = $col->display_label;
+                    }
+                }
+
+                // Add robust aliases for core fields
+                $fallbackAliases = [
+                    'staff id' => 'staffida', 'staffid' => 'staffida', 'staff_id' => 'staffida', 'id' => 'staffida', 'emp id' => 'staffida',
+                    'employee name' => 'name', 'name' => 'name', 'full name' => 'name', 'staff name' => 'name', 'names' => 'name',
+                    'net pay' => 'netpay', 'netpay' => 'netpay', 'net_pay' => 'netpay', 'take home' => 'netpay', 'take home pay' => 'netpay',
+                    'basic salary' => 'basic', 'basic' => 'basic', 'basicsalary' => 'basic',
+                    'gross salary' => 'grosspay', 'gross' => 'grosspay', 'gross pay' => 'grosspay',
+                    'total deductions' => 'otherdeduction', 'deductions' => 'otherdeduction', 'total deduction' => 'otherdeduction',
+                    'employer ssnit' => 'ssnitamt', 'employer ssnit (13%)' => 'ssnitamt', 'ssnit 13%' => 'ssnitamt', 'ssnit er' => 'ssnitamt',
+                    'employee ssnit' => 'ssnit', 'employee ssnit (5.5%)' => 'ssnit', 'ssnit 5.5%' => 'ssnit', 'ssnit ee' => 'ssnit',
+                    'tier 2' => 'petra', 'tier 2 (petra 5%)' => 'petra', 'petra' => 'petra',
+                    'paye' => 'paye', 'paye tax' => 'paye', 'income tax' => 'paye', 'tax' => 'paye',
+                    'taxable income' => 'taxbase',
+                    'days worked' => 'workdays', 'days' => 'workdays',
+                    'department' => 'department', 'position' => 'position',
+                ];
+                foreach ($fallbackAliases as $fa => $dbC) {
+                    if (!isset($headerToDb[$fa])) {
+                        $headerToDb[$fa] = $dbC;
+                    }
+                }
+
+                // Map uploaded column indices to database columns
+                $uploadedColToDb = [];
+                foreach ($uploadedHeaders as $idx => $rawHeader) {
+                    $clean = strtolower(trim((string)$rawHeader));
+                    if (isset($headerToDb[$clean])) {
+                        $uploadedColToDb[$idx] = $headerToDb[$clean];
+                        continue;
+                    }
+                    $stripped = preg_replace('/[^a-z0-9]/', '', $clean);
+                    foreach ($headerToDb as $hKey => $tDb) {
+                        if (preg_replace('/[^a-z0-9]/', '', $hKey) === $stripped) {
+                            $uploadedColToDb[$idx] = $tDb;
+                            break;
+                        }
+                    }
+                }
+
+                // Validate required columns
+                $mappedCols = array_values($uploadedColToDb);
+                $missingRequired = [];
+                foreach ($requiredDbCols as $reqDb => $reqLabel) {
+                    if (!in_array($reqDb, $mappedCols, true)) {
+                        $missingRequired[] = $reqLabel;
+                    }
+                }
+                if (!empty($missingRequired)) {
+                    return redirect()->back()->with('error', 'Invalid template. Missing required column(s): ' . implode(', ', array_unique($missingRequired)));
+                }
+
+                $existingStaffIds = DB::table($tableName)->pluck('staffida')->toArray();
+                $duplicateStaffIds = [];
+                $validRecords = [];
+                $errors = [];
+
+                foreach ($rows as $index => $row) {
+                    $rowNumber = $index + 2;
+
+                    // Skip empty rows
+                    $nonEmpty = array_filter($row, fn($c) => trim((string)$c) !== '');
+                    if (empty($nonEmpty)) continue;
+
+                    $record = [];
+                    $staffId = null;
+                    $name = null;
+                    $netpay = null;
+
+                    foreach ($uploadedColToDb as $idx => $dbCol) {
+                        $val = trim((string)($row[$idx] ?? ''));
+
+                        if (in_array($dbCol, ['netpay', 'basic', 'grosspay', 'ssnitamt', 'ssnit', 'petra', 'taxbase', 'paye', 'otherdeduction', 'loan', 'allowance', 'otworkingday', 'workdays'], true)) {
+                            $cleanNum = preg_replace('/[^0-9.-]/', '', str_replace(',', '', $val));
+                            $numVal = (is_numeric($cleanNum) && $cleanNum !== '') ? (float)$cleanNum : 0.0;
+                            if ($dbCol === 'netpay') $netpay = $numVal;
+                            $record[$dbCol] = $numVal;
+                        } else {
+                            if ($dbCol === 'staffida') $staffId = $val;
+                            if ($dbCol === 'name') $name = $val;
+                            $record[$dbCol] = $val;
+                        }
+                    }
+
+                    // Skip sample placeholder row from template builder (e.g. STF001 / John Doe)
+                    if (strcasecmp($staffId, 'STF001') === 0 || (str_ends_with(strtoupper($staffId), '001') && strcasecmp($name, 'John Doe') === 0) || strcasecmp($name, 'John Doe') === 0) {
+                        continue;
+                    }
+
+                    // Skip repeated header row
+                    if (in_array(strtolower($staffId), ['staff id', 'staffid', 'staff_id', 'id', 'staff no'], true)) {
+                        continue;
+                    }
+
+                    if (empty($staffId)) {
+                        $errors[] = "Row {$rowNumber}: Staff ID missing";
+                        continue;
+                    }
+                    if (empty($name)) {
+                        $errors[] = "Row {$rowNumber}: Name missing";
+                        continue;
+                    }
+                    if (is_null($netpay)) {
+                        $errors[] = "Row {$rowNumber}: Invalid Net Pay";
+                        continue;
+                    }
+
+                    if (in_array($staffId, $existingStaffIds) || in_array($staffId, array_column($validRecords, 'staffida'))) {
+                        $duplicateStaffIds[] = $staffId;
+                        continue;
+                    }
+
+                    $validRecords[] = $record;
+                }
+
+                if (!empty($errors)) {
+                    $msg = count($errors) > 5 ? implode(' | ', array_slice($errors, 0, 5)) . ' | ...' : implode(' | ', $errors);
+                    return redirect()->back()->with('error', $msg);
+                }
+
+                if (!empty($duplicateStaffIds)) {
+                    return redirect()->back()->with('error', 'Duplicates: ' . implode(', ', array_unique($duplicateStaffIds)));
+                }
+
+                if (!empty($validRecords)) {
+                    // Ensure table has all necessary columns dynamically
+                    $tableColumns = Schema::getColumnListing($tableName);
+                    $firstRecordKeys = array_keys($validRecords[0]);
+                    $missingColumns = array_diff($firstRecordKeys, $tableColumns);
+
+                    if (!empty($missingColumns)) {
+                        Schema::table($tableName, function ($table) use ($missingColumns) {
+                            foreach ($missingColumns as $mCol) {
+                                $table->string($mCol, 150)->nullable();
+                            }
+                        });
+                        $tableColumns = Schema::getColumnListing($tableName);
+                    }
+
+                    $safeRecords = array_map(function ($rec) use ($tableColumns) {
+                        return array_intersect_key($rec, array_flip($tableColumns));
+                    }, $validRecords);
+
+                    DB::table($tableName)->insert($safeRecords);
+                }
+
+                return redirect()->back()->with('success', 'Uploaded ' . count($validRecords) . ' records successfully!');
+            }
+
+            // LEGACY MODE: For clients using older hardcoded static templates
             $expectedHeaders = $headerMaps[$client_dbname] ?? $this->getTranssionHeaders();
             $headerToDb = $this->getHeaderToDbMap($client_dbname);
 
@@ -254,6 +461,11 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
                     if ($dbCol !== 'staffida' && $dbCol !== 'name' && $val !== null) {
                         $record[$dbCol] = $val;
                     }
+                }
+
+                // Skip dummy sample row if present
+                if (strcasecmp($staffId, 'STF001') === 0 || strcasecmp($name, 'John Doe') === 0) {
+                    continue;
                 }
 
                 if (empty($staffId)) {

@@ -418,6 +418,9 @@ class SsnitController extends Controller
                 $staffid = trim((string)($row[$staffidIdx] ?? ''));
                 if ($staffid === '' || strtolower($staffid) === 'staff id' || strtolower($staffid) === 'total') continue;
 
+                // Skip template sample row (e.g. STF001 / John Doe)
+                if (strcasecmp($staffid, 'STF001') === 0) continue;
+
                 $rawFirst = isset($dbColToIdx['firstname']) ? trim((string)($row[$dbColToIdx['firstname']] ?? '')) : null;
                 $rawLast  = isset($dbColToIdx['lastname']) ? trim((string)($row[$dbColToIdx['lastname']] ?? '')) : null;
                 $rawFull  = isset($dbColToIdx['fullname']) ? trim((string)($row[$dbColToIdx['fullname']] ?? '')) : null;

@@ -14,7 +14,12 @@ import {
   ArrowUpDown,
   Eye,
   FileSpreadsheet,
+  Trash2,
+  KeyRound,
+  Wand2,
 } from "lucide-react";
+import StaffRangeDeleteModal from "@/components/StaffRangeDeleteModal";
+import EditStaffIdModal from "@/components/EditStaffIdModal";
 import AppLayout from "@/layouts/app-layout";
 import {
   Dialog,
@@ -101,6 +106,9 @@ export default function GmoneyContracts({
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [viewContract, setViewContract] = useState<GmoneyContract | null>(null);
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
+  const [isRangeDeleteOpen, setIsRangeDeleteOpen] = useState(false);
+  const [isRenameStaffOpen, setIsRenameStaffOpen] = useState(false);
+  const [targetRenameContract, setTargetRenameContract] = useState<GmoneyContract | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");

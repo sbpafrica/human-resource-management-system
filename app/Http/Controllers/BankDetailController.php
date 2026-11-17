@@ -605,6 +605,11 @@ class BankDetailController extends Controller
                     continue;
                 }
 
+                // Skip template sample row (e.g. STF001 / John Doe) or repeated header
+                if (strcasecmp($employId, 'STF001') === 0 || strcasecmp($name, 'John Doe') === 0 || in_array(strtolower($employId), ['staff id', 'staffid', 'employid', 'id'], true)) {
+                    continue;
+                }
+
                 $upperBank = strtoupper($rawBank);
                 $isMomo = in_array($upperBank, ['MOMO', 'MOBILE MONEY', 'MTN', 'VODAFONE', 'TELECEL', 'AIRTELTIGO', 'MTN MOMO'])
                     || !empty($momonum)

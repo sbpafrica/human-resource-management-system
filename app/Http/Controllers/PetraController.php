@@ -265,14 +265,19 @@ class PetraController extends Controller
 
             foreach ($rows as $index => $row) {
                 $data = [
-                    'staffid' => $row[0] ?? '',
-                    'shop' => $row[1] ?? '',
-                    'lastname' => $row[2] ?? '',
-                    'firstname' => $row[3] ?? '',
-                    'othername' => !empty($row[4]) ? $row[4] : null,
-                    'ssnit1a' => $row[5] ?? '',
-                    'national' => !empty($row[6]) ? $row[6] : null,
+                    'staffid' => trim((string)($row[0] ?? '')),
+                    'shop' => trim((string)($row[1] ?? '')),
+                    'lastname' => trim((string)($row[2] ?? '')),
+                    'firstname' => trim((string)($row[3] ?? '')),
+                    'othername' => !empty($row[4]) ? trim((string)$row[4]) : null,
+                    'ssnit1a' => trim((string)($row[5] ?? '')),
+                    'national' => !empty($row[6]) ? trim((string)$row[6]) : null,
                 ];
+
+                // Skip empty or template placeholder sample rows
+                if (empty(array_filter($data)) || strcasecmp($data['staffid'], 'STF001') === 0 || in_array(strtolower($data['staffid']), ['staff id', 'staffid', 'id'], true)) {
+                    continue;
+                }
 
                 foreach ($data as $field => $value) {
                     if ($value && preg_match('/[ÂÊÎÔÛâêîôû]/u', $value)) {
