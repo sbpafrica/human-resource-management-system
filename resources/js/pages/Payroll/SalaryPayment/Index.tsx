@@ -218,45 +218,72 @@ export default function SalaryPaymentIndex({
         {
           method: 'GET',
           headers: {
-            Accept: 'application/json',
+            Accept: 'application/json, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'X-CSRF-TOKEN': csrfToken,
           },
         }
       );
 
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error ?? 'Export failed');
+        let errorMsg = 'Export failed';
+        try {
+          const err = await response.json();
+          errorMsg = err.error || errorMsg;
+        } catch {
+          const text = await response.text();
+          if (text) errorMsg = text.substring(0, 100);
+        }
+        throw new Error(errorMsg);
       }
 
-      const records: Record[] = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      const filename = `${client.short_name || client.client_dbname}_${data.month}_export.xlsx`;
 
-      const headers = ['Staff ID', 'Name', 'Department', 'Bank Name', 'Account', 'Branch Code', 'Branch', 'Net Pay'];
-      const rows = records.map((r) => [
-        r.staffida,
-        r.name,
-        r.shop ?? 'N/A',
-        r.bank ?? 'N/A',
-        r.account ?? 'N/A',
-        r.code ?? 'N/A',
-        r.branch ?? 'N/A',
-        r.netpay != null ? Number(r.netpay).toFixed(2) : '0.00',
-      ]);
+      if (contentType.includes('application/json')) {
+        const records: Record[] = await response.json();
 
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        const headers = ['Staff ID', 'Name', 'Department', 'Bank Name', 'Account', 'Branch Code', 'Branch', 'Net Pay'];
+        const rows = records.map((r) => [
+          r.staffida,
+          r.name,
+          r.shop ?? 'N/A',
+          r.bank ?? 'N/A',
+          r.account ?? 'N/A',
+          r.code ?? 'N/A',
+          r.branch ?? 'N/A',
+          r.netpay != null ? Number(r.netpay).toFixed(2) : '0.00',
+        ]);
 
-      const range = XLSX.utils.decode_range(ws['!ref']!);
-      for (let C = range.s.c; C <= range.e.c; ++C) {
-        const addr = XLSX.utils.encode_cell({ r: 0, c: C });
-        if (!ws[addr]) continue;
-        ws[addr].s = { font: { bold: true }, alignment: { horizontal: 'left' } };
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+        const range = XLSX.utils.decode_range(ws['!ref']!);
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const addr = XLSX.utils.encode_cell({ r: 0, c: C });
+          if (!ws[addr]) continue;
+          ws[addr].s = { font: { bold: true }, alignment: { horizontal: 'left' } };
+        }
+
+        ws['!cols'] = headers.map(() => ({ wch: 20 }));
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Salary Payment');
+        XLSX.writeFile(wb, filename);
+      } else {
+        // Direct binary blob download
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
       }
 
-      ws['!cols'] = headers.map(() => ({ wch: 20 }));
-
-      XLSX.utils.book_append_sheet(wb, ws, 'Salary Payment');
-      XLSX.writeFile(wb, `${client.short_name || client.client_dbname}_${data.month}_export.xlsx`);
+      setToastMessage('Export successful!');
+      setToastType('success');
+      setShowToast(true);
     } catch (error) {
       setToastMessage(error instanceof Error ? error.message : 'Export failed');
       setToastType('error');

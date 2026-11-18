@@ -47,14 +47,17 @@ class SsnitPaymentController extends Controller
             ]);
         }
 
-        $basicColumn = $this->detectColumn($tableName, ['basic', 'BASICSALARY_GHC', 'base_salary', 'basic_salary', 'basic_earned', 'salary', 'BASICSALARYEARNED_GHC']);
+        $basicColumn = $this->detectColumn($tableName, ['basic', 'BASICSALARY_GHC', 'base_salary', 'basic_salary', 'basic_earned', 'salary', 'BASICSALARYEARNED_GHC'], 'basic');
         $shopColumn = $this->detectColumn($tableName, ['shopname', 'workplace', 'department', 'shop', 'work_location', 'workarea', 'dept']);
+
+        $shopExpr = $shopColumn ? "COALESCE(s.shop, p.{$shopColumn})" : "COALESCE(s.shop, '')";
+        $basicExpr = $basicColumn ? "COALESCE(p.{$basicColumn}, 0)" : "0";
 
         $query = DB::table("{$tableName} as p")
             ->leftJoin('ssnit as s', 'p.staffida', '=', 's.staffid')
             ->selectRaw("
                 p.staffida as staff_id,
-                COALESCE(s.shop, p.{$shopColumn}) as shop,
+                {$shopExpr} as shop,
                 CASE
                     WHEN s.staffid IS NULL THEN p.name
                     ELSE TRIM(CONCAT(
@@ -65,8 +68,8 @@ class SsnitPaymentController extends Controller
                 END as full_name,
                 COALESCE(NULLIF(TRIM(s.ssnit1a), ''), '') as ssnit_number,
                 COALESCE(NULLIF(TRIM(s.national), ''), '') as gh_card_number,
-                COALESCE(p.{$basicColumn}, 0) as basic,
-                ROUND(COALESCE(p.{$basicColumn}, 0) * 0.135, 2) as ssnit_amount,
+                {$basicExpr} as basic,
+                ROUND({$basicExpr} * 0.135, 2) as ssnit_amount,
                 CASE WHEN s.ssnit1a IS NULL OR TRIM(s.ssnit1a) = '' THEN 1 ELSE 0 END as missing_ssnit
             ");
 
@@ -85,11 +88,11 @@ class SsnitPaymentController extends Controller
 
         $sortMap = [
             'staff_id' => 'p.staffida',
-            'shop' => "COALESCE(s.shop, p.{$shopColumn})",
+            'shop' => $shopExpr,
             'full_name' => 'full_name',
             'ssnit_number' => 's.ssnit1a',
             'gh_card_number' => 's.national',
-            'basic' => "p.{$basicColumn}",
+            'basic' => $basicExpr,
             'ssnit_amount' => 'ssnit_amount',
         ];
 
@@ -133,14 +136,17 @@ class SsnitPaymentController extends Controller
                 return response()->json(['error' => 'No payroll data for this month'], 404);
             }
 
-            $basicColumn = $this->detectColumn($tableName, ['basic', 'BASICSALARY_GHC', 'base_salary', 'basic_salary', 'basic_earned', 'salary']);
+            $basicColumn = $this->detectColumn($tableName, ['basic', 'BASICSALARY_GHC', 'base_salary', 'basic_salary', 'basic_earned', 'salary'], 'basic');
             $shopColumn = $this->detectColumn($tableName, ['shopname', 'workplace', 'department', 'shop', 'work_location', 'workarea', 'dept']);
+
+            $shopExpr = $shopColumn ? "COALESCE(s.shop, p.{$shopColumn})" : "COALESCE(s.shop, '')";
+            $basicExpr = $basicColumn ? "COALESCE(p.{$basicColumn}, 0)" : "0";
 
             $query = DB::table("{$tableName} as p")
                 ->leftJoin('ssnit as s', 'p.staffida', '=', 's.staffid')
                 ->selectRaw("
                     p.staffida as staff_id,
-                    COALESCE(s.shop, p.{$shopColumn}) as shop,
+                    {$shopExpr} as shop,
                     CASE
                         WHEN s.staffid IS NULL THEN p.name
                         ELSE TRIM(CONCAT(
@@ -151,8 +157,8 @@ class SsnitPaymentController extends Controller
                     END as full_name,
                     COALESCE(NULLIF(TRIM(s.ssnit1a), ''), '') as ssnit_number,
                     COALESCE(NULLIF(TRIM(s.national), ''), '') as gh_card_number,
-                    COALESCE(p.{$basicColumn}, 0) as basic,
-                    ROUND(COALESCE(p.{$basicColumn}, 0) * 0.135, 2) as ssnit_amount
+                    {$basicExpr} as basic,
+                    ROUND({$basicExpr} * 0.135, 2) as ssnit_amount
                 ");
 
             if ($search) {
@@ -167,11 +173,11 @@ class SsnitPaymentController extends Controller
 
             $sortMap = [
                 'staff_id' => 'p.staffida',
-                'shop' => "COALESCE(s.shop, p.{$shopColumn})",
+                'shop' => $shopExpr,
                 'full_name' => 'full_name',
                 'ssnit_number' => 's.ssnit1a',
                 'gh_card_number' => 's.national',
-                'basic' => "p.{$basicColumn}",
+                'basic' => $basicExpr,
                 'ssnit_amount' => 'ssnit_amount',
             ];
 
@@ -181,14 +187,21 @@ class SsnitPaymentController extends Controller
             $records = $query->get()->map(function ($r) {
                 return [
                     'staff_id' => $r->staff_id,
+                    'staffida' => $r->staff_id,
                     'shop' => $r->shop ?? '',
                     'full_name' => trim($r->full_name) ?: '',
+                    'name' => trim($r->full_name) ?: '',
                     'ssnit_number' => $r->ssnit_number ?? '',
                     'gh_card_number' => $r->gh_card_number ?? '',
                     'basic' => number_format((float)$r->basic, 2, '.', ''),
                     'ssnit_amount' => number_format((float)$r->ssnit_amount, 2, '.', ''),
                 ];
             });
+
+            // Return JSON if requested via API/Fetch or download Excel binary stream
+            if ($request->wantsJson() && !$request->has('download')) {
+                return response()->json($records);
+            }
 
             $filename = "SsnitPayment_" . ($month ?? 'export') . ".xlsx";
             return SpreadsheetExporter::exportSsnit($records, $filename);
@@ -199,25 +212,29 @@ class SsnitPaymentController extends Controller
         }
     }
 
-    // REPLACE YOUR detectColumn() WITH THIS
+    private function detectColumn($tableName, array $possibleColumns, ?string $fallback = null): ?string
+    {
+        $allColumns = array_map('strtolower', Schema::getColumnListing($tableName));
 
-private function detectColumn($tableName, $possibleColumns)
-{
-    $allColumns = array_map('strtolower', Schema::getColumnListing($tableName));
-
-    foreach ($possibleColumns as $col) {
-        if (in_array(strtolower($col), $allColumns)) {
-            $index = array_search(strtolower($col), $allColumns);
-            return Schema::getColumnListing($tableName)[$index];
+        foreach ($possibleColumns as $col) {
+            $key = array_search(strtolower($col), $allColumns, true);
+            if ($key !== false) {
+                return Schema::getColumnListing($tableName)[$key];
+            }
         }
-    }
 
-    foreach ($allColumns as $i => $col) {
-        if (strpos($col, 'basic') !== false || strpos($col, 'salary') !== false) {
-            return Schema::getColumnListing($tableName)[$i];
+        // If fallback requested (e.g. searching for basic salary), check for partial match
+        if ($fallback !== null) {
+            foreach ($allColumns as $i => $col) {
+                if (str_contains($col, 'basic') || str_contains($col, 'salary')) {
+                    return Schema::getColumnListing($tableName)[$i];
+                }
+            }
+            if (in_array(strtolower($fallback), $allColumns, true)) {
+                return $fallback;
+            }
         }
-    }
 
-    return 'name';
-}
+        return null;
+    }
 }

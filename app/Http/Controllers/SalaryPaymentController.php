@@ -141,6 +141,11 @@ class SalaryPaymentController extends Controller
                 'netpay'   => $r->netpay ? (float)$r->netpay : null,
             ]);
 
+            // Return JSON if requested via API/Fetch or download Excel binary stream
+            if ($request->wantsJson() && !$request->has('download')) {
+                return response()->json($records);
+            }
+
             $filename = "SalaryPayment_" . ($month ?? 'export') . ".xlsx";
             return SpreadsheetExporter::exportSalaryPayment($records, $filename);
         } catch (\Exception $e) {

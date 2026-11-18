@@ -102,42 +102,65 @@ export default function SsnitClient({
       const response = await fetch(fullUrl, {
         method: 'GET',
         headers: {
-          'Accept': 'application/json',
+          'Accept': 'application/json, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'X-Requested-With': 'XMLHttpRequest',
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
         },
       });
 
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Export failed');
+        let errorMsg = 'Export failed';
+        try {
+          const err = await response.json();
+          errorMsg = err.error || errorMsg;
+        } catch {
+          const text = await response.text();
+          if (text) errorMsg = text.substring(0, 100);
+        }
+        throw new Error(errorMsg);
       }
 
-      const data = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      const filename = `${client.short_name}_SSNIT_${month.replace(/-/g, '')}.xlsx`;
 
-      const headers = ["Staff ID", "Shop/Location", "Full Name", "SSNIT Number", "GH Card", "Basic Salary", "SSNIT 13.5%"];
-      const rows = data.map((r: any) => [
-        r.staff_id,
-        r.shop,
-        r.full_name,
-        r.ssnit_number,
-        r.gh_card_number,
-        r.basic,
-        r.ssnit_amount,
-      ]);
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
 
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-      ws['!cols'] = headers.map(() => ({ wch: 22 }));
+        const headers = ["Staff ID", "Shop/Location", "Full Name", "SSNIT Number", "GH Card", "Basic Salary", "SSNIT 13.5%"];
+        const rows = data.map((r: any) => [
+          r.staff_id,
+          r.shop,
+          r.full_name,
+          r.ssnit_number,
+          r.gh_card_number,
+          r.basic,
+          r.ssnit_amount,
+        ]);
 
-      const range = XLSX.utils.decode_range(ws['!ref']!);
-      for (let C = range.s.c; C <= range.e.c; ++C) {
-        const addr = XLSX.utils.encode_cell({ r: 0, c: C });
-        if (ws[addr]) ws[addr].s = { font: { bold: true }, alignment: { horizontal: "left" } };
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        ws['!cols'] = headers.map(() => ({ wch: 22 }));
+
+        const range = XLSX.utils.decode_range(ws['!ref']!);
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const addr = XLSX.utils.encode_cell({ r: 0, c: C });
+          if (ws[addr]) ws[addr].s = { font: { bold: true }, alignment: { horizontal: "left" } };
+        }
+
+        XLSX.utils.book_append_sheet(wb, ws, "SSNIT");
+        XLSX.writeFile(wb, filename);
+      } else {
+        // Direct binary Excel download
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
       }
-
-      XLSX.utils.book_append_sheet(wb, ws, "SSNIT");
-      XLSX.writeFile(wb, `${client.short_name}_SSNIT_${month.replace(/-/g, '')}.xlsx`);
 
       setToastMessage("Export successful!");
       setToastType("success");
