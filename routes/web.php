@@ -226,6 +226,43 @@ Route::match(['GET', 'POST'], '/complaints/verify-staff', [App\Http\Controllers\
 Route::post('/complaints/submit', [App\Http\Controllers\ComplaintSubmissionController::class, 'store'])->name('complaints.store-public');
 Route::get('/complaints/track', [App\Http\Controllers\ComplaintSubmissionController::class, 'track'])->name('complaints.track');
 
+// Dynamic Staff Contract Viewing & Signing Portal (Public access for staff across all clients)
+Route::get('/contract/sign/{staff_id?}', [\App\Http\Controllers\DynamicContractSignController::class, 'showSignPage'])
+    ->where('staff_id', '.*')
+    ->withoutMiddleware([
+        \App\Http\Middleware\HandleInertiaRequests::class,
+        \App\Http\Middleware\HandleAppearance::class,
+        \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+    ])
+    ->name('contracts.public.sign');
+
+Route::post('/contract/sign/{staff_id}', [\App\Http\Controllers\DynamicContractSignController::class, 'submitSignature'])
+    ->where('staff_id', '.*')
+    ->withoutMiddleware([
+        \App\Http\Middleware\HandleInertiaRequests::class,
+        \App\Http\Middleware\HandleAppearance::class,
+        \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+    ])
+    ->name('contracts.public.submit_sign');
+
+Route::get('/contract/preview/{staff_id}', [\App\Http\Controllers\DynamicContractSignController::class, 'previewPdf'])
+    ->where('staff_id', '.*')
+    ->withoutMiddleware([
+        \App\Http\Middleware\HandleInertiaRequests::class,
+        \App\Http\Middleware\HandleAppearance::class,
+        \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+    ])
+    ->name('contracts.public.preview');
+
+Route::get('/contract/download/{staff_id}', [\App\Http\Controllers\DynamicContractSignController::class, 'downloadPdf'])
+    ->where('staff_id', '.*')
+    ->withoutMiddleware([
+        \App\Http\Middleware\HandleInertiaRequests::class,
+        \App\Http\Middleware\HandleAppearance::class,
+        \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+    ])
+    ->name('contracts.public.download');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::resource('lists', ListController::class);

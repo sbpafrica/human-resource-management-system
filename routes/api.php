@@ -35,6 +35,13 @@ Route::prefix('v1')->group(function () {
         ]);
     });
 
+    // ── Staff Portal Endpoints (staff.sbpafrica.group) ────────────────────────
+    Route::prefix('portal')->group(function () {
+        Route::get('/contract/{staffId}', [\App\Http\Controllers\DynamicContractSignController::class, 'apiGetContract'])->where('staffId', '.*');
+        Route::post('/contract/{staffId}/sign', [\App\Http\Controllers\DynamicContractSignController::class, 'apiSignContract'])->where('staffId', '.*');
+        Route::get('/contract/{staffId}/download', [\App\Http\Controllers\DynamicContractSignController::class, 'downloadPdf'])->where('staffId', '.*');
+    });
+
     // ── Authentication Endpoints ───────────────────────────────────────────
     Route::prefix('auth')->group(function () {
         Route::post('/login', [AuthController::class, 'login']);
