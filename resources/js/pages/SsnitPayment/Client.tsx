@@ -16,6 +16,9 @@ import * as XLSX from "xlsx";
 interface Record {
   staff_id: string;
   shop: string | null;
+  lastname?: string;
+  firstname?: string;
+  othername?: string;
   full_name: string;
   ssnit_number: string | null;
   gh_card_number: string | null;
@@ -126,11 +129,13 @@ export default function SsnitClient({
       if (contentType.includes('application/json')) {
         const data = await response.json();
 
-        const headers = ["Staff ID", "Shop/Location", "Full Name", "SSNIT Number", "GH Card", "Basic Salary", "SSNIT 13.5%"];
+        const headers = ["Staff ID", "Shop/Location", "Last Name", "First Name", "Other Name", "SSNIT Number", "GH Card", "Basic Salary", "SSNIT 13.5%"];
         const rows = data.map((r: any) => [
           r.staff_id,
           r.shop,
-          r.full_name,
+          r.lastname || '',
+          r.firstname || '',
+          r.othername || '',
           r.ssnit_number,
           r.gh_card_number,
           r.basic,
@@ -243,10 +248,12 @@ export default function SsnitClient({
                         </TableHead>
                         <TableHead>Shop/Location</TableHead>
                         <TableHead>
-                          <Button variant="ghost" onClick={() => handleSortChange(`full_name:${sort.startsWith('full_name') && sort.endsWith('asc') ? 'desc' : 'asc'}`)}>
-                            Full Name {sort.includes('full_name') && (sort.endsWith('asc') ? '↑' : '↓')}
+                          <Button variant="ghost" onClick={() => handleSortChange(`lastname:${sort.startsWith('lastname') && sort.endsWith('asc') ? 'desc' : 'asc'}`)}>
+                            Last Name {sort.includes('lastname') && (sort.endsWith('asc') ? '↑' : '↓')}
                           </Button>
                         </TableHead>
+                        <TableHead>First Name</TableHead>
+                        <TableHead>Other Name</TableHead>
                         <TableHead>
                           <Button variant="ghost" onClick={() => handleSortChange(`ssnit_number:${sort.startsWith('ssnit_number') && sort.endsWith('asc') ? 'desc' : 'asc'}`)}>
                             SSNIT Number {sort.includes('ssnit_number') && (sort.endsWith('asc') ? '↑' : '↓')}
@@ -274,7 +281,9 @@ export default function SsnitClient({
                         <TableRow key={r.staff_id} className={r.missing_ssnit ? "bg-red-50" : ""}>
                           <TableCell>{r.staff_id}</TableCell>
                           <TableCell>{r.shop || ""}</TableCell>
-                          <TableCell>{r.full_name}</TableCell>
+                          <TableCell className="font-medium">{r.lastname || ""}</TableCell>
+                          <TableCell>{r.firstname || ""}</TableCell>
+                          <TableCell>{r.othername || ""}</TableCell>
                           <TableCell>{r.ssnit_number || ""}</TableCell>
                           <TableCell>{r.gh_card_number || ""}</TableCell>
                           <TableCell>{r.basic}</TableCell>

@@ -409,6 +409,10 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
                     }, $validRecords);
 
                     DB::table($tableName)->insert($safeRecords);
+
+                    // Auto-sync baseline staff into master ssnit table if not already present
+                    $clientLabel = $client->short_name ?? $client->client_name ?? $client_dbname;
+                    $this->syncStaffToSsnitTable($validRecords, $clientLabel);
                 }
 
                 return redirect()->back()->with('success', 'Uploaded ' . count($validRecords) . ' records successfully!');
@@ -506,6 +510,10 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
 
             if (!empty($validRecords)) {
                 DB::table($tableName)->insert($validRecords);
+
+                // Auto-sync baseline staff into master ssnit table if not already present
+                $clientLabel = $client->short_name ?? $client->client_name ?? $client_dbname;
+                $this->syncStaffToSsnitTable($validRecords, $clientLabel);
             }
 
             return redirect()->back()->with('success', 'Uploaded ' . count($validRecords) . ' records successfully!');
@@ -753,5 +761,76 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
         ];
 
         return $maps[$client_dbname] ?? $maps['transsion'];
+    }
+
+    /**
+     * Auto-sync baseline employee records into master ssnit table if missing.
+     */
+    private function syncStaffToSsnitTable(array $records, string $clientName): void
+    {
+        try {
+            if (!Schema::hasTable('ssnit')) {
+                return;
+            }
+
+            $staffIds = array_filter(array_column($records, 'staffida'));
+            if (empty($staffIds)) {
+                return;
+            }
+
+            $existingSsnit = DB::table('ssnit')
+                ->whereIn('staffid', $staffIds)
+                ->pluck('staffid')
+                ->toArray();
+
+            $newEntries = [];
+            $now = now();
+
+            foreach ($records as $rec) {
+                $staffId = trim((string)($rec['staffida'] ?? ''));
+                $name = trim((string)($rec['name'] ?? ''));
+
+                if ($staffId === '' || $name === '' || in_array($staffId, $existingSsnit, true)) {
+                    continue;
+                }
+
+                $parts = preg_split('/\s+/', $name);
+                $lastName = '';
+                $firstName = '';
+                $otherName = '';
+
+                if (count($parts) === 1) {
+                    $firstName = $parts[0];
+                    $lastName = $parts[0];
+                } elseif (count($parts) === 2) {
+                    $lastName = $parts[0];
+                    $firstName = $parts[1];
+                } else {
+                    $lastName = array_shift($parts);
+                    $firstName = array_shift($parts);
+                    $otherName = implode(' ', $parts);
+                }
+
+                $newEntries[] = [
+                    'staffid'    => $staffId,
+                    'shop'       => $clientName,
+                    'lastname'   => $lastName,
+                    'firstname'  => $firstName,
+                    'othername'  => $otherName,
+                    'ssnit1a'    => null,
+                    'national'   => null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+
+                $existingSsnit[] = $staffId;
+            }
+
+            if (!empty($newEntries)) {
+                DB::table('ssnit')->insert($newEntries);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Auto-sync staff to ssnit failed: ' . $e->getMessage());
+        }
     }
 }

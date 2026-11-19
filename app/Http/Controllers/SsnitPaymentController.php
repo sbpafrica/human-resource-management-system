@@ -58,14 +58,10 @@ class SsnitPaymentController extends Controller
             ->selectRaw("
                 p.staffida as staff_id,
                 {$shopExpr} as shop,
-                CASE
-                    WHEN s.staffid IS NULL THEN p.name
-                    ELSE TRIM(CONCAT(
-                        COALESCE(s.lastname, ''), ' ',
-                        COALESCE(s.firstname, ''), ' ',
-                        COALESCE(s.othername, '')
-                    ))
-                END as full_name,
+                s.lastname as ssnit_lastname,
+                s.firstname as ssnit_firstname,
+                s.othername as ssnit_othername,
+                p.name as salary_name,
                 COALESCE(NULLIF(TRIM(s.ssnit1a), ''), '') as ssnit_number,
                 COALESCE(NULLIF(TRIM(s.national), ''), '') as gh_card_number,
                 {$basicExpr} as basic,
@@ -89,7 +85,9 @@ class SsnitPaymentController extends Controller
         $sortMap = [
             'staff_id' => 'p.staffida',
             'shop' => $shopExpr,
-            'full_name' => 'full_name',
+            'full_name' => 'p.name',
+            'lastname' => 's.lastname',
+            'firstname' => 's.firstname',
             'ssnit_number' => 's.ssnit1a',
             'gh_card_number' => 's.national',
             'basic' => $basicExpr,
@@ -100,12 +98,50 @@ class SsnitPaymentController extends Controller
         $query->orderByRaw("ISNULL($sortColumn), $sortColumn {$order}");
 
         $perPage = 25;
-        $records = $query->paginate($perPage)->appends($request->query());
+        $records = $query->paginate($perPage)->appends($request->query())->through(function ($r) {
+            $salaryName = trim($r->salary_name ?? '');
+            $lastName = trim($r->ssnit_lastname ?? '');
+            $firstName = trim($r->ssnit_firstname ?? '');
+            $otherName = trim($r->ssnit_othername ?? '');
+
+            if ($lastName === '' && $firstName === '' && $salaryName !== '') {
+                $parts = preg_split('/\s+/', $salaryName);
+                if (count($parts) === 1) {
+                    $firstName = $parts[0];
+                    $lastName = $parts[0];
+                } elseif (count($parts) === 2) {
+                    $lastName = $parts[0];
+                    $firstName = $parts[1];
+                } else {
+                    $lastName = array_shift($parts);
+                    $firstName = array_shift($parts);
+                    $otherName = implode(' ', $parts);
+                }
+            }
+
+            $fullName = trim("{$lastName} {$firstName} {$otherName}") ?: $salaryName;
+
+            return [
+                'staff_id' => $r->staff_id,
+                'shop' => $r->shop ?? '',
+                'lastname' => $lastName,
+                'firstname' => $firstName,
+                'othername' => $otherName,
+                'full_name' => $fullName,
+                'ssnit_number' => $r->ssnit_number ?? '',
+                'gh_card_number' => $r->gh_card_number ?? '',
+                'basic' => (float)$r->basic,
+                'ssnit_amount' => (float)$r->ssnit_amount,
+                'missing_ssnit' => (int)$r->missing_ssnit,
+            ];
+        });
 
         $totalRecords = DB::table($tableName)->count();
         $missingSsnitCount = DB::table("{$tableName} as p")
             ->leftJoin('ssnit as s', 'p.staffida', '=', 's.staffid')
-            ->whereNull('s.ssnit1a')->orWhere('s.ssnit1a', '=', '')
+            ->where(function ($q) {
+                $q->whereNull('s.ssnit1a')->orWhere('s.ssnit1a', '=', '');
+            })
             ->count();
 
         $searchCount = $search ? $records->total() : null;
@@ -147,14 +183,10 @@ class SsnitPaymentController extends Controller
                 ->selectRaw("
                     p.staffida as staff_id,
                     {$shopExpr} as shop,
-                    CASE
-                        WHEN s.staffid IS NULL THEN p.name
-                        ELSE TRIM(CONCAT(
-                            COALESCE(s.lastname, ''), ' ',
-                            COALESCE(s.firstname, ''), ' ',
-                            COALESCE(s.othername, '')
-                        ))
-                    END as full_name,
+                    s.lastname as ssnit_lastname,
+                    s.firstname as ssnit_firstname,
+                    s.othername as ssnit_othername,
+                    p.name as salary_name,
                     COALESCE(NULLIF(TRIM(s.ssnit1a), ''), '') as ssnit_number,
                     COALESCE(NULLIF(TRIM(s.national), ''), '') as gh_card_number,
                     {$basicExpr} as basic,
@@ -174,7 +206,9 @@ class SsnitPaymentController extends Controller
             $sortMap = [
                 'staff_id' => 'p.staffida',
                 'shop' => $shopExpr,
-                'full_name' => 'full_name',
+                'full_name' => 'p.name',
+                'lastname' => 's.lastname',
+                'firstname' => 's.firstname',
                 'ssnit_number' => 's.ssnit1a',
                 'gh_card_number' => 's.national',
                 'basic' => $basicExpr,
@@ -185,12 +219,37 @@ class SsnitPaymentController extends Controller
             $query->orderByRaw("ISNULL($sortColumn), $sortColumn {$order}");
 
             $records = $query->get()->map(function ($r) {
+                $salaryName = trim($r->salary_name ?? '');
+                $lastName = trim($r->ssnit_lastname ?? '');
+                $firstName = trim($r->ssnit_firstname ?? '');
+                $otherName = trim($r->ssnit_othername ?? '');
+
+                if ($lastName === '' && $firstName === '' && $salaryName !== '') {
+                    $parts = preg_split('/\s+/', $salaryName);
+                    if (count($parts) === 1) {
+                        $firstName = $parts[0];
+                        $lastName = $parts[0];
+                    } elseif (count($parts) === 2) {
+                        $lastName = $parts[0];
+                        $firstName = $parts[1];
+                    } else {
+                        $lastName = array_shift($parts);
+                        $firstName = array_shift($parts);
+                        $otherName = implode(' ', $parts);
+                    }
+                }
+
+                $fullName = trim("{$lastName} {$firstName} {$otherName}") ?: $salaryName;
+
                 return [
                     'staff_id' => $r->staff_id,
-                    'staffida' => $r->staff_id,
+                    'staffid' => $r->staff_id,
                     'shop' => $r->shop ?? '',
-                    'full_name' => trim($r->full_name) ?: '',
-                    'name' => trim($r->full_name) ?: '',
+                    'lastname' => $lastName,
+                    'firstname' => $firstName,
+                    'othername' => $otherName,
+                    'full_name' => $fullName,
+                    'name' => $fullName,
                     'ssnit_number' => $r->ssnit_number ?? '',
                     'gh_card_number' => $r->gh_card_number ?? '',
                     'basic' => number_format((float)$r->basic, 2, '.', ''),
