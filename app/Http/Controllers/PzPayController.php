@@ -284,6 +284,9 @@ class PzPayController extends Controller
                     ->with('error', 'Could not find a "STAFF ID" header row in the selected sheet.');
             }
 
+            $headerRow = $rows[$headerRowIndex] ?? [];
+            $dynamicHeaderMap = $this->buildDynamicHeaderMap($headerRow);
+
             $dataRows  = array_slice($rows, $headerRowIndex + 1);
             $rowOffset = $headerRowIndex + 2;
 
@@ -293,21 +296,34 @@ class PzPayController extends Controller
 
             foreach ($dataRows as $i => $row) {
                 $rowNumber = $rowOffset + $i;
-                $data      = $this->mapRow($row, $columnMap);
-                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $rows[$headerRowIndex] ?? [], 'pz');
+
+                // 1. Base mapping from predefined department column offsets
+                $data = $this->mapRow($row, $columnMap);
+
+                // 2. Dynamic AI/header dictionary extraction (extracts by matching column headers dynamically)
+                $dynamicData = $this->extractRowByDynamicHeaders($row, $dynamicHeaderMap);
+                foreach ($dynamicData as $fKey => $fVal) {
+                    if ($fVal !== null && $fVal !== '') {
+                        $data[$fKey] = $fVal;
+                    }
+                }
+
+                // 3. Custom columns from PayrollColumn registry
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'pz');
                 if (!empty($customVals)) {
                     $data = array_merge($data, $customVals);
                 }
 
-                $allMapped = \App\Models\PayrollColumn::mapRowHeadersToDb($row, $rows[$headerRowIndex] ?? [], 'pz');
+                // 4. Standard PayrollColumn mapping
+                $allMapped = \App\Models\PayrollColumn::mapRowHeadersToDb($row, $headerRow, 'pz');
                 foreach ($allMapped as $dbCol => $val) {
-                    if ($dbCol !== 'staffid' && $dbCol !== 'name' && $val !== null) {
+                    if ($dbCol !== 'staffid' && $dbCol !== 'name' && $val !== null && $val !== '') {
                         $data[$dbCol] = $val;
                     }
                 }
 
-                $staffid = $data['staffid'] ?? null;
-                $name    = $data['name'] ?? null;
+                $staffid = isset($data['staffid']) ? trim((string)$data['staffid']) : null;
+                $name    = isset($data['name']) ? trim((string)$data['name']) : null;
 
                 if (($staffid === null || $staffid === '') && ($name === null || $name === '')) {
                     continue;
@@ -342,33 +358,42 @@ class PzPayController extends Controller
                     continue;
                 }
 
+                // Resolve Dept / Location cleanly with fallbacks - NEVER NULL
+                $deptValue = trim((string)($data['dept'] ?? $data['shop'] ?? $data['location'] ?? ''));
+                if ($deptValue === '' && !empty($data['description'])) {
+                    $deptValue = trim((string)$data['description']);
+                }
+                if ($deptValue === '') {
+                    $deptValue = self::DEPARTMENT_OPTIONS[$department] ?? strtoupper(str_replace('_', ' ', $department));
+                }
+
                 $validRecords[] = [
                     'department'     => $department,
                     'staffid'        => $staffid,
                     'name'           => $name,
-                    'dept'           => $data['dept'] ?? null,
-                    'basic'          => $data['basic'] ?? null,
-                    'overtime'       => $data['overtime'] ?? null,
-                    'incentive'      => $data['incentive'] ?? null,
-                    'bonus'          => $data['bonus'] ?? null,
-                    'other'          => $data['other'] ?? null,
-                    '13month'        => $data['13month'] ?? null,
-                    'totalearn'      => $data['totalearn'] ?? null,
-                    'ssnitee'        => $data['ssnitee'] ?? null,
-                    'overtimetaxt'   => $data['overtimetaxt'] ?? null,
-                    'pf'             => $data['pf'] ?? null,
-                    'taxable'        => $data['taxable'] ?? null,
-                    'ssniter'        => $data['ssniter'] ?? null,
-                    'petra'          => $data['petra'] ?? null,
-                    '13tax'          => $data['13tax'] ?? null,
-                    'totaltaxdeduct' => $data['totaltaxdeduct'] ?? null,
-                    'totaldeduct'    => $data['totaldeduct'] ?? null,
-                    'netpay'         => $netpay,
-                    'bank1'          => $data['bank1'] ?? null,
-                    'account1'       => $data['account1'] ?? null,
-                    'branch1'        => $data['branch1'] ?? null,
-                    'ssnit1'         => $data['ssnit1'] ?? null,
-                    'ghcard'         => $data['ghcard'] ?? null,
+                    'dept'           => $deptValue,
+                    'basic'          => is_numeric($data['basic'] ?? null) ? (float)$data['basic'] : 0.0,
+                    'overtime'       => is_numeric($data['overtime'] ?? null) ? (float)$data['overtime'] : 0.0,
+                    'incentive'      => is_numeric($data['incentive'] ?? null) ? (float)$data['incentive'] : 0.0,
+                    'bonus'          => is_numeric($data['bonus'] ?? null) ? (float)$data['bonus'] : 0.0,
+                    'other'          => is_numeric($data['other'] ?? null) ? (float)$data['other'] : 0.0,
+                    '13month'        => is_numeric($data['13month'] ?? null) ? (float)$data['13month'] : 0.0,
+                    'totalearn'      => is_numeric($data['totalearn'] ?? null) ? (float)$data['totalearn'] : 0.0,
+                    'ssnitee'        => is_numeric($data['ssnitee'] ?? null) ? (float)$data['ssnitee'] : 0.0,
+                    'overtimetaxt'   => is_numeric($data['overtimetaxt'] ?? null) ? (float)$data['overtimetaxt'] : 0.0,
+                    'pf'             => is_numeric($data['pf'] ?? null) ? (float)$data['pf'] : 0.0,
+                    'taxable'        => is_numeric($data['taxable'] ?? null) ? (float)$data['taxable'] : 0.0,
+                    'ssniter'        => is_numeric($data['ssniter'] ?? null) ? (float)$data['ssniter'] : 0.0,
+                    'petra'          => is_numeric($data['petra'] ?? null) ? (float)$data['petra'] : 0.0,
+                    '13tax'          => is_numeric($data['13tax'] ?? null) ? (float)$data['13tax'] : 0.0,
+                    'totaltaxdeduct' => is_numeric($data['totaltaxdeduct'] ?? null) ? (float)$data['totaltaxdeduct'] : 0.0,
+                    'totaldeduct'    => is_numeric($data['totaldeduct'] ?? null) ? (float)$data['totaldeduct'] : 0.0,
+                    'netpay'         => (float)$netpay,
+                    'bank1'          => trim((string)($data['bank1'] ?? '')),
+                    'account1'       => trim((string)($data['account1'] ?? '')),
+                    'branch1'        => trim((string)($data['branch1'] ?? '')),
+                    'ssnit1'         => trim((string)($data['ssnit1'] ?? '')),
+                    'ghcard'         => trim((string)($data['ghcard'] ?? '')),
                 ];
 
                 $existingStaffIds[] = $staffid;
@@ -474,6 +499,167 @@ class PzPayController extends Controller
         if (!DB::getSchemaBuilder()->hasColumn($tableName, 'department')) {
             DB::statement("ALTER TABLE `{$tableName}` ADD COLUMN `department` VARCHAR(50) NULL AFTER `staffid`");
         }
+
+        try {
+            DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `dept` VARCHAR(255) NULL DEFAULT ''");
+            DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `totaltaxdeduct` DOUBLE NULL DEFAULT 0");
+            DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `totaldeduct` DOUBLE NULL DEFAULT 0");
+            DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `bank1` VARCHAR(255) NULL DEFAULT ''");
+            DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `account1` VARCHAR(255) NULL DEFAULT ''");
+            DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `branch1` VARCHAR(255) NULL DEFAULT ''");
+            DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `ssnit1` VARCHAR(255) NULL DEFAULT ''");
+            DB::statement("ALTER TABLE `{$tableName}` MODIFY COLUMN `ghcard` VARCHAR(255) NULL DEFAULT ''");
+        } catch (\Throwable $e) {
+            // Ignored if table doesn't support or already modified
+        }
+    }
+
+    /**
+     * Dynamically map spreadsheet header labels to DB fields.
+     */
+    private function buildDynamicHeaderMap(array $headerRow): array
+    {
+        $map = [];
+        $fieldPatterns = [
+            'staffid' => [
+                '/^staff\s*id$/i', '/^staffid$/i', '/^employee\s*id$/i', '/^emp\s*id$/i', '/^id$/i'
+            ],
+            'name' => [
+                '/^employee\s*name$/i', '/^staff\s*name$/i', '/^full\s*name$/i', '/^name$/i', '/^employee$/i'
+            ],
+            'dept' => [
+                '/^shop\s*[\/\-&]\s*location$/i', '/^shop\s*location$/i', '/^shop$/i', '/^location$/i',
+                '/^dept\.?$/i', '/^department$/i', '/^shop\s*dept$/i', '/^station$/i'
+            ],
+            'description' => [
+                '/^description$/i', '/^designation$/i', '/^position$/i', '/^role$/i', '/^job\s*title$/i'
+            ],
+            'basic' => [
+                '/^basicsalary$/i', '/^basic\s*salary$/i', '/^basic$/i', '/^basic\s*pay$/i'
+            ],
+            'overtime' => [
+                '/^overtime\s*earnings?$/i', '/^overtime$/i', '/^ot\s*earnings?$/i', '/^ot$/i'
+            ],
+            'incentive' => [
+                '/^incentives?\s*earnings?$/i', '/^incentives?$/i'
+            ],
+            'bonus' => [
+                '/^bonus\s*earnings?$/i', '/^bonus$/i', '/^performance\s*bonus$/i'
+            ],
+            'other' => [
+                '/^other\s*earnings?$/i', '/^other$/i', '/^transport\s*allowance$/i', '/^transport$/i', '/^allowance$/i'
+            ],
+            '13month' => [
+                '/^13th\s*earnings?$/i', '/^13th\s*month$/i', '/^13\s*month$/i', '/^13th$/i', '/^13th\s*salary$/i'
+            ],
+            'totalearn' => [
+                '/^total\s*earnings?$/i', '/^gross\s*salary$/i', '/^gross\s*pay$/i', '/^gross$/i', '/^total\s*gross$/i', '/^totalearn$/i'
+            ],
+            'ssnitee' => [
+                '/^ssnit\s*ee$/i', '/^ssnitee$/i', '/^ssnit\s*employee$/i', '/^tier\s*1\s*ee$/i', '/^ssnit\s*\(ee\)$/i'
+            ],
+            'overtimetaxt' => [
+                '/^overtime\s*tax$/i', '/^overtimetax$/i', '/^ot\s*tax$/i'
+            ],
+            'pf' => [
+                '/^s-?trust\s*fund/i', '/^provident\s*fund/i', '/^pf$/i', '/^staff\s*trust\s*fund/i', '/^trust\s*fund/i'
+            ],
+            'taxable' => [
+                '/^taxable\s*income$/i', '/^taxableincome$/i', '/^taxable$/i', '/^taxable\s*pay$/i'
+            ],
+            'ssniter' => [
+                '/^ssnit\s*er$/i', '/^ssniter$/i', '/^ssnit\s*employer$/i', '/^tier\s*1\s*er$/i', '/^ssnit\s*\(er\)$/i'
+            ],
+            'petra' => [
+                '/^petra/i', '/^tier\s*2/i'
+            ],
+            '13tax' => [
+                '/^13th\s*tax$/i', '/^13\s*tax$/i', '/^13th\s*month\s*tax$/i'
+            ],
+            'totaltaxdeduct' => [
+                '/^total\s*tax\s*deductions?$/i', '/^totaltaxdeduct/i', '/^total\s*tax$/i', '/^paye$/i', '/^income\s*tax$/i'
+            ],
+            'totaldeduct' => [
+                '/^total\s*deductions?$/i', '/^totaldeductions?$/i', '/^total\s*deduct$/i', '/^totaldeduct$/i'
+            ],
+            'netpay' => [
+                '/^take\s*home\s*pay$/i', '/^takehomepay$/i', '/^net\s*pay$/i', '/^net\s*salary$/i', '/^netpay$/i', '/^amount\s*payable$/i'
+            ],
+            'bank1' => [
+                '/^bank\s*name$/i', '/^bank$/i', '/^bank1$/i'
+            ],
+            'account1' => [
+                '/^account\s*number$/i', '/^accountnumber$/i', '/^account\s*no\.?$/i', '/^account$/i', '/^acc\s*no\.?$/i', '/^acc\s*number$/i', '/^account1$/i'
+            ],
+            'branch1' => [
+                '/^branch$/i', '/^bank\s*branch$/i', '/^branch1$/i'
+            ],
+            'ssnit1' => [
+                '/^ssnit$/i', '/^ssnit\s*no\.?$/i', '/^ssnit\s*number$/i', '/^ssnit1$/i'
+            ],
+            'ghcard' => [
+                '/^gh\s*card$/i', '/^ghcard$/i', '/^ghana\s*card$/i', '/^ghana\s*card\s*no\.?$/i', '/^nia$/i', '/^id\s*number$/i'
+            ],
+        ];
+
+        foreach ($headerRow as $colIndex => $rawHeader) {
+            $header = trim((string)$rawHeader);
+            if ($header === '') {
+                continue;
+            }
+
+            foreach ($fieldPatterns as $field => $patterns) {
+                if (isset($map[$colIndex])) {
+                    continue;
+                }
+                foreach ($patterns as $pattern) {
+                    if (preg_match($pattern, $header)) {
+                        $map[$colIndex] = $field;
+                        break 2;
+                    }
+                }
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Extract fields dynamically using matched header mapping.
+     */
+    private function extractRowByDynamicHeaders(array $row, array $headerMap): array
+    {
+        $data = [];
+        $numericFields = [
+            'basic', 'overtime', 'incentive', 'bonus', 'other', '13month', 'totalearn',
+            'ssnitee', 'overtimetaxt', 'pf', 'taxable', 'ssniter', 'petra', '13tax',
+            'totaltaxdeduct', 'totaldeduct', 'netpay',
+        ];
+
+        foreach ($headerMap as $colIndex => $field) {
+            $raw = $row[$colIndex] ?? null;
+            $val = is_string($raw) ? trim($raw) : $raw;
+            if ($val === '' || $val === null) {
+                continue;
+            }
+
+            if (in_array($field, $numericFields, true)) {
+                if (is_string($val)) {
+                    $cleaned = preg_replace('/[^0-9.\-]/', '', $val);
+                    $val = is_numeric($cleaned) ? (float)$cleaned : null;
+                } elseif (is_numeric($val)) {
+                    $val = (float)$val;
+                } else {
+                    $val = null;
+                }
+            }
+
+            if ($val !== null) {
+                $data[$field] = $val;
+            }
+        }
+
+        return $data;
     }
 
     private function getDepartmentColumnMap(string $department): array
