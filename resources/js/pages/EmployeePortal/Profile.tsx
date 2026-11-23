@@ -1,11 +1,10 @@
 import { Head, Link } from "@inertiajs/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle, Download } from "lucide-react";
+import { CheckCircle, XCircle, Download, FileText, CreditCard, User } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import AppLayout from "@/layouts/app-layout";
 import { useEffect, useState } from "react";
-import jsPDF from "jspdf";
 
 interface Employee {
   staffid: string;
@@ -31,6 +30,12 @@ interface Employee {
   ghanafront: string | null;
   ghanaback: string | null;
   gpsaddress: string | null;
+  signature?: string | null;
+  signature_date?: string | null;
+  profilepic_url?: string | null;
+  signature_url?: string | null;
+  ghanafront_url?: string | null;
+  ghanaback_url?: string | null;
 }
 
 interface BankDetail {
@@ -77,8 +82,9 @@ export default function Profile({ employee, bankDetail, petra, ssnit, flash }: P
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
   const [completionPercentage, setCompletionPercentage] = useState(0);
+  const [profileImgError, setProfileImgError] = useState(false);
 
-  // Calculate profile completion percentage (for UI only)
+  // Calculate profile completion percentage
   useEffect(() => {
     const fields = [
       employee.staffid,
@@ -103,9 +109,10 @@ export default function Profile({ employee, bankDetail, petra, ssnit, flash }: P
       employee.profilepic,
       employee.ghanafront,
       employee.ghanaback,
+      employee.signature,
       employee.gpsaddress,
     ];
-    const filledFields = fields.filter((field) => field !== null && field !== "").length;
+    const filledFields = fields.filter((field) => field !== null && field !== "" && field !== "0").length;
     const totalFields = fields.length;
     const percentage = Math.round((filledFields / totalFields) * 100);
     setCompletionPercentage(percentage);
@@ -137,127 +144,11 @@ export default function Profile({ employee, bankDetail, petra, ssnit, flash }: P
     return parts.length > 0 ? parts.join(" ") : "N/A";
   };
 
-  // Download PDF function
-  const downloadPDF = async () => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const logoUrl = "/images/sbpafricalogo.png"; // Local logo path
-
-    // Add logo
-    try {
-      const img = new Image();
-      img.src = logoUrl;
-      await new Promise((resolve) => {
-        img.onload = () => resolve(null);
-        img.onerror = () => {
-          console.warn("Failed to load logo, proceeding without it.");
-          resolve(null);
-        };
-      });
-      doc.addImage(img, "PNG", (pageWidth - 60) / 2, 10, 60, 20); // Centered logo
-    } catch (error) {
-      console.warn("Error loading logo:", error);
-    }
-
-    // Add title
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("Employee Profile", pageWidth / 2, 35, { align: "center" });
-
-    // Add employee details in two-column layout
-    let y = 40;
-    const col1X = 20; // Left column
-    const col2X = pageWidth / 2; // Right column
-    const colWidth = (pageWidth - 40) / 2 - 5; // Width per column, with gap
-    const addSection = (title: string, items: Array<{ label: string; value: string }>) => {
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.text(title, 20, y);
-      y += 4;
-      doc.setLineWidth(0.5);
-      doc.setDrawColor("#000000"); // Black underline
-      doc.line(20, y, pageWidth - 20, y); // Underline
-      y += 6;
-
-      items.forEach((item, index) => {
-        const x = index % 2 === 0 ? col1X : col2X; // Alternate columns
-        const splitLabel = doc.splitTextToSize(`${item.label}:`, colWidth);
-        const splitValue = doc.splitTextToSize(item.value, colWidth - doc.getTextWidth(`${item.label}: `));
-        const maxLines = Math.max(splitLabel.length, splitValue.length);
-        const boxHeight = maxLines * 4 + 4; // Reduced height for tighter spacing
-
-        // Draw light grey rounded border
-        doc.setDrawColor("#E5E7EB"); // Tailwind gray-200
-        doc.setLineWidth(0.3);
-        doc.roundedRect(x, y - 2, colWidth, boxHeight, 2, 2, "S"); // rx, ry for rounded corners
-
-        // Add label (bold)
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
-        doc.text(splitLabel, x + 2, y + 2);
-
-        // Add value (normal) with space
-        doc.setFont("helvetica", "normal");
-        doc.text(splitValue, x + 2 + doc.getTextWidth(`${item.label}: `), y + 2);
-
-        if (index % 2 === 1 || index === items.length - 1) {
-          y += boxHeight + 2; // Reduced spacing after row
-        }
-      });
-      y += 2; // Reduced spacing between sections
-    };
-
-    addSection("Personal Information", [
-      { label: "Name", value: employee.employeename },
-      { label: "Staff ID", value: employee.staffid },
-      { label: "Date of Birth", value: employee.dateofbirth || "N/A" },
-      { label: "Gender", value: employee.gender || "N/A" },
-      { label: "Nationality", value: employee.nationality || "N/A" },
-      { label: "Ghana Card", value: employee.ghcard || "N/A" },
-    ]);
-
-    addSection("Employment Details", [
-      { label: "Company", value: employee.company || "N/A" },
-      { label: "Shop", value: employee.shop || "N/A" },
-      { label: "Position", value: employee.position || "N/A" },
-      { label: "Qualification", value: employee.qualification || "N/A" },
-      { label: "Start Date", value: employee.startdate || "N/A" },
-    ]);
-
-    addSection("Contact Information", [
-      { label: "Email", value: employee.email || "N/A" },
-      { label: "Phone 1", value: employee.phone1 || "N/A" },
-      { label: "Phone 2", value: employee.phone2 || "N/A" },
-      { label: "GPS Address", value: employee.gpsaddress || "N/A" },
-    ]);
-
-    addSection("Next of Kin & Guarantor", [
-      { label: "Next of Kin", value: employee.nextofkin || "N/A" },
-      { label: "Relation", value: employee.relation || "N/A" },
-      { label: "Contact", value: employee.contact || "N/A" },
-      { label: "Guarantor", value: employee.guarantor || "N/A" },
-      { label: "Guarantor Contact", value: employee.contactgua || "N/A" },
-    ]);
-
-    addSection("Bank Details", [
-      { label: "Bank Name", value: bankDetail ? bankDetail.bank || "N/A" : "N/A" },
-      { label: "Account Number", value: bankDetail ? bankDetail.account || "N/A" : "N/A" },
-      { label: "Bank Branch", value: bankDetail ? bankDetail.branch || "N/A" : "N/A" },
-    ]);
-
-    addSection("PETRA Details", [
-      { label: "Name", value: petra ? formatName(petra.firstname, petra.lastname, petra.othername) : "N/A" },
-      { label: "PETRA ID", value: petra ? petra.petraId || "N/A" : "N/A" },
-    ]);
-
-    addSection("SSNIT Details", [
-      { label: "Name", value: ssnit ? formatName(ssnit.firstname, ssnit.lastname, ssnit.othername) : "N/A" },
-      { label: "SSNIT Number", value: ssnit ? ssnit.ssnit1a || "N/A" : "N/A" },
-    ]);
-
-    // Save the PDF
-    doc.save(`Employee_Profile_${employee.staffid}.pdf`);
-  };
+  // Resolved URLs
+  const profileUrl = !profileImgError && (employee.profilepic_url || (employee.profilepic && employee.profilepic !== "0" ? `/employeeportal/${employee.staffid}/image/profilepic` : null));
+  const signatureUrl = employee.signature_url || (employee.signature && employee.signature !== "0" ? `/employeeportal/${employee.staffid}/image/signature` : null);
+  const ghanaFrontUrl = employee.ghanafront_url || (employee.ghanafront && employee.ghanafront !== "0" ? `/employeeportal/${employee.staffid}/image/ghanafront` : null);
+  const ghanaBackUrl = employee.ghanaback_url || (employee.ghanaback && employee.ghanaback !== "0" ? `/employeeportal/${employee.staffid}/image/ghanaback` : null);
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -284,34 +175,36 @@ export default function Profile({ employee, bankDetail, petra, ssnit, flash }: P
           </div>
         )}
 
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-5xl mx-auto w-full">
           {/* Header Section */}
-          <Card className="mb-6 border-none shadow-md bg-gradient-to-r from-blue-500 to-indigo-500 text-white">
+          <Card className="mb-6 border-none shadow-md bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
             <CardContent className="pt-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center shrink-0 ring-2 ring-blue-300">
-                    {employee.profilepic ? (
+                  {/* Circular Avatar */}
+                  <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center shrink-0 ring-4 ring-white/30 shadow-md overflow-hidden">
+                    {profileUrl ? (
                       <img
-                        src={employee.profilepic}
-                        alt="Profile"
+                        src={profileUrl}
+                        alt={employee.employeename}
+                        onError={() => setProfileImgError(true)}
                         className="w-full h-full object-cover rounded-full"
                       />
                     ) : (
                       <span className="text-white text-2xl font-bold">
-                        {employee.employeename.charAt(0).toUpperCase()}
+                        {employee.employeename.trim().charAt(0).toUpperCase()}
                       </span>
                     )}
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold">{employee.employeename}</h2>
-                    <p className="text-sm opacity-80">{employee.staffid}</p>
+                    <h2 className="text-xl font-bold tracking-tight">{employee.employeename}</h2>
+                    <p className="text-sm opacity-90">{employee.company ? `${employee.company} Staff` : "Staff"} &bull; ID: {employee.staffid}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">
                   <span className="text-xs">Profile Completion:</span>
-                  <Progress value={completionPercentage} className="w-24 [data-progress]:bg-blue-300" />
-                  <span className="text-xs font-medium">{completionPercentage}%</span>
+                  <Progress value={completionPercentage} className="w-24 [data-progress]:bg-green-400 bg-white/20" />
+                  <span className="text-xs font-semibold">{completionPercentage}%</span>
                 </div>
               </div>
             </CardContent>
@@ -319,150 +212,290 @@ export default function Profile({ employee, bankDetail, petra, ssnit, flash }: P
 
           {/* Information Sections */}
           <div className="grid md:grid-cols-2 gap-4">
-            <Card className="border-l-4 border-blue-500 shadow-sm hover:shadow-md transition-shadow bg-blue-50">
-              <CardHeader>
-                <CardTitle className="text-base text-blue-600">Personal Information</CardTitle>
+            {/* Personal Information */}
+            <Card className="border-l-4 border-blue-500 shadow-sm hover:shadow-md transition-shadow bg-blue-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-blue-700 flex items-center gap-2">
+                  <User className="h-4 w-4" /> Personal Information
+                </CardTitle>
               </CardHeader>
-              <CardContent className="text-sm space-y-1.5">
-                <p><span className="font-medium">Date of Birth:</span> {employee.dateofbirth || "N/A"}</p>
-                <p><span className="font-medium">Gender:</span> {employee.gender || "N/A"}</p>
-                <p><span className="font-medium">Nationality:</span> {employee.nationality || "N/A"}</p>
-                <p><span className="font-medium">Ghana Card:</span> {employee.ghcard || "N/A"}</p>
+              <CardContent className="text-sm space-y-2 pt-1">
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Employee ID:</span>
+                  <span>{employee.staffid}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Date of Birth:</span>
+                  <span>{employee.dateofbirth || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Gender:</span>
+                  <span>{employee.gender || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Nationality:</span>
+                  <span>{employee.nationality || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Ghana Card:</span>
+                  <span className="font-mono text-xs">{employee.ghcard || "N/A"}</span>
+                </div>
+                <div className="flex justify-between text-gray-700">
+                  <span className="font-medium text-gray-500">Qualification:</span>
+                  <span>{employee.qualification || "N/A"}</span>
+                </div>
               </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-green-500 shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="text-base text-green-600">Employment Details</CardTitle>
+            {/* Employment Details */}
+            <Card className="border-l-4 border-green-500 shadow-sm hover:shadow-md transition-shadow bg-green-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-green-700 flex items-center gap-2">
+                  <FileText className="h-4 w-4" /> Job &amp; Contact Information
+                </CardTitle>
               </CardHeader>
-              <CardContent className="text-sm space-y-1.5">
-                <p><span className="font-medium">Company:</span> {employee.company || "N/A"}</p>
-                <p><span className="font-medium">Shop:</span> {employee.shop || "N/A"}</p>
-                <p><span className="font-medium">Position:</span> {employee.position || "N/A"}</p>
-                <p><span className="font-medium">Qualification:</span> {employee.qualification || "N/A"}</p>
-                <p><span className="font-medium">Start Date:</span> {employee.startdate || "N/A"}</p>
+              <CardContent className="text-sm space-y-2 pt-1">
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Company:</span>
+                  <span>{employee.company || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Shop / Dept:</span>
+                  <span>{employee.shop || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Position:</span>
+                  <span>{employee.position || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Start Date:</span>
+                  <span>{employee.startdate || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Email:</span>
+                  <span>{employee.email || "N/A"}</span>
+                </div>
+                <div className="flex justify-between text-gray-700">
+                  <span className="font-medium text-gray-500">Phone:</span>
+                  <span>{employee.phone1 || employee.phone2 || "N/A"}</span>
+                </div>
               </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-purple-500 shadow-sm hover:shadow-md transition-shadow bg-purple-50">
-              <CardHeader>
-                <CardTitle className="text-base text-purple-600">Contact Information</CardTitle>
+            {/* Bank Details */}
+            <Card className="border-l-4 border-teal-500 shadow-sm hover:shadow-md transition-shadow bg-teal-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-teal-700 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" /> Bank Information
+                </CardTitle>
               </CardHeader>
-              <CardContent className="text-sm space-y-1.5">
-                <p><span className="font-medium">Email:</span> {employee.email || "N/A"}</p>
-                <p><span className="font-medium">Phone 1:</span> {employee.phone1 || "N/A"}</p>
-                <p><span className="font-medium">Phone 2:</span> {employee.phone2 || "N/A"}</p>
-                <p><span className="font-medium">GPS Address:</span> {employee.gpsaddress || "N/A"}</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-orange-500 shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="text-base text-orange-600">Next of Kin & Guarantor</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm space-y-1.5">
-                <p><span className="font-medium">Next of Kin:</span> {employee.nextofkin || "N/A"}</p>
-                <p><span className="font-medium">Relation:</span> {employee.relation || "N/A"}</p>
-                <p><span className="font-medium">Contact:</span> {employee.contact || "N/A"}</p>
-                <p><span className="font-medium">Guarantor:</span> {employee.guarantor || "N/A"}</p>
-                <p><span className="font-medium">Guarantor Contact:</span> {employee.contactgua || "N/A"}</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-l-4 border-teal-500 shadow-sm hover:shadow-md transition-shadow bg-teal-50">
-              <CardHeader>
-                <CardTitle className="text-base text-teal-600">Bank Details</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm space-y-1.5">
+              <CardContent className="text-sm space-y-2 pt-1">
                 {bankDetail ? (
                   <>
-                    <p><span className="font-medium">Bank Name:</span> {bankDetail.bank || "N/A"}</p>
-                    <p><span className="font-medium">Account Number:</span> {bankDetail.account || "N/A"}</p>
-                    <p><span className="font-medium">Bank Branch:</span> {bankDetail.branch || "N/A"}</p>
+                    <div className="flex justify-between border-b pb-1 text-gray-700">
+                      <span className="font-medium text-gray-500">Bank Name:</span>
+                      <span>{bankDetail.bank || "N/A"}</span>
+                    </div>
+                    <div className="flex justify-between border-b pb-1 text-gray-700">
+                      <span className="font-medium text-gray-500">Account Number:</span>
+                      <span className="font-mono">{bankDetail.account || "N/A"}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-700">
+                      <span className="font-medium text-gray-500">Bank Branch:</span>
+                      <span>{bankDetail.branch || "N/A"}</span>
+                    </div>
                   </>
                 ) : (
-                  <p className="text-muted-foreground">No bank details available.</p>
+                  <p className="text-muted-foreground italic text-xs py-2">No bank details available.</p>
                 )}
               </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-pink-500 shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="text-base text-pink-600">PETRA Details</CardTitle>
+            {/* SSNIT Details */}
+            <Card className="border-l-4 border-cyan-500 shadow-sm hover:shadow-md transition-shadow bg-cyan-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-cyan-700">SSNIT Information</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm space-y-1.5">
-                {petra ? (
-                  <>
-                    <p>
-                      <span className="font-medium">Name:</span>{" "}
-                      {formatName(petra.firstname, petra.lastname, petra.othername)}
-                    </p>
-                    <p><span className="font-medium">PETRA ID:</span> {petra.petraId || "N/A"}</p>
-                  </>
-                ) : (
-                  <p className="text-muted-foreground">No PETRA details available.</p>
-                )}
+              <CardContent className="text-sm space-y-2 pt-1">
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">SSNIT Number:</span>
+                  <span className="font-mono">{ssnit?.ssnit1a || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">SSNIT Name:</span>
+                  <span>{ssnit ? formatName(ssnit.firstname, ssnit.lastname, ssnit.othername) : "N/A"}</span>
+                </div>
+                <div className="flex justify-between text-gray-700">
+                  <span className="font-medium text-gray-500">SSNIT Status:</span>
+                  <span>{ssnit?.ssnit1a ? "Registered" : "Pending"}</span>
+                </div>
               </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-cyan-500 shadow-sm hover:shadow-md transition-shadow bg-cyan-50">
-              <CardHeader>
-                <CardTitle className="text-base text-cyan-600">SSNIT Details</CardTitle>
+            {/* PETRA Details */}
+            <Card className="border-l-4 border-pink-500 shadow-sm hover:shadow-md transition-shadow bg-pink-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-pink-700">PETRA Information</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm space-y-1.5">
-                {ssnit ? (
-                  <>
-                    <p>
-                      <span className="font-medium">Name:</span>{" "}
-                      {formatName(ssnit.firstname, ssnit.lastname, ssnit.othername)}
-                    </p>
-                    <p><span className="font-medium">SSNIT Number:</span> {ssnit.ssnit1a || "N/A"}</p>
-                  </>
-                ) : (
-                  <p className="text-muted-foreground">No SSNIT details available.</p>
-                )}
+              <CardContent className="text-sm space-y-2 pt-1">
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">PETRA ID:</span>
+                  <span className="font-mono">{petra?.petraId || "N/A"}</span>
+                </div>
+                <div className="flex justify-between text-gray-700">
+                  <span className="font-medium text-gray-500">PETRA Name:</span>
+                  <span>{petra ? formatName(petra.firstname, petra.lastname, petra.othername) : "N/A"}</span>
+                </div>
               </CardContent>
             </Card>
 
-            {(employee.ghanafront || employee.ghanaback) && (
-              <Card className="border-l-4 border-indigo-500 shadow-sm hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <CardTitle className="text-base text-indigo-600">Identification</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {employee.ghanafront && (
-                      <div>
-                        <p className="font-medium text-sm">Ghana Card (Front):</p>
-                        <img
-                          src={employee.ghanafront}
-                          alt="Ghana Card Front"
-                          className="mt-2 max-w-xs rounded shadow"
-                        />
+            {/* Next of Kin & Guarantor */}
+            <Card className="border-l-4 border-orange-500 shadow-sm hover:shadow-md transition-shadow bg-orange-50/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base text-orange-700">Next of Kin &amp; Guarantor</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-2 pt-1">
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Next of Kin:</span>
+                  <span>{employee.nextofkin || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Relation:</span>
+                  <span>{employee.relation || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Contact:</span>
+                  <span>{employee.contact || "N/A"}</span>
+                </div>
+                <div className="flex justify-between border-b pb-1 text-gray-700">
+                  <span className="font-medium text-gray-500">Guarantor:</span>
+                  <span>{employee.guarantor || "N/A"}</span>
+                </div>
+                <div className="flex justify-between text-gray-700">
+                  <span className="font-medium text-gray-500">Guarantor Contact:</span>
+                  <span>{employee.contactgua || "N/A"}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Signature & Ghana Card Card (Spans full width) */}
+            <Card className="col-span-full border-l-4 border-purple-600 shadow-sm hover:shadow-md transition-shadow bg-white mt-1">
+              <CardHeader className="flex flex-row items-center gap-2 pb-2">
+                <div className="h-8 w-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                  ✍
+                </div>
+                <CardTitle className="text-base font-semibold text-gray-800">Signature &amp; Ghana Card</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  
+                  {/* Signature Column */}
+                  <div className="flex flex-col items-center justify-between p-4 bg-gray-50 border rounded-lg text-center min-h-[220px]">
+                    <div className="w-full">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Digital Signature</p>
+                      <div className="h-32 flex items-center justify-center bg-white border border-dashed rounded p-2 overflow-hidden shadow-inner">
+                        {signatureUrl ? (
+                          <img
+                            src={signatureUrl}
+                            alt="Signature"
+                            className="max-h-28 max-w-full object-contain"
+                          />
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">No signature available</p>
+                        )}
                       </div>
-                    )}
-                    {employee.ghanaback && (
-                      <div>
-                        <p className="font-medium text-sm">Ghana Card (Back):</p>
-                        <img
-                          src={employee.ghanaback}
-                          alt="Ghana Card Back"
-                          className="mt-2 max-w-xs rounded shadow"
-                        />
-                      </div>
-                    )}
+                    </div>
+                    <div className="mt-3 w-full">
+                      <p className="text-xs text-gray-600 font-medium">
+                        {employee.signature_date ? `Signed: ${employee.signature_date}` : (signatureUrl ? "Signed (Verified)" : "Unsigned")}
+                      </p>
+                      {signatureUrl && (
+                        <a
+                          href={`/employeeportal/${employee.staffid}/download/signature`}
+                          className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-medium mt-1 transition-colors"
+                        >
+                          <Download className="h-3 w-3" /> Download Signature
+                        </a>
+                      )}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            )}
+
+                  {/* Ghana Card Front Column */}
+                  <div className="flex flex-col items-center justify-between p-4 bg-gray-50 border rounded-lg text-center min-h-[220px]">
+                    <div className="w-full">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ghana Card Front</p>
+                      <div className="h-32 flex items-center justify-center bg-white border border-dashed rounded p-2 overflow-hidden shadow-inner">
+                        {ghanaFrontUrl ? (
+                          <img
+                            src={ghanaFrontUrl}
+                            alt="Ghana Card Front"
+                            className="max-h-28 max-w-full object-contain rounded"
+                          />
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">No card front uploaded</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 w-full">
+                      <p className="text-xs text-gray-600 font-medium mb-1.5">Ghana Card Front</p>
+                      {ghanaFrontUrl ? (
+                        <a
+                          href={`/employeeportal/${employee.staffid}/download/ghanafront`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded text-xs font-medium transition-colors"
+                        >
+                          <Download className="h-3.5 w-3.5" /> Download Front
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Not Available</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ghana Card Back Column */}
+                  <div className="flex flex-col items-center justify-between p-4 bg-gray-50 border rounded-lg text-center min-h-[220px]">
+                    <div className="w-full">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ghana Card Back</p>
+                      <div className="h-32 flex items-center justify-center bg-white border border-dashed rounded p-2 overflow-hidden shadow-inner">
+                        {ghanaBackUrl ? (
+                          <img
+                            src={ghanaBackUrl}
+                            alt="Ghana Card Back"
+                            className="max-h-28 max-w-full object-contain rounded"
+                          />
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic">No card back uploaded</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 w-full">
+                      <p className="text-xs text-gray-600 font-medium mb-1.5">Ghana Card Back</p>
+                      {ghanaBackUrl ? (
+                        <a
+                          href={`/employeeportal/${employee.staffid}/download/ghanaback`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded text-xs font-medium transition-colors"
+                        >
+                          <Download className="h-3.5 w-3.5" /> Download Back
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Not Available</span>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          <div className="mt-6 flex justify-end gap-4">
-            <Button asChild className="bg-blue-600 hover:bg-blue-700">
+          {/* Action Buttons */}
+          <div className="mt-6 flex justify-end gap-4 pb-8">
+            <Button asChild variant="outline" className="border-gray-300">
               <Link href={route("employeeportal.index")}>Back to Employees</Link>
             </Button>
-            <Button onClick={downloadPDF} className="bg-green-600 hover:bg-green-700">
-              <Download className="mr-2 h-4 w-4" /> Download PDF
+            <Button asChild className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
+              <a href={route("employeeportal.onboarding-form", employee.staffid)} target="_blank" rel="noopener noreferrer">
+                <Download className="mr-2 h-4 w-4" /> Download onBoarding Form
+              </a>
             </Button>
           </div>
         </div>

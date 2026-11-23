@@ -8,6 +8,8 @@ use App\Models\Petra;
 use App\Models\Ssnit;
 use App\Models\ArchivedEmployee;
 use App\Models\Client;
+use App\Services\EmployeeImageService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Validator;
@@ -96,40 +98,150 @@ class EmployeePortalController extends Controller
     ]);
 }
     public function show($staffid)
-{
-    Log::info('Show called', ['staffid' => $staffid]);
+    {
+        Log::info('Show called', ['staffid' => $staffid]);
 
-    $employee = Employee::with(['bankDetail', 'petra', 'ssnit'])
-        ->where('staffid', $staffid)
-        ->firstOrFail();
+        $employee = Employee::with(['bankDetail', 'petra', 'ssnit'])
+            ->where('staffid', $staffid)
+            ->firstOrFail();
 
-    // Safe toArray conversion
-    $logData = [
-        'employee' => $employee->toArray(),
-        'bankDetail' => $employee->relationLoaded('bankDetail') && $employee->bankDetail instanceof \Illuminate\Database\Eloquent\Model
-            ? $employee->bankDetail->toArray()
-            : ($employee->bankDetail ?? null),
-        'petra' => $employee->relationLoaded('petra') && $employee->petra instanceof \Illuminate\Database\Eloquent\Model
-            ? $employee->petra->toArray()
-            : ($employee->petra ?? null),
-        'ssnit' => $employee->relationLoaded('ssnit') && $employee->ssnit instanceof \Illuminate\Database\Eloquent\Model
-            ? $employee->ssnit->toArray()
-            : ($employee->ssnit ?? null),
-    ];
+        // Attach resolved image URLs
+        $employee->profilepic_url = !empty($employee->profilepic) && $employee->profilepic !== '0'
+            ? route('employeeportal.image', ['staffid' => $employee->staffid, 'type' => 'profilepic'])
+            : null;
 
-    Log::info('Employee found', $logData);
+        $employee->signature_url = !empty($employee->signature) && $employee->signature !== '0'
+            ? route('employeeportal.image', ['staffid' => $employee->staffid, 'type' => 'signature'])
+            : null;
 
-    return Inertia::render('EmployeePortal/Profile', [
-        'employee' => $employee,
-        'bankDetail' => $employee->bankDetail,
-        'petra' => $employee->petra,
-        'ssnit' => $employee->ssnit,
-        'flash' => [
-            'success' => session('success'),
-            'error' => session('error'),
-        ],
-    ]);
-}
+        $employee->ghanafront_url = !empty($employee->ghanafront) && $employee->ghanafront !== '0'
+            ? route('employeeportal.image', ['staffid' => $employee->staffid, 'type' => 'ghanafront'])
+            : null;
+
+        $employee->ghanaback_url = !empty($employee->ghanaback) && $employee->ghanaback !== '0'
+            ? route('employeeportal.image', ['staffid' => $employee->staffid, 'type' => 'ghanaback'])
+            : null;
+
+        return Inertia::render('EmployeePortal/Profile', [
+            'employee' => $employee,
+            'bankDetail' => $employee->bankDetail,
+            'petra' => $employee->petra,
+            'ssnit' => $employee->ssnit,
+            'flash' => [
+                'success' => session('success'),
+                'error' => session('error'),
+            ],
+        ]);
+    }
+
+    /**
+     * Stream/serve employee image with caching for the browser.
+     */
+    public function serveImage($staffid, $type)
+    {
+        $allowed = ['profilepic', 'signature', 'ghanafront', 'ghanaback'];
+        if (!in_array($type, $allowed)) {
+            abort(404, 'Invalid image type');
+        }
+
+        $employee = Employee::where('staffid', $staffid)->firstOrFail();
+        $filename = $employee->$type;
+
+        if (empty($filename) || $filename === '0' || $filename === 'N/A') {
+            abort(404, 'Image not set for employee');
+        }
+
+        $path = EmployeeImageService::getLocalPathOrFetch($filename, $type);
+        if (!$path || !file_exists($path) || filesize($path) === 0) {
+            abort(404, 'Image file could not be retrieved');
+        }
+
+        $mime = match (strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            default => 'image/jpeg',
+        };
+
+        return response()->file($path, [
+            'Content-Type' => $mime,
+            'Cache-Control' => 'public, max-age=604800',
+        ]);
+    }
+
+    /**
+     * Download card or signature as an attachment.
+     */
+    public function downloadImage($staffid, $type)
+    {
+        $allowed = ['profilepic', 'signature', 'ghanafront', 'ghanaback'];
+        if (!in_array($type, $allowed)) {
+            abort(404, 'Invalid image type');
+        }
+
+        $employee = Employee::where('staffid', $staffid)->firstOrFail();
+        $filename = $employee->$type;
+
+        if (empty($filename) || $filename === '0' || $filename === 'N/A') {
+            return redirect()->back()->with('error', 'No file available to download.');
+        }
+
+        $path = EmployeeImageService::getLocalPathOrFetch($filename, $type);
+        if (!$path || !file_exists($path)) {
+            return redirect()->back()->with('error', 'Failed to retrieve image for download.');
+        }
+
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION)) ?: 'jpg';
+        $labels = [
+            'profilepic' => 'Profile_Photo',
+            'signature'  => 'Signature',
+            'ghanafront' => 'Ghana_Card_Front',
+            'ghanaback'  => 'Ghana_Card_Back',
+        ];
+        $label = $labels[$type] ?? $type;
+        $cleanStaff = preg_replace('/[^A-Za-z0-9_-]/', '', $staffid);
+        $downloadName = "{$cleanStaff}_{$label}.{$ext}";
+
+        return response()->download($path, $downloadName);
+    }
+
+    /**
+     * Generate and download the complete Onboarding Form PDF.
+     */
+    public function downloadOnboardingForm($staffid)
+    {
+        $employee = Employee::with(['bankDetail', 'petra', 'ssnit'])
+            ->where('staffid', $staffid)
+            ->firstOrFail();
+
+        // Convert images to base64 for embedding in DomPDF
+        $profilePicBase64 = EmployeeImageService::getBase64Image($employee->profilepic, 'profilepic');
+        $signatureBase64 = EmployeeImageService::getBase64Image($employee->signature, 'signature');
+        $ghanaFrontBase64 = EmployeeImageService::getBase64Image($employee->ghanafront, 'ghanafront');
+        $ghanaBackBase64 = EmployeeImageService::getBase64Image($employee->ghanaback, 'ghanaback');
+
+        // Logo
+        $logoPath = public_path('images/sbpafricalogo.png');
+        $logoBase64 = null;
+        if (file_exists($logoPath)) {
+            $logoBase64 = 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath));
+        }
+
+        $pdf = Pdf::loadView('pdf.onboarding', [
+            'employee'         => $employee,
+            'bankDetail'       => $employee->bankDetail,
+            'petra'            => $employee->petra,
+            'ssnit'            => $employee->ssnit,
+            'profilePicBase64' => $profilePicBase64,
+            'signatureBase64'  => $signatureBase64,
+            'ghanaFrontBase64' => $ghanaFrontBase64,
+            'ghanaBackBase64'  => $ghanaBackBase64,
+            'logoBase64'       => $logoBase64,
+        ])->setPaper('a4', 'portrait');
+
+        $cleanStaff = preg_replace('/[^A-Za-z0-9_-]/', '', $staffid);
+        return $pdf->download("Employee_Onboarding_Form_{$cleanStaff}.pdf");
+    }
 
     public function store(Request $request)
     {

@@ -436,6 +436,9 @@ Route::post('/clients/bulk-upload', [ClientsController::class, 'bulkUpload'])->n
 
     // Employee portal Routes
 Route::get('/employeeportal', [EmployeePortalController::class, 'index'])->name('employeeportal.index');
+Route::get('/employeeportal/{staffid}/image/{type}', [EmployeePortalController::class, 'serveImage'])->name('employeeportal.image');
+Route::get('/employeeportal/{staffid}/download/{type}', [EmployeePortalController::class, 'downloadImage'])->name('employeeportal.download');
+Route::get('/employeeportal/{staffid}/onboarding-form', [EmployeePortalController::class, 'downloadOnboardingForm'])->name('employeeportal.onboarding-form');
 Route::get('/employeeportal/{staffid}', [EmployeePortalController::class, 'show'])->name('employeeportal.show')->where('staffid', '.*');
 Route::post('/employeeportal', [EmployeePortalController::class, 'store'])->name('employeeportal.store');
 Route::put('/employeeportal/{staffid}', [EmployeePortalController::class, 'update'])->name('employeeportal.update')->where('staffid', '.*');
