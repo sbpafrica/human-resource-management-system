@@ -269,6 +269,10 @@ export function AppSidebar() {
             href: '/admin/payroll-columns',
           });
         }
+        salaryMenuChildren.unshift({
+          title: '📊 Headcount (Monthly & Yearly)',
+          href: '/payroll-headcount',
+        });
         items.push({ title: 'Salary Payment', icon: FileText, children: salaryMenuChildren });
       }
       if (can('view ssnit')) {
@@ -288,6 +292,10 @@ export function AppSidebar() {
         title: 'Salary Payment',
         icon: FileText,
         children: [
+          {
+            title: '📊 Headcount (Monthly & Yearly)',
+            href: '/payroll-headcount',
+          },
           {
             title: '⚙ Manage Payroll Columns',
             href: '/admin/payroll-columns',

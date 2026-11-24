@@ -309,6 +309,10 @@ Route::post('/roles', [App\Http\Controllers\Admin\RoleController::class, 'store'
     Route::delete('/payroll-columns/{id}', [App\Http\Controllers\Admin\PayrollColumnController::class, 'destroy'])->name('payroll-columns.direct-destroy');
     Route::patch('/payroll-columns/{id}/toggle-payslip', [App\Http\Controllers\Admin\PayrollColumnController::class, 'togglePayslip'])->name('payroll-columns.direct-toggle-payslip');
 
+    // Payroll Headcount (Monthly & Yearly Analytics)
+    Route::get('/payroll-headcount', [\App\Http\Controllers\PayrollHeadcountController::class, 'index'])->name('payroll-headcount.index');
+    Route::get('/payroll-headcount/employees', [\App\Http\Controllers\PayrollHeadcountController::class, 'getEmployees'])->name('payroll-headcount.employees');
+
 
     // SSNIT Details Routes
     Route::get('/ssnitdetails', [SsnitController::class, 'index'])->name('ssnitdetails.index');

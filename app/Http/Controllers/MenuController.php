@@ -83,6 +83,10 @@ class MenuController extends Controller
             })->toArray();
 
             if ($user->can('view payroll')) {
+                array_unshift($salaryChildren, [
+                    'title' => '📊 Headcount (Monthly & Yearly)',
+                    'href' => '/payroll-headcount',
+                ]);
                 $baseItems[] = [
                     'title' => 'Salary Payment',
                     'icon' => 'FileText',

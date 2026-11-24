@@ -1,5 +1,26 @@
-import { Head } from "@inertiajs/react";
-import { AlertCircle, Users, FileText, CreditCard, Shield, Calendar, UserX, ArrowUp, ArrowDown, Briefcase, Cake, Phone, } from "lucide-react";
+import { Head, Link } from "@inertiajs/react";
+import {
+    AlertCircle,
+    Users,
+    FileText,
+    CreditCard,
+    Shield,
+    Calendar,
+    UserX,
+    ArrowUp,
+    ArrowDown,
+    Briefcase,
+    Cake,
+    Phone,
+    TrendingUp,
+    ChevronRight,
+    BarChart3,
+    Layers,
+    Building2,
+    ArrowUpRight,
+    ArrowDownRight,
+    ExternalLink,
+} from "lucide-react";
 import AppLayout from "@/layouts/app-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,10 +88,65 @@ noContactDetails?: { count: number; list: EmployeeItem[] };
     };
 }
 
+interface PayrollMonthClient {
+    client_id: number;
+    client_name: string;
+    short_name: string;
+    count: number;
+    table: string;
+}
+
+interface PayrollMonthItem {
+    year: number;
+    month: number;
+    month_name: string;
+    month_short: string;
+    month_key: string;
+    total_count: number;
+    clients_count: number;
+    change_count: number;
+    change_percent: number;
+    has_data: boolean;
+    clients: PayrollMonthClient[];
+}
+
+interface PayrollYearSummary {
+    year: number;
+    total_volume: number;
+    months_count: number;
+    avg_monthly: number;
+    max_monthly: number;
+    peak_month: string;
+    months: PayrollMonthItem[];
+}
+
+interface PayrollHeadcountData {
+    all_years: number[];
+    current_year: number;
+    selected_year_data?: PayrollYearSummary;
+    yearly_summary: PayrollYearSummary[];
+    monthly_trend: {
+        labels: string[];
+        counts: number[];
+        clients: number[];
+    };
+    yearly_comparison: {
+        labels: string[];
+        datasets: {
+            year: number;
+            label: string;
+            data: number[];
+            borderColor: string;
+            backgroundColor: string;
+        }[];
+    };
+}
+
 interface Props {
     complianceData?: Partial<ComplianceData>;
     clientSummary?: ClientSummaryItem[];
     allClientHeadcount?: ClientHeadcountItem[];
+    payrollHeadcountData?: PayrollHeadcountData;
     auth: { user: { name: string; is_super_admin?: boolean } };
     flash?: { success?: string; error?: string };
 }
@@ -82,6 +158,7 @@ export default function Dashboard({
     complianceData: partialComplianceData = {},
     clientSummary = [],
     allClientHeadcount = [],
+    payrollHeadcountData,
     auth,
     flash,
 }: Props) {
@@ -270,6 +347,71 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
     };
 
     // AUTOMATIC LAST 3 MONTHS CHART
+    const [activePayrollYear, setActivePayrollYear] = useState<number>(
+        payrollHeadcountData?.current_year || new Date().getFullYear()
+    );
+    const [expandedPayrollMonth, setExpandedPayrollMonth] = useState<string | null>(null);
+    const [headcountChartMode, setHeadcountChartMode] = useState<"year_months" | "timeline" | "comparison">("year_months");
+
+    const activeYearSummary = useMemo(() => {
+        return (
+            payrollHeadcountData?.yearly_summary?.find((y) => y.year === activePayrollYear) ||
+            payrollHeadcountData?.selected_year_data
+        );
+    }, [payrollHeadcountData, activePayrollYear]);
+
+    const headcountChartData = useMemo(() => {
+        if (headcountChartMode === "timeline" && payrollHeadcountData?.monthly_trend) {
+            return {
+                labels: payrollHeadcountData.monthly_trend.labels,
+                datasets: [
+                    {
+                        label: "Staff on Payroll",
+                        data: payrollHeadcountData.monthly_trend.counts,
+                        borderColor: "#2563eb",
+                        backgroundColor: "rgba(37, 99, 235, 0.1)",
+                        borderWidth: 2.5,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 4,
+                    },
+                ],
+            };
+        }
+
+        if (headcountChartMode === "comparison" && payrollHeadcountData?.yearly_comparison) {
+            return {
+                labels: payrollHeadcountData.yearly_comparison.labels,
+                datasets: payrollHeadcountData.yearly_comparison.datasets.map((ds) => ({
+                    label: `Year ${ds.label}`,
+                    data: ds.data,
+                    borderColor: ds.borderColor,
+                    backgroundColor: ds.backgroundColor,
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 3,
+                })),
+            };
+        }
+
+        const months = activeYearSummary?.months || [];
+        return {
+            labels: months.map((m) => m.month_short),
+            datasets: [
+                {
+                    label: `Staff on Payroll (${activePayrollYear})`,
+                    data: months.map((m) => (m.has_data ? m.total_count : null)),
+                    borderColor: "#10b981",
+                    backgroundColor: "rgba(16, 185, 129, 0.15)",
+                    borderWidth: 2.5,
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 5,
+                },
+            ],
+        };
+    }, [headcountChartMode, payrollHeadcountData, activeYearSummary, activePayrollYear]);
+
     const chartData = {
         labels: complianceData.trend?.labels?.length ? complianceData.trend.labels : ["No Data"],
         datasets: [
@@ -503,6 +645,252 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
                                         ) : (
                                             <p className="text-sm text-gray-500 text-center py-6">No payroll data for current cycle</p>
                                         )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
+
+                    {/* PAYROLL HEADCOUNT BY MONTH & YEAR */}
+                    {payrollHeadcountData && payrollHeadcountData.all_years?.length > 0 && (
+                        <div className="space-y-4 mb-8">
+                            <Card className="shadow-lg hover:shadow-xl transition-shadow border border-gray-100 dark:border-gray-800">
+                                <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-800">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">
+                                                <Users className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <CardTitle className="text-lg font-bold flex items-center gap-2">
+                                                    Employees on Payroll (Monthly & Yearly)
+                                                </CardTitle>
+                                                <p className="text-xs text-gray-500">
+                                                    Headcount tracking for every month and across all years
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {/* Year Selector Tabs */}
+                                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+                                                {payrollHeadcountData.all_years.map((yr) => (
+                                                    <button
+                                                        key={yr}
+                                                        onClick={() => setActivePayrollYear(yr)}
+                                                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all ${
+                                                            activePayrollYear === yr
+                                                                ? "bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                                                                : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                                                        }`}
+                                                    >
+                                                        {yr}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            <Link
+                                                href="/payroll-headcount"
+                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 transition-colors"
+                                            >
+                                                <span>Full Analytics & Export</span>
+                                                <ExternalLink className="h-3.5 w-3.5" />
+                                            </Link>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+
+                                <CardContent className="p-4 sm:p-6 space-y-6">
+                                    {/* Year Metrics Row */}
+                                    {activeYearSummary && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div className="p-3.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/20">
+                                                <div className="flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                                                    <span>{activePayrollYear} Monthly Average</span>
+                                                    <Users className="h-4 w-4" />
+                                                </div>
+                                                <div className="mt-2 text-2xl font-extrabold text-emerald-700 dark:text-emerald-300 font-mono">
+                                                    {activeYearSummary.avg_monthly.toLocaleString()}
+                                                    <span className="text-xs font-normal text-emerald-600/70 ml-1">staff/mo</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20">
+                                                <div className="flex items-center justify-between text-xs text-blue-700 dark:text-blue-400 font-medium">
+                                                    <span>{activePayrollYear} Peak Headcount</span>
+                                                    <TrendingUp className="h-4 w-4" />
+                                                </div>
+                                                <div className="mt-2 text-2xl font-extrabold text-blue-700 dark:text-blue-300 font-mono">
+                                                    {activeYearSummary.max_monthly.toLocaleString()}
+                                                    <span className="text-xs font-normal text-blue-600/70 ml-1">({activeYearSummary.peak_month})</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-3.5 rounded-xl bg-purple-50/60 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/20">
+                                                <div className="flex items-center justify-between text-xs text-purple-700 dark:text-purple-400 font-medium">
+                                                    <span>Active Months Recorded</span>
+                                                    <Calendar className="h-4 w-4" />
+                                                </div>
+                                                <div className="mt-2 text-2xl font-extrabold text-purple-700 dark:text-purple-300 font-mono">
+                                                    {activeYearSummary.months_count}
+                                                    <span className="text-xs font-normal text-purple-600/70 ml-1">/ 12 months</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 12-Month Calendar Grid */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                                                {activePayrollYear} Monthly Headcount Breakdown
+                                            </h4>
+                                            <span className="text-xs text-gray-400">Click any month to view client details</span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+                                            {activeYearSummary?.months.map((m) => {
+                                                const isExpanded = expandedPayrollMonth === m.month_key;
+                                                return (
+                                                    <div
+                                                        key={m.month_key}
+                                                        onClick={() => m.has_data && setExpandedPayrollMonth(isExpanded ? null : m.month_key)}
+                                                        className={`p-3 rounded-xl border transition-all text-left flex flex-col justify-between ${
+                                                            !m.has_data
+                                                                ? "border-dashed border-gray-200 dark:border-gray-800 opacity-40 bg-gray-50/30"
+                                                                : isExpanded
+                                                                ? "border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-950/20 cursor-pointer shadow-sm"
+                                                                : "border-gray-200 dark:border-gray-700 hover:border-emerald-400 hover:shadow-sm cursor-pointer bg-white dark:bg-gray-800"
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                                                                {m.month_name}
+                                                            </span>
+                                                            {m.has_data && m.change_count !== 0 && (
+                                                                <span
+                                                                    className={`text-[10px] font-bold px-1 rounded ${
+                                                                        m.change_count > 0
+                                                                            ? "text-emerald-700 bg-emerald-100"
+                                                                            : "text-rose-700 bg-rose-100"
+                                                                    }`}
+                                                                >
+                                                                    {m.change_count > 0 ? `+${m.change_percent}%` : `${m.change_percent}%`}
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="mt-2">
+                                                            {m.has_data ? (
+                                                                <>
+                                                                    <div className="text-lg font-extrabold font-mono text-gray-900 dark:text-white">
+                                                                        {m.total_count.toLocaleString()}
+                                                                    </div>
+                                                                    <div className="text-[11px] text-gray-400 mt-0.5">
+                                                                        {m.clients_count} clients
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <div className="text-xs text-gray-400 italic py-1">No data</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* EXPANDED MONTH CLIENT BREAKDOWN */}
+                                    {expandedPayrollMonth && (
+                                        <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10 animate-in fade-in">
+                                            {(() => {
+                                                const m = activeYearSummary?.months.find((x) => x.month_key === expandedPayrollMonth);
+                                                if (!m) return null;
+                                                return (
+                                                    <div>
+                                                        <div className="flex items-center justify-between pb-3 border-b border-emerald-200/60 dark:border-emerald-800/60">
+                                                            <div className="flex items-center gap-2">
+                                                                <Building2 className="h-4 w-4 text-emerald-600" />
+                                                                <span className="text-sm font-bold text-gray-900 dark:text-white">
+                                                                    Client Headcount for {m.month_name} {activePayrollYear} ({m.total_count.toLocaleString()} Total)
+                                                                </span>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => setExpandedPayrollMonth(null)}
+                                                                className="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                                                            >
+                                                                Close
+                                                            </button>
+                                                        </div>
+                                                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-60 overflow-y-auto pr-1">
+                                                            {m.clients.map((c, cIdx) => (
+                                                                <div
+                                                                    key={cIdx}
+                                                                    className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-2xs"
+                                                                >
+                                                                    <div className="min-w-0 pr-2">
+                                                                        <div className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                                                                            {c.client_name}
+                                                                        </div>
+                                                                        <div className="text-[10px] text-gray-400 font-mono truncate">
+                                                                            {c.table}
+                                                                        </div>
+                                                                    </div>
+                                                                    <span className="text-xs font-extrabold font-mono text-emerald-600 flex-shrink-0">
+                                                                        {c.count.toLocaleString()}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+
+                                    {/* Headcount Chart with Mode Toggles */}
+                                    <div className="pt-2">
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                                            <div className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                                                <BarChart3 className="h-4 w-4 text-emerald-600" />
+                                                Payroll Headcount Progression
+                                            </div>
+                                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg self-start">
+                                                <button
+                                                    onClick={() => setHeadcountChartMode("year_months")}
+                                                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                                                        headcountChartMode === "year_months"
+                                                            ? "bg-white dark:bg-gray-700 text-emerald-600 shadow-sm"
+                                                            : "text-gray-500"
+                                                    }`}
+                                                >
+                                                    {activePayrollYear} (12 Months)
+                                                </button>
+                                                <button
+                                                    onClick={() => setHeadcountChartMode("timeline")}
+                                                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                                                        headcountChartMode === "timeline"
+                                                            ? "bg-white dark:bg-gray-700 text-emerald-600 shadow-sm"
+                                                            : "text-gray-500"
+                                                    }`}
+                                                >
+                                                    24-Month Timeline
+                                                </button>
+                                                <button
+                                                    onClick={() => setHeadcountChartMode("comparison")}
+                                                    className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                                                        headcountChartMode === "comparison"
+                                                            ? "bg-white dark:bg-gray-700 text-emerald-600 shadow-sm"
+                                                            : "text-gray-500"
+                                                    }`}
+                                                >
+                                                    Year-over-Year
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="h-64 w-full">
+                                            <Line data={headcountChartData} options={chartOptions} />
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 use App\Models\TranssionContract;
 use App\Models\TranssionContractRenewal;
+use App\Services\PayrollHeadcountService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -56,10 +57,11 @@ class DashboardController extends Controller
             }
 
             return Inertia::render('dashboard', [
-                'complianceData'     => $this->getEmptyComplianceData(),
-                'clientSummary'      => [],
-                'allClientHeadcount' => [],
-                'flash' => $this->getFlash($request),
+                'complianceData'       => $this->getEmptyComplianceData(),
+                'clientSummary'        => [],
+                'allClientHeadcount'   => [],
+                'payrollHeadcountData' => null,
+                'flash'                => $this->getFlash($request),
             ]);
         }
 
@@ -351,6 +353,12 @@ class DashboardController extends Controller
             )->map(fn($e) => (object) $e)->values();
         }
 
+        $headcountService = app(PayrollHeadcountService::class);
+        $payrollHeadcountData = $headcountService->getHeadcountData(
+            $allowedClients,
+            $request->filled('payroll_year') ? (int)$request->input('payroll_year') : null
+        );
+
         if (empty($currentTables)) {
             $emptyData = $this->getEmptyComplianceData();
             $emptyData['totalEmployees'] = [
@@ -360,10 +368,11 @@ class DashboardController extends Controller
             ];
 
             return Inertia::render('dashboard', [
-                'complianceData'     => $emptyData,
-                'clientSummary'      => [],
-                'allClientHeadcount' => $allClientHeadcount,
-                'flash' => $this->getFlash($request),
+                'complianceData'       => $emptyData,
+                'clientSummary'        => [],
+                'allClientHeadcount'   => $allClientHeadcount,
+                'payrollHeadcountData' => $payrollHeadcountData,
+                'flash'                => $this->getFlash($request),
             ]);
         }
 
@@ -659,10 +668,11 @@ class DashboardController extends Controller
         ];
 
         return Inertia::render('dashboard', [
-            'complianceData'     => $complianceData,
-            'clientSummary'      => $clientSummary,
-            'allClientHeadcount' => $allClientHeadcount,
-            'flash'              => $this->getFlash($request),
+            'complianceData'       => $complianceData,
+            'clientSummary'        => $clientSummary,
+            'allClientHeadcount'   => $allClientHeadcount,
+            'payrollHeadcountData' => $payrollHeadcountData,
+            'flash'                => $this->getFlash($request),
         ]);
     }
 
