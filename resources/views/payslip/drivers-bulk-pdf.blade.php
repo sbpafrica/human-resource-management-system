@@ -237,17 +237,46 @@
                         <td style="text-align:center;" class="bold2">{{ number_format($gross, 2) }}</td>
                         <td style="text-align:center;" class="bold2">{{ number_format((float)($payslip->totaldeduct ?? 0), 2) }}</td>
                     </tr>
+                    @php
+                        $bank = $item['bank'] ?? [];
+                        $displayBankName = (!empty(data_get($bank, 'bankname')) && data_get($bank, 'bankname') !== '-') 
+                            ? data_get($bank, 'bankname') 
+                            : ((!empty(data_get($bank, 'bank')) && data_get($bank, 'bank') !== '-') 
+                                ? data_get($bank, 'bank') 
+                                : (data_get($payslip, 'bank') ?: data_get($payslip, 'bankname', '-')));
+
+                        $displayAccountName = (!empty(data_get($bank, 'name')) && data_get($bank, 'name') !== '-') 
+                            ? data_get($bank, 'name') 
+                            : (data_get($payslip, 'name') ?: data_get($payslip, 'employeename', '-'));
+
+                        $displayAccountNo = (!empty(data_get($bank, 'alcnum')) && data_get($bank, 'alcnum') !== '-') 
+                            ? data_get($bank, 'alcnum') 
+                            : ((!empty(data_get($bank, 'account')) && data_get($bank, 'account') !== '-') 
+                                ? data_get($bank, 'account') 
+                                : (data_get($payslip, 'accountnumber') ?: data_get($payslip, 'alcnum', '-')));
+
+                        $displayBranch = (!empty(data_get($bank, 'branch')) && data_get($bank, 'branch') !== '-') 
+                            ? data_get($bank, 'branch') 
+                            : (data_get($payslip, 'branch') ?: '-');
+                    @endphp
                     <tr>
+                        <td class="bold">Bank Name</td>
+                        <td>{{ $displayBankName }}</td>
                         <td></td>
-                        <td></td>
-                        <td></td>
-                        <td colspan="2">NET PAY</td>
+                        <td class="bold">Account Name</td>
+                        <td>{{ $displayAccountName }}</td>
                     </tr>
                     <tr>
+                        <td class="bold">Bank Account #</td>
+                        <td>{{ $displayAccountNo }}</td>
                         <td></td>
-                        <td></td>
-                        <td></td>
-                        <td colspan="2" class="bold2" style="font-size:10px;">{{ number_format((float)($payslip->netpay ?? 0), 2) }}</td>
+                        <td class="bold">Branch</td>
+                        <td>{{ $displayBranch }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3"></td>
+                        <td class="bold2" style="text-align:center; font-weight:bold;">NET PAY</td>
+                        <td class="bold2" style="text-align:center; font-size:10px; font-weight:bold;">{{ number_format((float)($payslip->netpay ?? 0), 2) }}</td>
                     </tr>
                     <tr>
                         <td colspan="5" class="bold4"></td>

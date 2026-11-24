@@ -470,6 +470,9 @@ class PayslipController extends Controller
         $slug      = strtolower((string)($client->slug ?? ''));
         $shortName = strtolower((string)($client->short_name ?? ''));
 
+        if (str_contains($dbName, 'pz') || str_contains($slug, 'pz')) {
+            return 'payslip.pz-bulk-pdf';
+        }
         if (str_contains($dbName, 'driver') || str_contains($slug, 'driver') || str_contains($shortName, 'driver')) {
             return 'payslip.drivers-bulk-pdf';
         }
