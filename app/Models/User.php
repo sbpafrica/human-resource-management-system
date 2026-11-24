@@ -69,9 +69,21 @@ use HasFactory, Notifiable, HasRoles, HasApiTokens;
         return false;
     }
 
+    public function getIsSuperAdminAttribute($value): bool
+    {
+        if ($value) {
+            return true;
+        }
+        try {
+            return method_exists($this, 'hasRole') && ($this->hasRole('Super Admin') || $this->hasRole('super-admin'));
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     // Optional: shortcut for checking super admin in Blade/Inertia
     public function isSuperAdmin(): bool
     {
-        return $this->is_super_admin;
+        return (bool) $this->is_super_admin;
     }
 }

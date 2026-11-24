@@ -73,7 +73,12 @@ class PayrollHeadcountController extends Controller
     public function getFinancials(Request $request)
     {
         $user = $request->user();
-        if (!($user->is_super_admin ?? false)) {
+        $isSuperAdmin = (bool) (
+            ($user->is_super_admin ?? false) ||
+            (method_exists($user, 'hasRole') && ($user->hasRole('Super Admin') || $user->hasRole('super-admin'))) ||
+            in_array('Super Admin', (array)($user->getRoleNames() ? $user->getRoleNames()->toArray() : []))
+        );
+        if (!$isSuperAdmin) {
             return response()->json(['error' => 'Unauthorized. Super Admin access required.'], 403);
         }
 

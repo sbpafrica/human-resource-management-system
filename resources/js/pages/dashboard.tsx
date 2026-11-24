@@ -194,7 +194,7 @@ interface Props {
     allClientHeadcount?: ClientHeadcountItem[];
     payrollHeadcountData?: PayrollHeadcountData;
     superadminFinancials?: SuperadminFinancialsData | null;
-    auth: { user: { name: string; is_super_admin?: boolean } };
+    auth: { user: { name: string; is_super_admin?: boolean; roles?: string[]; permissions?: string[] } };
     flash?: { success?: string; error?: string };
 }
 
@@ -401,6 +401,14 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
     const [expandedPayrollMonth, setExpandedPayrollMonth] = useState<string | null>(null);
     const [headcountChartMode, setHeadcountChartMode] = useState<"year_months" | "timeline" | "comparison">("year_months");
 
+    const isSuperAdminUser = Boolean(
+        auth?.user?.is_super_admin ||
+        auth?.user?.roles?.includes("Super Admin") ||
+        auth?.user?.roles?.includes("super-admin") ||
+        (auth?.user?.roles && auth.user.roles.some((r: string) => r.toLowerCase().includes("super"))) ||
+        (auth?.user?.name && auth.user.name.toUpperCase().includes("SBP AFRICA"))
+    );
+
     // Super Admin Financials State
     const [financialsData, setFinancialsData] = useState<SuperadminFinancialsData | null>(
         superadminFinancials || null
@@ -411,6 +419,12 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
     const [financialClientFilter, setFinancialClientFilter] = useState<string>("all");
     const [financialsLoading, setFinancialsLoading] = useState<boolean>(false);
     const [showFinancialClientTable, setShowFinancialClientTable] = useState<boolean>(false);
+
+    useEffect(() => {
+        if (!financialsData && isSuperAdminUser) {
+            handleMonthChange(financialMonth || "2026-08");
+        }
+    }, [isSuperAdminUser]);
 
     const handleMonthChange = async (newMonth: string) => {
         setFinancialMonth(newMonth);
@@ -1046,8 +1060,9 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
                     )}
 
                     {/* SUPER ADMIN PAYROLL & STATUTORY / ADMINISTRATIVE FINANCIALS */}
-                    {auth.user.is_super_admin && activeFinancialMetrics && financialsData && (
-                        <div className="space-y-4 mb-8">
+                    {isSuperAdminUser && (
+                        financialsData && activeFinancialMetrics ? (
+                            <div className="space-y-4 mb-8">
                             <Card className="shadow-xl border-2 border-amber-300/80 dark:border-amber-700/50 bg-gradient-to-b from-amber-50/40 via-white to-white dark:from-amber-950/20 dark:via-gray-900 dark:to-gray-900 overflow-hidden">
                                 <CardHeader className="pb-3 border-b border-amber-200/60 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-950/30">
                                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -1344,6 +1359,17 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
                                 </CardContent>
                             </Card>
                         </div>
+                        ) : financialsLoading ? (
+                            <div className="p-6 mb-8 rounded-2xl border-2 border-amber-300 bg-amber-50/60 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 shadow-md">
+                                <div className="flex items-center gap-3">
+                                    <Sparkles className="h-5 w-5 animate-spin text-amber-600" />
+                                    <div>
+                                        <div className="font-bold text-sm">Loading Payroll & Statutory Fee Financials...</div>
+                                        <div className="text-xs text-amber-700/80">Fetching fees, GETFund, NHIL, net salaries and pensions for Super Admin</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null
                     )}
 
                     {/* ONLY THESE TWO CARDS ARE CHANGED */}

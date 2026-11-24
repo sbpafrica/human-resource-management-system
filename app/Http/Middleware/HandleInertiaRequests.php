@@ -62,7 +62,11 @@ class HandleInertiaRequests extends Middleware
                     'id'              => $user->id,
                     'name'            => $user->name,
                     'email'           => $user->email,
-                    'is_super_admin'  => (bool) $user->is_super_admin,
+                    'is_super_admin'  => (bool) (
+                        $user->is_super_admin ||
+                        (method_exists($user, 'hasRole') && ($user->hasRole('Super Admin') || $user->hasRole('super-admin'))) ||
+                        in_array('Super Admin', (array)($user->getRoleNames() ? $user->getRoleNames()->toArray() : []))
+                    ),
 
                     'roles'       => $user->getRoleNames()->toArray(),
                     'permissions' => (function () use ($user) {

@@ -17,7 +17,17 @@ class DashboardController extends Controller
     {
      
         $user         = $request->user();
-        $isSuperAdmin = (bool) ($user->is_super_admin ?? false);
+        $isSuperAdmin = (bool) (
+            ($user->is_super_admin ?? false) ||
+            (method_exists($user, 'hasRole') && ($user->hasRole('Super Admin') || $user->hasRole('super-admin'))) ||
+            in_array('Super Admin', (array)($user->getRoleNames() ? $user->getRoleNames()->toArray() : []))
+        );
+        // Self-heal: ensure is_super_admin column in DB is 1 for super admin
+        if ($isSuperAdmin && empty($user->getRawOriginal('is_super_admin'))) {
+            try {
+                \Illuminate\Support\Facades\DB::table('users')->where('id', $user->id)->update(['is_super_admin' => 1]);
+            } catch (\Throwable $e) {}
+        }
 
         // ====================================================================
         // ALLOWED CLIENTS — active only.
