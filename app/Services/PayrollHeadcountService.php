@@ -368,4 +368,184 @@ class PayrollHeadcountService
 
         return $query->select($selects)->limit(200)->get()->toArray();
     }
+
+    /**
+     * Compute Super Admin Financials (Admin/Principal fee, GETFund, NHIL, Net Salary, SSNIT, Petra, Tier 3)
+     * for a given month across all clients or for a selected client.
+     */
+    public function getFinancialsForMonth($allowedClients, ?string $yearMonth = null): array
+    {
+        $date = Carbon::now();
+        $availableMonths = [];
+
+        // Find available months over the last 24 months
+        for ($i = 0; $i < 24; $i++) {
+            $checkDate = $date->copy()->subMonths($i);
+            $ym = $checkDate->format('Y-m');
+            $availableMonths[$ym] = [
+                'key'   => $ym,
+                'label' => $checkDate->format('F Y'),
+                'year'  => (int)$checkDate->format('Y'),
+                'month' => (int)$checkDate->format('m'),
+            ];
+        }
+
+        // Default to August 2026 if no month specified and current month is sparse, or user-selected month
+        if (!$yearMonth) {
+            $yearMonth = '2026-08';
+        }
+
+        $selectedDate = Carbon::createFromFormat('Y-m', $yearMonth);
+        $fullMonth = strtolower($selectedDate->format('F'));
+        $shortMonth = strtolower($selectedDate->format('M'));
+        $yy = $selectedDate->format('y');
+
+        $findCol = function ($cols, $candidates) {
+            $colsLower = array_map('strtolower', $cols);
+            foreach ($candidates as $cand) {
+                $idx = array_search(strtolower($cand), $colsLower, true);
+                if ($idx !== false) {
+                    return $cols[$idx];
+                }
+            }
+            return null;
+        };
+
+        $grand = [
+            'count'         => 0,
+            'admin_fee'     => 0.0,
+            'getfund'       => 0.0,
+            'nhil'          => 0.0,
+            'net_salary'    => 0.0,
+            'ssnit_ee'      => 0.0,
+            'ssnit_er'      => 0.0,
+            'ssnit_total'   => 0.0,
+            'petra'         => 0.0,
+            'tier_3'        => 0.0,
+            'total_cost'    => 0.0,
+            'clients_count' => 0,
+        ];
+
+        $byClient = [];
+
+        foreach ($allowedClients as $client) {
+            $prefix = strtolower(trim($client->client_dbname ?? ''));
+            if (!$prefix) {
+                continue;
+            }
+            if (
+                str_contains($prefix, 'benin') ||
+                str_contains($prefix, 'togo') ||
+                str_contains($prefix, 'civ') ||
+                str_contains($prefix, 'transburkina')
+            ) {
+                continue;
+            }
+
+            $candidates = [
+                "{$prefix}{$fullMonth}{$yy}pay",
+                "{$prefix}{$fullMonth}{$yy}",
+                "{$prefix}{$shortMonth}{$yy}pay",
+                "{$prefix}{$shortMonth}{$yy}",
+                "{$prefix}sept{$yy}pay",
+                "{$prefix}sept{$yy}",
+            ];
+
+            foreach ($candidates as $tbl) {
+                if (Schema::hasTable($tbl)) {
+                    $cols = Schema::getColumnListing($tbl);
+                    $adminFeeCol = $findCol($cols, ['management_fee', 'management_fee_8', 'management_fee_10', 'managementfee_8', 'management_fee_5_percent', 'management_fee_8_percent', 'mgt_fee', 'admin_fee', 'adminfee']);
+                    $getfundCol  = $findCol($cols, ['getfund', 'getfund_2_5', 'getfund_2_5_percent']);
+                    $nhilCol     = $findCol($cols, ['nhil', 'nhil_2_5', 'nhil_2_5_percent']);
+                    $netSalaryCol= $findCol($cols, ['netpay', 'net_pay', 'net_salary', 'takehomepay', 'takehomepay_ghc', 'banktransfer']);
+                    $ssnitEeCol  = $findCol($cols, ['ssnitee', 'ssnit_ee', 'ssnit_ee_5_5', 'ssnitee_0_5', 'ssnit_5_5_percent', 'ssnitamt']);
+                    $ssnitErCol  = $findCol($cols, ['ssniter', 'ssnit_er', 'ssf_13', 'ssnit_er_13_percent', 'emp_ssnit_13_percent', 'ssf']);
+                    $petraCol    = $findCol($cols, ['petra', 'petra_5', 'petra_5_percent', 'petraorg']);
+                    $tier3Col    = $findCol($cols, ['pf', 'trust', 'strust', 'provident_fund', 'tier_3', 'tier3']);
+
+                    $selects = [];
+                    $selects[] = $adminFeeCol ? "SUM(COALESCE(`$adminFeeCol`, 0)) as admin_fee" : "0 as admin_fee";
+                    $selects[] = $getfundCol  ? "SUM(COALESCE(`$getfundCol`, 0)) as getfund"   : "0 as getfund";
+                    $selects[] = $nhilCol     ? "SUM(COALESCE(`$nhilCol`, 0)) as nhil"         : "0 as nhil";
+                    $selects[] = $netSalaryCol? "SUM(COALESCE(`$netSalaryCol`, 0)) as net_salary" : "0 as net_salary";
+                    $selects[] = $ssnitEeCol  ? "SUM(COALESCE(`$ssnitEeCol`, 0)) as ssnit_ee" : "0 as ssnit_ee";
+                    $selects[] = $ssnitErCol  ? "SUM(COALESCE(`$ssnitErCol`, 0)) as ssnit_er" : "0 as ssnit_er";
+                    $selects[] = $petraCol    ? "SUM(COALESCE(`$petraCol`, 0)) as petra"       : "0 as petra";
+                    $selects[] = $tier3Col    ? "SUM(COALESCE(`$tier3Col`, 0)) as tier_3"     : "0 as tier_3";
+                    $selects[] = "COUNT(*) as count";
+
+                    try {
+                        $row = DB::table($tbl)->selectRaw(implode(', ', $selects))->first();
+                        $cnt = (int)($row->count ?? 0);
+                        if ($cnt > 0) {
+                            $adminFee  = round((float)($row->admin_fee ?? 0), 2);
+                            $getfund   = round((float)($row->getfund ?? 0), 2);
+                            $nhil      = round((float)($row->nhil ?? 0), 2);
+                            $netSalary = round((float)($row->net_salary ?? 0), 2);
+                            $ssnitEe   = round((float)($row->ssnit_ee ?? 0), 2);
+                            $ssnitEr   = round((float)($row->ssnit_er ?? 0), 2);
+                            $ssnitTot  = round($ssnitEe + $ssnitEr, 2);
+                            $petra     = round((float)($row->petra ?? 0), 2);
+                            $tier3     = round((float)($row->tier_3 ?? 0), 2);
+                            $totCost   = round($netSalary + $adminFee + $getfund + $nhil + $ssnitTot + $petra + $tier3, 2);
+
+                            $cItem = [
+                                'client_id'   => $client->id,
+                                'client_name' => $client->client_name,
+                                'short_name'  => $client->short_name ?? $client->client_name,
+                                'table'       => $tbl,
+                                'count'       => $cnt,
+                                'admin_fee'   => $adminFee,
+                                'getfund'     => $getfund,
+                                'nhil'        => $nhil,
+                                'net_salary'  => $netSalary,
+                                'ssnit_ee'    => $ssnitEe,
+                                'ssnit_er'    => $ssnitEr,
+                                'ssnit_total' => $ssnitTot,
+                                'petra'       => $petra,
+                                'tier_3'      => $tier3,
+                                'total_cost'  => $totCost,
+                            ];
+
+                            $byClient[] = $cItem;
+
+                            $grand['count']       += $cnt;
+                            $grand['admin_fee']   += $adminFee;
+                            $grand['getfund']     += $getfund;
+                            $grand['nhil']        += $nhil;
+                            $grand['net_salary']  += $netSalary;
+                            $grand['ssnit_ee']    += $ssnitEe;
+                            $grand['ssnit_er']    += $ssnitEr;
+                            $grand['ssnit_total'] += $ssnitTot;
+                            $grand['petra']       += $petra;
+                            $grand['tier_3']      += $tier3;
+                            $grand['total_cost']  += $totCost;
+                            $grand['clients_count']++;
+                            break;
+                        }
+                    } catch (\Throwable $e) {
+                        // Table read failed
+                    }
+                }
+            }
+        }
+
+        // Round grand totals
+        foreach ($grand as $k => &$v) {
+            if ($k !== 'count' && $k !== 'clients_count') {
+                $v = round($v, 2);
+            }
+        }
+        unset($v);
+
+        usort($byClient, fn($a, $b) => $b['count'] <=> $a['count']);
+
+        return [
+            'month'            => $yearMonth,
+            'month_label'      => $selectedDate->format('F Y'),
+            'available_months' => array_values($availableMonths),
+            'grand_total'      => $grand,
+            'by_client'        => $byClient,
+        ];
+    }
 }

@@ -20,6 +20,11 @@ import {
     ArrowUpRight,
     ArrowDownRight,
     ExternalLink,
+    Lock,
+    DollarSign,
+    Receipt,
+    Sparkles,
+    Download,
 } from "lucide-react";
 import AppLayout from "@/layouts/app-layout";
 import { Button } from "@/components/ui/button";
@@ -142,11 +147,53 @@ interface PayrollHeadcountData {
     };
 }
 
+interface SuperadminFinancialClient {
+    client_id: number;
+    client_name: string;
+    short_name: string;
+    table: string;
+    count: number;
+    admin_fee: number;
+    getfund: number;
+    nhil: number;
+    net_salary: number;
+    ssnit_ee: number;
+    ssnit_er: number;
+    ssnit_total: number;
+    petra: number;
+    tier_3: number;
+    total_cost: number;
+}
+
+interface SuperadminFinancialTotals {
+    count: number;
+    admin_fee: number;
+    getfund: number;
+    nhil: number;
+    net_salary: number;
+    ssnit_ee: number;
+    ssnit_er: number;
+    ssnit_total: number;
+    petra: number;
+    tier_3: number;
+    total_cost: number;
+    clients_count: number;
+}
+
+interface SuperadminFinancialsData {
+    month: string;
+    month_label: string;
+    available_months: { key: string; label: string; year: number; month: number }[];
+    grand_total: SuperadminFinancialTotals;
+    by_client: SuperadminFinancialClient[];
+}
+
 interface Props {
     complianceData?: Partial<ComplianceData>;
     clientSummary?: ClientSummaryItem[];
     allClientHeadcount?: ClientHeadcountItem[];
     payrollHeadcountData?: PayrollHeadcountData;
+    superadminFinancials?: SuperadminFinancialsData | null;
     auth: { user: { name: string; is_super_admin?: boolean } };
     flash?: { success?: string; error?: string };
 }
@@ -159,6 +206,7 @@ export default function Dashboard({
     clientSummary = [],
     allClientHeadcount = [],
     payrollHeadcountData,
+    superadminFinancials,
     auth,
     flash,
 }: Props) {
@@ -352,6 +400,106 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
     );
     const [expandedPayrollMonth, setExpandedPayrollMonth] = useState<string | null>(null);
     const [headcountChartMode, setHeadcountChartMode] = useState<"year_months" | "timeline" | "comparison">("year_months");
+
+    // Super Admin Financials State
+    const [financialsData, setFinancialsData] = useState<SuperadminFinancialsData | null>(
+        superadminFinancials || null
+    );
+    const [financialMonth, setFinancialMonth] = useState<string>(
+        superadminFinancials?.month || "2026-08"
+    );
+    const [financialClientFilter, setFinancialClientFilter] = useState<string>("all");
+    const [financialsLoading, setFinancialsLoading] = useState<boolean>(false);
+    const [showFinancialClientTable, setShowFinancialClientTable] = useState<boolean>(false);
+
+    const handleMonthChange = async (newMonth: string) => {
+        setFinancialMonth(newMonth);
+        setFinancialsLoading(true);
+        try {
+            const res = await fetch(`/payroll-financials?month=${encodeURIComponent(newMonth)}`);
+            if (res.ok) {
+                const data = await res.json();
+                setFinancialsData(data);
+                setFinancialClientFilter("all");
+            }
+        } catch (e) {
+            console.error("Failed to fetch financials for month", e);
+        } finally {
+            setFinancialsLoading(false);
+        }
+    };
+
+    const activeFinancialMetrics = useMemo(() => {
+        if (!financialsData) return null;
+        if (financialClientFilter === "all") {
+            return {
+                title: `All Clients (${financialsData.grand_total.clients_count} Active)`,
+                is_all: true,
+                client_name: "All Clients Combined",
+                ...financialsData.grand_total,
+            };
+        }
+        const found = financialsData.by_client.find(
+            (c) => c.client_name === financialClientFilter || String(c.client_id) === financialClientFilter
+        );
+        if (found) {
+            return {
+                title: found.client_name,
+                is_all: false,
+                client_name: found.client_name,
+                ...found,
+                clients_count: 1,
+            };
+        }
+        return {
+            title: `All Clients (${financialsData.grand_total.clients_count} Active)`,
+            is_all: true,
+            client_name: "All Clients Combined",
+            ...financialsData.grand_total,
+        };
+    }, [financialsData, financialClientFilter]);
+
+    const handleExportFinancialsCSV = () => {
+        if (!financialsData) return;
+        const rows = financialsData.by_client.map((c) => ({
+            "Client Name": c.client_name,
+            "Payroll Table": c.table,
+            "Employees Count": c.count,
+            "Net Salary (GHS)": c.net_salary,
+            "Principal / Admin Fee (GHS)": c.admin_fee,
+            "GETFund 2.5% (GHS)": c.getfund,
+            "NHIL 2.5% (GHS)": c.nhil,
+            "SSNIT EE 5.5% (GHS)": c.ssnit_ee,
+            "SSNIT ER 13% (GHS)": c.ssnit_er,
+            "SSNIT Tier 1 Total (GHS)": c.ssnit_total,
+            "Petra Tier 2 (GHS)": c.petra,
+            "Tier 3 / PF (GHS)": c.tier_3,
+            "Total Payroll & Fee Cost (GHS)": c.total_cost,
+        }));
+
+        rows.push({
+            "Client Name": "GRAND TOTAL",
+            "Payroll Table": "-",
+            "Employees Count": financialsData.grand_total.count,
+            "Net Salary (GHS)": financialsData.grand_total.net_salary,
+            "Principal / Admin Fee (GHS)": financialsData.grand_total.admin_fee,
+            "GETFund 2.5% (GHS)": financialsData.grand_total.getfund,
+            "NHIL 2.5% (GHS)": financialsData.grand_total.nhil,
+            "SSNIT EE 5.5% (GHS)": financialsData.grand_total.ssnit_ee,
+            "SSNIT ER 13% (GHS)": financialsData.grand_total.ssnit_er,
+            "SSNIT Tier 1 Total (GHS)": financialsData.grand_total.ssnit_total,
+            "Petra Tier 2 (GHS)": financialsData.grand_total.petra,
+            "Tier 3 / PF (GHS)": financialsData.grand_total.tier_3,
+            "Total Payroll & Fee Cost (GHS)": financialsData.grand_total.total_cost,
+        });
+
+        const csv = Papa.unparse(rows);
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `payroll_financials_${financialsData.month}.csv`;
+        link.click();
+    };
 
     const activeYearSummary = useMemo(() => {
         return (
@@ -892,6 +1040,307 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
                                             <Line data={headcountChartData} options={chartOptions} />
                                         </div>
                                     </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
+
+                    {/* SUPER ADMIN PAYROLL & STATUTORY / ADMINISTRATIVE FINANCIALS */}
+                    {auth.user.is_super_admin && activeFinancialMetrics && financialsData && (
+                        <div className="space-y-4 mb-8">
+                            <Card className="shadow-xl border-2 border-amber-300/80 dark:border-amber-700/50 bg-gradient-to-b from-amber-50/40 via-white to-white dark:from-amber-950/20 dark:via-gray-900 dark:to-gray-900 overflow-hidden">
+                                <CardHeader className="pb-3 border-b border-amber-200/60 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-950/30">
+                                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 rounded-xl bg-amber-500 text-white shadow-md shadow-amber-500/20">
+                                                <Lock className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <CardTitle className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                                        Payroll & Statutory Fee Financials
+                                                    </CardTitle>
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-200/80 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200">
+                                                        <Sparkles className="h-3 w-3" /> Super Admin Only
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                                                    Principal administrative fees, GETFund, NHIL, net salary & Tier 1/2/3 statutory levies
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                            {/* Payroll Month / Cycle Dropdown */}
+                                            <div className="flex items-center gap-1.5 bg-white dark:bg-gray-800 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                                                <span className="text-xs text-gray-500 font-medium">Cycle:</span>
+                                                <select
+                                                    value={financialMonth}
+                                                    onChange={(e) => handleMonthChange(e.target.value)}
+                                                    disabled={financialsLoading}
+                                                    className="text-xs font-bold text-gray-800 dark:text-gray-200 bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer"
+                                                >
+                                                    {financialsData.available_months?.map((m) => (
+                                                        <option key={m.key} value={m.key}>
+                                                            {m.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            {/* Client Selector ("when the super admin select") */}
+                                            <div className="flex items-center gap-1.5 bg-white dark:bg-gray-800 px-2.5 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 shadow-sm">
+                                                <span className="text-xs text-amber-800 dark:text-amber-300 font-semibold">Client:</span>
+                                                <select
+                                                    value={financialClientFilter}
+                                                    onChange={(e) => setFinancialClientFilter(e.target.value)}
+                                                    className="text-xs font-bold text-gray-800 dark:text-gray-200 bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer max-w-[200px] truncate"
+                                                >
+                                                    <option value="all">★ All Clients Combined ({financialsData.grand_total.clients_count})</option>
+                                                    {financialsData.by_client?.map((c) => (
+                                                        <option key={c.client_id} value={c.client_name}>
+                                                            {c.client_name} ({c.count} staff)
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            {/* CSV Export Button */}
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleExportFinancialsCSV}
+                                                className="h-8 px-2.5 text-xs border-gray-300 hover:bg-amber-100/50 dark:hover:bg-amber-900/40 text-gray-700 dark:text-gray-300 flex items-center gap-1.5"
+                                            >
+                                                <Download className="h-3.5 w-3.5 text-amber-600" />
+                                                <span>Export CSV</span>
+                                            </Button>
+
+                                            {/* Toggle Client Breakdown Table */}
+                                            <Button
+                                                variant={showFinancialClientTable ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={() => setShowFinancialClientTable(!showFinancialClientTable)}
+                                                className={`h-8 px-2.5 text-xs flex items-center gap-1.5 ${
+                                                    showFinancialClientTable
+                                                        ? "bg-amber-600 hover:bg-amber-700 text-white"
+                                                        : "border-amber-300 text-amber-800 dark:text-amber-300 hover:bg-amber-50"
+                                                }`}
+                                            >
+                                                <Receipt className="h-3.5 w-3.5" />
+                                                <span>{showFinancialClientTable ? "Hide Table" : "Client Table"}</span>
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+
+                                <CardContent className="p-4 sm:p-6 space-y-6">
+                                    {/* Subheader info showing currently selected scope */}
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-800 text-xs">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-500">Active View:</span>
+                                            <span className="font-extrabold text-amber-700 dark:text-amber-400">
+                                                {activeFinancialMetrics.client_name}
+                                            </span>
+                                            <span className="text-gray-400">|</span>
+                                            <span className="text-gray-500">Period:</span>
+                                            <span className="font-bold text-gray-700 dark:text-gray-300">{financialsData.month_label}</span>
+                                            <span className="text-gray-400">|</span>
+                                            <span className="text-gray-500">Staff Count:</span>
+                                            <span className="font-bold text-emerald-600 font-mono">
+                                                {Number(activeFinancialMetrics.count).toLocaleString()}
+                                            </span>
+                                        </div>
+                                        {financialsLoading && (
+                                            <span className="text-amber-600 font-semibold animate-pulse">Updating metrics...</span>
+                                        )}
+                                    </div>
+
+                                    {/* 8 Metric Cards Grid */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                                        {/* 1. Principal / Admin Fee */}
+                                        <div className="p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/30">
+                                            <div className="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">
+                                                Principal / Admin Fee
+                                            </div>
+                                            <div className="mt-2 text-xl font-black text-amber-950 dark:text-amber-100 font-mono">
+                                                GHS {Number(activeFinancialMetrics.admin_fee || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                            <p className="mt-1 text-[10px] text-amber-700/80 dark:text-amber-400/80">
+                                                Management fee charge
+                                            </p>
+                                        </div>
+
+                                        {/* 2. GETFund */}
+                                        <div className="p-3.5 rounded-xl bg-orange-50/80 dark:bg-orange-950/20 border border-orange-200/80 dark:border-orange-900/30">
+                                            <div className="text-[11px] font-bold uppercase tracking-wider text-orange-800 dark:text-orange-400">
+                                                GETFund (2.5%)
+                                            </div>
+                                            <div className="mt-2 text-xl font-black text-orange-950 dark:text-orange-100 font-mono">
+                                                GHS {Number(activeFinancialMetrics.getfund || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                            <p className="mt-1 text-[10px] text-orange-700/80 dark:text-orange-400/80">
+                                                Statutory education levy
+                                            </p>
+                                        </div>
+
+                                        {/* 3. NHIL */}
+                                        <div className="p-3.5 rounded-xl bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-900/30">
+                                            <div className="text-[11px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-400">
+                                                NHIL (2.5%)
+                                            </div>
+                                            <div className="mt-2 text-xl font-black text-rose-950 dark:text-rose-100 font-mono">
+                                                GHS {Number(activeFinancialMetrics.nhil || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                            <p className="mt-1 text-[10px] text-rose-700/80 dark:text-rose-400/80">
+                                                National health insurance levy
+                                            </p>
+                                        </div>
+
+                                        {/* 4. Total Net Salary */}
+                                        <div className="p-3.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-900/30">
+                                            <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
+                                                Total Net Salary
+                                            </div>
+                                            <div className="mt-2 text-xl font-black text-emerald-950 dark:text-emerald-100 font-mono">
+                                                GHS {Number(activeFinancialMetrics.net_salary || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                            <p className="mt-1 text-[10px] text-emerald-700/80 dark:text-emerald-400/80">
+                                                Take-home bank disbursements
+                                            </p>
+                                        </div>
+
+                                        {/* 5. SSNIT Tier 1 (EE + ER) */}
+                                        <div className="p-3.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-900/30">
+                                            <div className="flex items-center justify-between">
+                                                <div className="text-[11px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-400">
+                                                    SSNIT (Tier 1 Total)
+                                                </div>
+                                                <span className="text-[10px] font-bold text-blue-600 bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 rounded">
+                                                    13.5%
+                                                </span>
+                                            </div>
+                                            <div className="mt-2 text-xl font-black text-blue-950 dark:text-blue-100 font-mono">
+                                                GHS {Number(activeFinancialMetrics.ssnit_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                            <p className="mt-1 text-[10px] text-blue-700/80 dark:text-blue-400/80 truncate">
+                                                EE 5.5%: GHS {Number(activeFinancialMetrics.ssnit_ee || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} | ER 13%: GHS {Number(activeFinancialMetrics.ssnit_er || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </p>
+                                        </div>
+
+                                        {/* 6. Petra (Tier 2) */}
+                                        <div className="p-3.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-900/30">
+                                            <div className="flex items-center justify-between">
+                                                <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-800 dark:text-indigo-400">
+                                                    Petra (Tier 2)
+                                                </div>
+                                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 dark:bg-indigo-900/50 px-1.5 py-0.5 rounded">
+                                                    5%
+                                                </span>
+                                            </div>
+                                            <div className="mt-2 text-xl font-black text-indigo-950 dark:text-indigo-100 font-mono">
+                                                GHS {Number(activeFinancialMetrics.petra || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                            <p className="mt-1 text-[10px] text-indigo-700/80 dark:text-indigo-400/80">
+                                                Mandatory occupational pension
+                                            </p>
+                                        </div>
+
+                                        {/* 7. Tier 3 / Provident Fund */}
+                                        <div className="p-3.5 rounded-xl bg-purple-50/80 dark:bg-purple-950/20 border border-purple-200/80 dark:border-purple-900/30">
+                                            <div className="text-[11px] font-bold uppercase tracking-wider text-purple-800 dark:text-purple-400">
+                                                Tier 3 (Provident Fund)
+                                            </div>
+                                            <div className="mt-2 text-xl font-black text-purple-950 dark:text-purple-100 font-mono">
+                                                GHS {Number(activeFinancialMetrics.tier_3 || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                            <p className="mt-1 text-[10px] text-purple-700/80 dark:text-purple-400/80">
+                                                Voluntary pension / provident fund
+                                            </p>
+                                        </div>
+
+                                        {/* 8. Total Payroll & Fee Cost */}
+                                        <div className="p-3.5 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 text-white shadow-md shadow-amber-600/20">
+                                            <div className="text-[11px] font-bold uppercase tracking-wider text-amber-100">
+                                                Total Payroll & Cost
+                                            </div>
+                                            <div className="mt-2 text-xl font-black text-white font-mono">
+                                                GHS {Number(activeFinancialMetrics.total_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                            <p className="mt-1 text-[10px] text-amber-200">
+                                                Net salaries + admin fees + levies
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Collapsible Client Breakdown Table */}
+                                    {showFinancialClientTable && financialsData.by_client?.length > 0 && (
+                                        <div className="pt-2">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                                                    Client-by-Client Financial Breakdown ({financialsData.by_client.length} Active Clients)
+                                                </h4>
+                                                <span className="text-[11px] text-gray-500">Amounts in GHS</span>
+                                            </div>
+                                            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-gray-700">
+                                                        <tr>
+                                                            <th className="py-2.5 px-3">Client</th>
+                                                            <th className="py-2.5 px-2 text-right">Staff</th>
+                                                            <th className="py-2.5 px-2 text-right">Net Salary</th>
+                                                            <th className="py-2.5 px-2 text-right">Admin Fee</th>
+                                                            <th className="py-2.5 px-2 text-right">GETFund</th>
+                                                            <th className="py-2.5 px-2 text-right">NHIL</th>
+                                                            <th className="py-2.5 px-2 text-right">SSNIT (Tier 1)</th>
+                                                            <th className="py-2.5 px-2 text-right">Petra (Tier 2)</th>
+                                                            <th className="py-2.5 px-2 text-right">Tier 3</th>
+                                                            <th className="py-2.5 px-3 text-right">Total Cost</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                                        {financialsData.by_client.map((c) => (
+                                                            <tr
+                                                                key={c.client_id}
+                                                                onClick={() => setFinancialClientFilter(c.client_name)}
+                                                                className={`hover:bg-amber-50/50 dark:hover:bg-amber-950/20 cursor-pointer transition-colors ${
+                                                                    financialClientFilter === c.client_name ? "bg-amber-100/50 dark:bg-amber-950/40 font-semibold" : ""
+                                                                }`}
+                                                            >
+                                                                <td className="py-2 px-3">
+                                                                    <div className="font-medium text-gray-900 dark:text-gray-100">{c.client_name}</div>
+                                                                    <div className="text-[10px] text-gray-400 font-mono">{c.table}</div>
+                                                                </td>
+                                                                <td className="py-2 px-2 text-right font-mono font-bold text-emerald-600">{c.count}</td>
+                                                                <td className="py-2 px-2 text-right font-mono">{Number(c.net_salary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                                <td className="py-2 px-2 text-right font-mono text-amber-700 dark:text-amber-400">{Number(c.admin_fee).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                                <td className="py-2 px-2 text-right font-mono">{Number(c.getfund).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                                <td className="py-2 px-2 text-right font-mono">{Number(c.nhil).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                                <td className="py-2 px-2 text-right font-mono text-blue-600">{Number(c.ssnit_total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                                <td className="py-2 px-2 text-right font-mono text-indigo-600">{Number(c.petra).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                                <td className="py-2 px-2 text-right font-mono text-purple-600">{Number(c.tier_3).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                                <td className="py-2 px-3 text-right font-mono font-bold text-gray-900 dark:text-gray-100">{Number(c.total_cost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                    <tfoot className="bg-amber-50 dark:bg-amber-950/40 font-bold border-t-2 border-amber-300 dark:border-amber-700">
+                                                        <tr>
+                                                            <td className="py-2.5 px-3 uppercase text-amber-900 dark:text-amber-200">GRAND TOTAL</td>
+                                                            <td className="py-2.5 px-2 text-right font-mono text-emerald-700">{financialsData.grand_total.count}</td>
+                                                            <td className="py-2.5 px-2 text-right font-mono">{Number(financialsData.grand_total.net_salary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                            <td className="py-2.5 px-2 text-right font-mono text-amber-800 dark:text-amber-300">{Number(financialsData.grand_total.admin_fee).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                            <td className="py-2.5 px-2 text-right font-mono">{Number(financialsData.grand_total.getfund).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                            <td className="py-2.5 px-2 text-right font-mono">{Number(financialsData.grand_total.nhil).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                            <td className="py-2.5 px-2 text-right font-mono text-blue-700">{Number(financialsData.grand_total.ssnit_total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                            <td className="py-2.5 px-2 text-right font-mono text-indigo-700">{Number(financialsData.grand_total.petra).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                            <td className="py-2.5 px-2 text-right font-mono text-purple-700">{Number(financialsData.grand_total.tier_3).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                            <td className="py-2.5 px-3 text-right font-mono font-black text-amber-950 dark:text-amber-100">{Number(financialsData.grand_total.total_cost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         </div>

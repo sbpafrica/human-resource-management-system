@@ -61,6 +61,7 @@ class DashboardController extends Controller
                 'clientSummary'        => [],
                 'allClientHeadcount'   => [],
                 'payrollHeadcountData' => null,
+                'superadminFinancials' => null,
                 'flash'                => $this->getFlash($request),
             ]);
         }
@@ -359,6 +360,14 @@ class DashboardController extends Controller
             $request->filled('payroll_year') ? (int)$request->input('payroll_year') : null
         );
 
+        $superadminFinancials = null;
+        if ($isSuperAdmin) {
+            $superadminFinancials = $headcountService->getFinancialsForMonth(
+                $allowedClients,
+                $request->input('financial_month')
+            );
+        }
+
         if (empty($currentTables)) {
             $emptyData = $this->getEmptyComplianceData();
             $emptyData['totalEmployees'] = [
@@ -372,6 +381,7 @@ class DashboardController extends Controller
                 'clientSummary'        => [],
                 'allClientHeadcount'   => $allClientHeadcount,
                 'payrollHeadcountData' => $payrollHeadcountData,
+                'superadminFinancials' => $superadminFinancials,
                 'flash'                => $this->getFlash($request),
             ]);
         }
@@ -672,6 +682,7 @@ class DashboardController extends Controller
             'clientSummary'        => $clientSummary,
             'allClientHeadcount'   => $allClientHeadcount,
             'payrollHeadcountData' => $payrollHeadcountData,
+            'superadminFinancials' => $superadminFinancials,
             'flash'                => $this->getFlash($request),
         ]);
     }

@@ -312,6 +312,7 @@ Route::post('/roles', [App\Http\Controllers\Admin\RoleController::class, 'store'
     // Payroll Headcount (Monthly & Yearly Analytics)
     Route::get('/payroll-headcount', [\App\Http\Controllers\PayrollHeadcountController::class, 'index'])->name('payroll-headcount.index');
     Route::get('/payroll-headcount/employees', [\App\Http\Controllers\PayrollHeadcountController::class, 'getEmployees'])->name('payroll-headcount.employees');
+    Route::get('/payroll-financials', [\App\Http\Controllers\PayrollHeadcountController::class, 'getFinancials'])->name('payroll-financials.data');
 
 
     // SSNIT Details Routes

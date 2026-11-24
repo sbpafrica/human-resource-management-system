@@ -69,4 +69,19 @@ class PayrollHeadcountController extends Controller
             'employees' => $employees,
         ]);
     }
+
+    public function getFinancials(Request $request)
+    {
+        $user = $request->user();
+        if (!($user->is_super_admin ?? false)) {
+            return response()->json(['error' => 'Unauthorized. Super Admin access required.'], 403);
+        }
+
+        $allowedClients = \App\Models\Client::where('is_active', true)->get();
+        $month = $request->input('month');
+
+        $data = $this->service->getFinancialsForMonth($allowedClients, $month);
+
+        return response()->json($data);
+    }
 }
