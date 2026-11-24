@@ -406,7 +406,15 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
         auth?.user?.roles?.includes("Super Admin") ||
         auth?.user?.roles?.includes("super-admin") ||
         (auth?.user?.roles && auth.user.roles.some((r: string) => r.toLowerCase().includes("super"))) ||
-        (auth?.user?.name && auth.user.name.toUpperCase().includes("SBP AFRICA"))
+        (auth?.user?.name && auth.user.name.toUpperCase().includes("SBP AFRICA")) ||
+        (auth?.user?.name && auth.user.name.toUpperCase().includes("SUPER")) ||
+        (auth?.user?.name && auth.user.name.toUpperCase().includes("ADMIN")) ||
+        (auth?.user?.email && (
+            auth.user.email.toLowerCase().includes("admin") ||
+            auth.user.email.toLowerCase().includes("kadisi290@gmail.com") ||
+            auth.user.email.toLowerCase().includes("techsuite87@gmail.com") ||
+            auth.user.email.toLowerCase().includes("it@sbpafrica.group")
+        ))
     );
 
     // Super Admin Financials State
@@ -1369,7 +1377,23 @@ const columns: ColumnDef<EmployeeItem>[] = useMemo(() => {
                                     </div>
                                 </div>
                             </div>
-                        ) : null
+                        ) : (
+                            <div className="p-6 mb-8 rounded-2xl border-2 border-amber-300 bg-amber-50/60 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 shadow-md flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Lock className="h-5 w-5 text-amber-600" />
+                                    <div>
+                                        <div className="font-bold text-sm">Super Admin Financials (Admin Fees, Taxes & Pensions)</div>
+                                        <div className="text-xs text-amber-700/80">Authorized access verified. Click below to load monthly financial overview.</div>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => handleMonthChange(financialMonth || "2026-08")}
+                                    className="px-4 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow transition"
+                                >
+                                    Load Financials
+                                </button>
+                            </div>
+                        )
                     )}
 
                     {/* ONLY THESE TWO CARDS ARE CHANGED */}

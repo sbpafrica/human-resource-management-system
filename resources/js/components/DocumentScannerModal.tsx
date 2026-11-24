@@ -53,7 +53,7 @@ export default function DocumentScannerModal({ isOpen, onClose, onSuccess }: Doc
     } | null>(null);
     const [staffId, setStaffId] = useState('');
     const [formData, setFormData] = useState<ExtractedData>({});
-    const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
     if (!isOpen) return null;
 
@@ -71,13 +71,28 @@ export default function DocumentScannerModal({ isOpen, onClose, onSuccess }: Doc
         if (!selectedFile) return;
 
         setIsScanning(true);
-        setStatusMessage(null);
+        setStatusMessage({ type: 'info', text: 'Reading image and extracting optical characters...' });
+
+        let rawOcrText = '';
+        if (selectedFile.type.startsWith('image/')) {
+            try {
+                const Tesseract = (await import('tesseract.js')).default;
+                const { data } = await Tesseract.recognize(selectedFile, 'eng');
+                rawOcrText = data?.text || '';
+            } catch (ocrErr) {
+                console.warn('Client OCR notice:', ocrErr);
+            }
+        }
 
         const uploadData = new FormData();
         uploadData.append('file', selectedFile);
         uploadData.append('document_type', documentType);
+        if (rawOcrText) {
+            uploadData.append('raw_text', rawOcrText);
+        }
 
         try {
+            setStatusMessage({ type: 'info', text: 'Analyzing extracted text with AI document intelligence...' });
             const res = await fetch('/document-ai/scan', {
                 method: 'POST',
                 headers: {
@@ -90,6 +105,9 @@ export default function DocumentScannerModal({ isOpen, onClose, onSuccess }: Doc
             if (data.success) {
                 setScanResult(data);
                 setFormData(data.extracted || {});
+                if (data.document_type && ['ghana_card', 'bank_document', 'contract', 'ssnit_card'].includes(data.document_type)) {
+                    setDocumentType(data.document_type);
+                }
                 setStatusMessage({
                     type: 'success',
                     text: `Successfully scanned ${data.document_type.replace('_', ' ').toUpperCase()} (${Math.round(data.confidence * 100)}% confidence).`,
@@ -365,11 +383,15 @@ export default function DocumentScannerModal({ isOpen, onClose, onSuccess }: Doc
                                         className={`p-2.5 rounded-lg text-xs mb-3 flex items-center gap-2 ${
                                             statusMessage.type === 'success'
                                                 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                                : statusMessage.type === 'info'
+                                                ? 'bg-sky-50 text-sky-800 border border-sky-200 animate-pulse'
                                                 : 'bg-rose-50 text-rose-800 border border-rose-200'
                                         }`}
                                     >
                                         {statusMessage.type === 'success' ? (
                                             <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                        ) : statusMessage.type === 'info' ? (
+                                            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-sky-600" />
                                         ) : (
                                             <AlertCircle className="h-4 w-4 shrink-0" />
                                         )}

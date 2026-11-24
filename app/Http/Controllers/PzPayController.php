@@ -410,8 +410,20 @@ class PzPayController extends Controller
             }
 
             if (!empty($validRecords)) {
-                DB::table($tableName)->insert($validRecords);
-                Log::info("Upload ({$department}): Inserted " . count($validRecords) . " records into {$tableName}");
+                $sanitizedRecords = array_map(function ($r) use ($department) {
+                    if (empty($r['dept'])) {
+                        $r['dept'] = self::DEPARTMENT_OPTIONS[$department] ?? 'MERCHANDISERS';
+                    }
+                    if (empty($r['department'])) {
+                        $r['department'] = $department;
+                    }
+                    return $r;
+                }, $validRecords);
+
+                foreach (array_chunk($sanitizedRecords, 100) as $chunk) {
+                    DB::table($tableName)->insert($chunk);
+                }
+                Log::info("Upload ({$department}): Inserted " . count($sanitizedRecords) . " records into {$tableName}");
             } else {
                 Log::warning("Upload ({$department}): No valid records to insert into {$tableName}");
             }

@@ -32,8 +32,9 @@ class DocumentIntelligenceController extends Controller
         if ($docType === 'auto') {
             $docType = null;
         }
+        $rawText = $request->input('raw_text');
 
-        $result = $this->ocrService->parseDocument($file, $docType);
+        $result = $this->ocrService->parseDocument($file, $docType, $rawText);
 
         return response()->json($result);
     }
