@@ -29,6 +29,7 @@ import {
   Trash2,
   Save,
   CheckCheck,
+  GripVertical,
 } from "lucide-react";
 
 export type ModuleType = "payroll" | "ssnit" | "petra" | "bank" | "gra" | "contract";
@@ -92,6 +93,10 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [feedback, setFeedback] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [dirtyModules, setDirtyModules] = useState<Set<ModuleType>>(new Set());
+
+  // Drag and drop state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Custom column dialog
   const [isAddCustomOpen, setIsAddCustomOpen] = useState(false);
@@ -167,6 +172,56 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
       next[targetIndex] = temp;
       // Re-assign sort orders
       return next.map((col, idx) => ({ ...col, sort_order: idx }));
+    });
+  };
+
+  const handleReorder = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    updateCurrentColumns(prev => {
+      const next = [...prev];
+      const [movedItem] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, movedItem);
+      return next.map((col, idx) => ({ ...col, sort_order: idx }));
+    });
+  };
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(index));
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverIndex !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragLeave = () => {
+    // Leave handler
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const movedColName = currentColumns[draggedIndex]?.display_label || "Column";
+    handleReorder(draggedIndex, dropIndex);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    setFeedback({
+      message: `Repositioned '${movedColName}' to position #${dropIndex + 1}. Click 'Save' to apply changes.`,
+      type: "success",
     });
   };
 
@@ -724,6 +779,19 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
           </div>
         </div>
 
+        {/* Drag & Drop Instructions Banner */}
+        <div className="px-4 sm:px-6 py-1.5 bg-blue-50/70 dark:bg-blue-950/20 border-b border-blue-100 dark:border-blue-900/30 text-[11px] text-blue-800 dark:text-blue-300 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <GripVertical className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+            <span>
+              <strong>Drag & Drop to Reorder:</strong> Drag the grip handle <span className="font-mono bg-blue-100/90 text-blue-900 px-1 py-0.5 rounded text-[10px]">⋮⋮</span> on any column to place it in your desired Excel position.
+            </span>
+          </div>
+          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium hidden sm:inline">
+            Active columns: Left-to-Right in Excel
+          </span>
+        </div>
+
         {/* Scrollable Column List */}
         <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-3 space-y-1.5">
           {loading ? (
@@ -741,16 +809,46 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
               return (
                 <div
                   key={col.column_key}
-                  className={`flex items-center justify-between p-2 rounded-lg border transition-all text-sm ${
-                    col.is_active
-                      ? "bg-white border-gray-200 shadow-2xs hover:border-blue-300"
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, originalIndex)}
+                  onDragOver={(e) => handleDragOver(e, originalIndex)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, originalIndex)}
+                  onDragEnd={handleDragEnd}
+                  className={`group flex items-center justify-between p-2 rounded-lg border transition-all text-sm select-none ${
+                    draggedIndex === originalIndex
+                      ? "opacity-30 border-dashed border-blue-500 bg-blue-50 scale-[0.99]"
+                      : dragOverIndex === originalIndex
+                      ? "border-blue-600 ring-2 ring-blue-500/50 bg-blue-50/70 shadow-sm"
+                      : col.is_active
+                      ? "bg-white border-gray-200 shadow-2xs hover:border-blue-300 hover:shadow-xs"
                       : "bg-gray-50/70 border-gray-200 opacity-60 hover:opacity-100"
                   }`}
                 >
-                  {/* Left: Reorder, Active Checkbox, Label */}
-                  <div className="flex items-center gap-3 flex-1 min-w-0 pr-4">
+                  {/* Left: Drag Handle, Position Badge, Reorder, Active Checkbox, Label */}
+                  <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-4">
+                    {/* Drag Grip Handle */}
+                    <div
+                      className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-gray-400 group-hover:text-blue-600 rounded hover:bg-gray-100 transition-colors shrink-0"
+                      title="Click and drag to reposition in Excel"
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </div>
+
+                    {/* Position Badge in Excel */}
+                    <span
+                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border shrink-0 ${
+                        col.is_active
+                          ? "bg-slate-100 text-slate-700 border-slate-300"
+                          : "bg-gray-100 text-gray-400 border-gray-200 line-through"
+                      }`}
+                      title={`Excel column position #${originalIndex + 1}`}
+                    >
+                      #{originalIndex + 1}
+                    </span>
+
                     {/* Sort reorder buttons */}
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-0.5 shrink-0" onMouseDown={(e) => e.stopPropagation()}>
                       <button
                         type="button"
                         onClick={() => handleMove(originalIndex, "up")}
@@ -758,7 +856,7 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
                         className="text-gray-400 hover:text-gray-700 disabled:opacity-20 p-0.5"
                         title="Move Up"
                       >
-                        <ArrowUp className="h-3 w-3" />
+                        <ArrowUp className="h-2.5 w-2.5" />
                       </button>
                       <button
                         type="button"
@@ -767,21 +865,23 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
                         className="text-gray-400 hover:text-gray-700 disabled:opacity-20 p-0.5"
                         title="Move Down"
                       >
-                        <ArrowDown className="h-3 w-3" />
+                        <ArrowDown className="h-2.5 w-2.5" />
                       </button>
                     </div>
 
                     {/* Active toggle */}
-                    <Checkbox
-                      id={`col_${col.column_key}`}
-                      checked={col.is_active}
-                      disabled={col.is_required}
-                      onCheckedChange={() => handleToggleActive(originalIndex)}
-                      className="cursor-pointer"
-                    />
+                    <div onMouseDown={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        id={`col_${col.column_key}`}
+                        checked={col.is_active}
+                        disabled={col.is_required}
+                        onCheckedChange={() => handleToggleActive(originalIndex)}
+                        className="cursor-pointer"
+                      />
+                    </div>
 
                     {/* Column Label Input */}
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0" onMouseDown={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
                         <Input
                           value={col.display_label}
@@ -791,12 +891,12 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
                           }`}
                         />
                         {col.is_required && (
-                          <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50 h-5 px-1.5 flex items-center gap-1">
+                          <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50 h-5 px-1.5 flex items-center gap-1 shrink-0">
                             <Lock className="h-2.5 w-2.5" /> Required
                           </Badge>
                         )}
                         {col.is_custom && (
-                          <Badge variant="outline" className="text-[10px] text-purple-700 border-purple-300 bg-purple-50 h-5 px-1.5">
+                          <Badge variant="outline" className="text-[10px] text-purple-700 border-purple-300 bg-purple-50 h-5 px-1.5 shrink-0">
                             Custom
                           </Badge>
                         )}
@@ -816,7 +916,7 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
                   </div>
 
                   {/* Right: Status indicator & Delete action */}
-                  <div className="flex items-center gap-2 text-xs">
+                  <div className="flex items-center gap-2 text-xs" onMouseDown={(e) => e.stopPropagation()}>
                     <span
                       className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
                         col.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
