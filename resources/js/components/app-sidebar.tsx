@@ -36,6 +36,8 @@ import { useEffect, useState, useRef } from 'react';
 import type { PageProps as InertiaPageProps } from '@inertiajs/core';
 
 interface Client {
+  id?: number;
+  client_name?: string;
   short_name: string;
   slug: string;
   route_slug: string;
@@ -216,8 +218,9 @@ export function AppSidebar() {
       ];
 
       clients.forEach(c => {
+        if (c.route_slug === 'melcom' || c.short_name?.toLowerCase() === 'melcom') return;
         contractChildren.push({
-          title: c.short_name,
+          title: c.short_name || c.client_name || c.slug,
           children: [
             { title: 'Contracts', href: `/${c.route_slug}/contracts` },
             { title: 'Renewals', href: `/${c.route_slug}/contract-renewals` },
@@ -237,27 +240,27 @@ export function AppSidebar() {
 
     if (clients.length > 0) {
       const salaryItems = clients.map(c => ({
-        title: c.short_name,
+        title: c.short_name || c.client_name || c.slug,
         href: `/${c.route_slug}pay`,
       }));
 
       const ssnitItems = clients.map(c => ({
-        title: c.short_name,
+        title: c.short_name || c.client_name || c.slug,
         href: `/${c.route_slug}ssnitpay`,
       }));
 
       const petraItems = clients.map(c => ({
-        title: c.short_name,
+        title: c.short_name || c.client_name || c.slug,
         href: `/${c.route_slug}petrapay`,
       }));
 
       const payslipItems = clients.map(c => ({
-        title: c.short_name,
+        title: c.short_name || c.client_name || c.slug,
         href: `/payslips/${c.route_slug}`,
       }));
 
       const graItems = clients.map(c => ({
-        title: c.short_name,
+        title: c.short_name || c.client_name || c.slug,
         href: `/${c.route_slug}stat`,
       }));
 

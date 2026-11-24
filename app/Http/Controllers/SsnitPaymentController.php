@@ -27,12 +27,16 @@ class SsnitPaymentController extends Controller
 
     public function showClient(Request $request, $client_dbname)
     {
+        $client = DB::table('client')
+            ->where('client_dbname', $client_dbname)
+            ->orWhere('slug', $client_dbname)
+            ->firstOrFail();
+        $client_dbname = $client->client_dbname;
+
         $month = $request->input('month', now()->format('Y-m'));
         $date = Carbon::createFromFormat('Y-m', $month);
         $formattedMonth = $date->format('F Y');
         $tableName = MonthlySalary::generateTableName($client_dbname, $month);
-
-        $client = DB::table('client')->where('client_dbname', $client_dbname)->firstOrFail();
 
         if (!Schema::hasTable($tableName)) {
             return Inertia::render('SsnitPayment/Client', [
@@ -165,6 +169,14 @@ class SsnitPaymentController extends Controller
             $search = $request->query('search');
             $sort = $request->query('sort', 'staff_id');
             $order = $request->query('order', 'asc');
+
+            $clientRecord = DB::table('client')
+                ->where('client_dbname', $client_dbname)
+                ->orWhere('slug', $client_dbname)
+                ->first();
+            if ($clientRecord) {
+                $client_dbname = $clientRecord->client_dbname;
+            }
 
             $tableName = MonthlySalary::generateTableName($client_dbname, $month);
 

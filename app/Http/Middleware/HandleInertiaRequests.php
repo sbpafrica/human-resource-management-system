@@ -93,7 +93,10 @@ class HandleInertiaRequests extends Middleware
                         return $perms;
                     })(),
 
-                    'clients' => $user->clients()
+                    'clients' => ($user->is_super_admin
+                        ? \App\Models\Client::query()->where('is_active', true)
+                        : $user->clients()->where('client.is_active', true)
+                    )
                         ->select([
                             'client.id as id',
                             'client.client_name',
@@ -107,6 +110,9 @@ class HandleInertiaRequests extends Middleware
                         ->orderBy('client.display_order')
                         ->get()
                         ->map(function ($client) {
+                            if (empty($client->short_name)) {
+                                $client->short_name = $client->client_name;
+                            }
                             $dbMap = [
                                 'transsion'         => 'transsion',
                                 'transsiontec'      => 'tecno',
