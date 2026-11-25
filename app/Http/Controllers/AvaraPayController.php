@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Avarapay;
+use App\Models\PayrollColumn;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -132,8 +134,7 @@ class AvaraPayController extends Controller
             $tableName = Avarapay::tableName($selectedMonth);
             Avarapay::createTableIfNotExists($tableName);
 
-            $reader      = new XlsxReader();
-            $spreadsheet = $reader->load($request->file('file')->getRealPath());
+            $spreadsheet = IOFactory::load($request->file('file')->getRealPath());
             $rows        = $spreadsheet->getActiveSheet()->toArray();
             
             if (empty($rows)) {
@@ -152,6 +153,8 @@ class AvaraPayController extends Controller
                     $headerMap[$cleanHeader] = $colIdx;
                 }
             }
+            $headerIndexMap = PayrollColumn::buildHeaderIndexMap($rawHeaders);
+            $customCols = PayrollColumn::getColumnsForClient('avara');
 
             $existingIds  = DB::table($tableName)->pluck('STAFFID')->toArray();
             $errors       = [];
@@ -235,7 +238,7 @@ class AvaraPayController extends Controller
                     continue;
                 }
 
-                $validRecords[] = [
+                $record = [
                     'STAFFID'                               => $staffid,
                     'NAME'                                  => $name,
                     'POSITION'                              => trim((string)$getCell(['POSITION', 'TITLE', 'JOB_TITLE', 'DESIGNATION'], 2)) ?: null,
@@ -283,6 +286,10 @@ class AvaraPayController extends Controller
                     'BRANCH'         => trim((string)$getCell(['BRANCH', 'BANK_BRANCH'], 42)) ?: null,
                 ];
 
+                $customValues = PayrollColumn::extractCustomColumnValues($row, $headerIndexMap, $customCols, $tableName);
+                $record = array_merge($record, $customValues);
+
+                $validRecords[] = $record;
                 $existingIds[] = $staffid;
             }
 

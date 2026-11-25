@@ -175,11 +175,29 @@ MonthlySalary::forClient($client_dbname, $selectedMonth);
 
 
             $file = $request->file('file');
-            $reader = new XlsxReader();
-            $spreadsheet = $reader->load($file->getRealPath());
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getRealPath());
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
-            $uploadedHeaders = array_shift($rows); // First row = headers
+
+            // Detect header row dynamically within first 10 rows
+            $headerRowIndex = 0;
+            $uploadedHeaders = [];
+            foreach (array_slice($rows, 0, 10, true) as $rIdx => $candidateRow) {
+                $nonEmpty = array_filter($candidateRow, fn($c) => trim((string)$c) !== '');
+                if (count($nonEmpty) >= 3) {
+                    $rowStr = strtolower(implode(' ', $candidateRow));
+                    if (str_contains($rowStr, 'staff') || str_contains($rowStr, 'name') || str_contains($rowStr, 'basic') || str_contains($rowStr, 'net') || str_contains($rowStr, 'gross') || str_contains($rowStr, 'salary')) {
+                        $headerRowIndex = $rIdx;
+                        $uploadedHeaders = $candidateRow;
+                        break;
+                    }
+                }
+            }
+            if (empty($uploadedHeaders) && !empty($rows)) {
+                $uploadedHeaders = $rows[0];
+                $headerRowIndex = 0;
+            }
+            $rows = array_slice($rows, $headerRowIndex + 1);
             $uploadedHeaders = array_map('trim', $uploadedHeaders);
 
             // CLIENT-SPECIFIC HEADER MAPPING (EXACT FROM TEMPLATE)

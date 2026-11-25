@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Gmoneypay;
+use App\Models\PayrollColumn;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -127,21 +129,54 @@ class GmoneyPayController extends Controller
             $tableName = Gmoneypay::tableName($selectedMonth);
             Gmoneypay::createTableIfNotExists($tableName);
 
-            $reader      = new XlsxReader();
-            $spreadsheet = $reader->load($request->file('file')->getRealPath());
-            $rows        = $spreadsheet->getActiveSheet()->toArray();
-            array_shift($rows); // remove header row
+            $spreadsheet = IOFactory::load($request->file('file')->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (empty($rows)) {
+                return redirect()->route('gmoneypay.index', ['month' => $selectedMonth])
+                    ->with('error', 'The uploaded file is empty.');
+            }
+
+            // Detect header row dynamically
+            $headerRowIndex = 0;
+            $headerRow = [];
+            foreach (array_slice($rows, 0, 10, true) as $rIdx => $candidateRow) {
+                $nonEmpty = array_filter($candidateRow, fn($c) => trim((string)$c) !== '');
+                if (count($nonEmpty) >= 3) {
+                    $rowStr = strtolower(implode(' ', $candidateRow));
+                    if (str_contains($rowStr, 'staff') || str_contains($rowStr, 'name') || str_contains($rowStr, 'basic') || str_contains($rowStr, 'salary') || str_contains($rowStr, 'gross') || str_contains($rowStr, 'take home') || str_contains($rowStr, 'net')) {
+                        $headerRowIndex = $rIdx;
+                        $headerRow = $candidateRow;
+                        break;
+                    }
+                }
+            }
+            if (empty($headerRow) && !empty($rows)) {
+                $headerRow = $rows[0];
+                $headerRowIndex = 0;
+            }
+
+            $headerIndexMap = PayrollColumn::buildHeaderIndexMap($headerRow);
+            $customCols = PayrollColumn::getColumnsForClient('gmoney');
+            $dataRows = array_slice($rows, $headerRowIndex + 1);
 
             $existingIds  = DB::table($tableName)->pluck('staffid')->toArray();
             $errors       = [];
             $validRecords = [];
 
-            foreach ($rows as $index => $row) {
-                if (empty(trim((string) ($row[0] ?? '')))) continue;
+            foreach ($dataRows as $index => $row) {
+                if (empty(array_filter($row, fn($c) => trim((string)$c) !== ''))) continue;
 
-                $rowNum  = $index + 2;
-                $staffid = trim((string) ($row[0] ?? ''));
-                $name    = trim((string) ($row[1] ?? ''));
+                $rowNum  = $headerRowIndex + $index + 2;
+                $staffid = trim((string) PayrollColumn::extractValue($row, $headerIndexMap, ['staffid', 'staff_id', 'staff id', 'id', 'emp id', 'employee id', 'staff no'], 0, 'string'));
+                $name    = trim((string) PayrollColumn::extractValue($row, $headerIndexMap, ['name', 'staff name', 'employee name', 'full name', 'fullname'], 1, 'string'));
+
+                // Skip repeated headers
+                if (in_array(strtolower($staffid), ['staff id', 'staffid', 'staff_id', 'id', 'staff no', 'name', 's/n', 'no']) ||
+                    in_array(strtolower($name), ['name', 'staff name', 'employee name', 'full name'])) {
+                    continue;
+                }
 
                 if (empty($staffid)) {
                     $errors[] = "Row {$rowNum}: Staff ID is required.";
@@ -156,79 +191,72 @@ class GmoneyPayController extends Controller
                     continue;
                 }
 
-                // Validate take_home_pay (column index 27)
-                $takeHomePay = $this->toDecimal($row[26] ?? null);
-                if ($takeHomePay === null) {
-                    $errors[] = "Row {$rowNum}: Take Home Pay is required and must be a valid number.";
-                    continue;
-                }
-
                 // Parse date_of_employment (column 2)
                 $dateOfEmployment = null;
-                $rawDate          = trim((string) ($row[2] ?? ''));
+                $rawDate = trim((string) PayrollColumn::extractValue($row, $headerIndexMap, ['date of employment', 'employment date', 'date_of_employment', 'start date', 'join date'], 2, 'string'));
                 if (!empty($rawDate)) {
                     try {
                         $dateOfEmployment = is_numeric($rawDate)
                             ? \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float) $rawDate)->format('Y-m-d')
                             : Carbon::parse($rawDate)->format('Y-m-d');
                     } catch (\Exception $e) {
-                        // not required — leave null
+                        // leave null
                     }
                 }
 
-                // Column mapping (0-based) matching the table structure:
-                // 0  staffid                      14 tt_logistics_allowance_earned
-                // 1  name                         15 gross_salary
-                // 2  date_of_employment           16 management_fee
-                // 3  position                     17 getfund
-                // 4  location                     18 nhil
-                // 5  basic_salary                 19 vat
-                // 6  legal_work_days              20 ssf
-                // 7  number_of_days_worked        21 cost_to_gmoney
-                // 8  leave_days                   22 ssnit_ee
-                // 9  total_days_worked            23 petra
-                // 10 number_of_absent_days        24 taxable_income
-                // 11 absent_days_deductions       25 paye
-                // 12 basic_salary_earned          26 total_deductions
-                // 13 tt_logistics_allowance       27 take_home_pay
-                // 28 bank   29 gmoney_number   30 wallet_name
-                // 31 ssnit_number   32 gh_card_number
+                $basicSalary = PayrollColumn::extractValue($row, $headerIndexMap, ['basic salary', 'basic_salary', 'basic', 'base salary'], 5, 'decimal');
+                $grossSalary = PayrollColumn::extractValue($row, $headerIndexMap, ['gross salary', 'gross_salary', 'gross pay', 'gross'], 14, 'decimal');
+                $takeHomePay = PayrollColumn::extractValue($row, $headerIndexMap, ['take home pay', 'take_home_pay', 'net pay', 'netpay', 'take home', 'net salary'], 26, 'decimal');
 
-                $validRecords[] = [
+                if ($takeHomePay === null && $grossSalary !== null) {
+                    $totalDed = PayrollColumn::extractValue($row, $headerIndexMap, ['total deductions', 'total_deductions', 'deductions'], 25, 'decimal') ?? 0;
+                    $takeHomePay = round(max(0, (float)$grossSalary - (float)$totalDed), 2);
+                }
+
+                if ($takeHomePay === null) {
+                    $errors[] = "Row {$rowNum}: Take Home Pay is required and must be a valid number.";
+                    continue;
+                }
+
+                $record = [
                     'staffid'                       => $staffid,
                     'name'                          => $name,
                     'date_of_employment'            => $dateOfEmployment,
-                    'position'                      => trim((string) ($row[3] ?? '')) ?: null,
-                    'location'                      => trim((string) ($row[4] ?? '')) ?: null,
-                    'basic_salary'                  => $this->toDecimal($row[5]  ?? null),
-                    'legal_work_days'               => $this->toInt($row[6]      ?? null),
-                    'number_of_days_worked'         => $this->toInt($row[7]      ?? null),
-                    'leave_days'                    => $this->toInt($row[8]      ?? null),
-                    'total_days_worked'             => $this->toInt($row[9]      ?? null),
-                    'number_of_absent_days'         => $this->toInt($row[10]     ?? null),
-                    'absent_days_deductions'        => $this->toDecimal($row[11] ?? null),
-                    'basic_salary_earned'           => $this->toDecimal($row[12] ?? null),
-                    'bonus_earned'                  => $this->toDecimal($row[13] ?? null),
-                    'gross_salary'                  => $this->toDecimal($row[14] ?? null),
-                    'management_fee'                => $this->toDecimal($row[15] ?? null),
-                    'getfund'                       => $this->toDecimal($row[16] ?? null),
-                    'nhil'                          => $this->toDecimal($row[17] ?? null),
-                    'vat'                           => $this->toDecimal($row[18] ?? null),
-                    'ssf'                           => $this->toDecimal($row[19] ?? null),
-                    'cost_to_gmoney'                => $this->toDecimal($row[20] ?? null),
-                    'ssnit_ee'                      => $this->toDecimal($row[21] ?? null),
-                    'petra'                         => $this->toDecimal($row[22] ?? null),
-                    'taxable_income'                => $this->toDecimal($row[23] ?? null),
-                    'paye'                          => $this->toDecimal($row[24] ?? null),
-                    'total_deductions'              => $this->toDecimal($row[25] ?? null),
+                    'position'                      => trim((string) PayrollColumn::extractValue($row, $headerIndexMap, ['position', 'designation', 'job title', 'role'], 3, 'string')) ?: null,
+                    'location'                      => trim((string) PayrollColumn::extractValue($row, $headerIndexMap, ['location', 'station', 'branch', 'shop', 'department'], 4, 'string')) ?: null,
+                    'basic_salary'                  => $basicSalary,
+                    'legal_work_days'               => PayrollColumn::extractValue($row, $headerIndexMap, ['legal work days', 'legal_work_days', 'work days', 'expected days'], 6, 'int'),
+                    'number_of_days_worked'         => PayrollColumn::extractValue($row, $headerIndexMap, ['number of days worked', 'number_of_days_worked', 'days worked', 'actual days'], 7, 'int'),
+                    'leave_days'                    => PayrollColumn::extractValue($row, $headerIndexMap, ['leave days', 'leave_days', 'leave'], 8, 'int'),
+                    'total_days_worked'             => PayrollColumn::extractValue($row, $headerIndexMap, ['total days worked', 'total_days_worked', 'total work days'], 9, 'int'),
+                    'number_of_absent_days'         => PayrollColumn::extractValue($row, $headerIndexMap, ['number of absent days', 'number_of_absent_days', 'absent days'], 10, 'int'),
+                    'absent_days_deductions'        => PayrollColumn::extractValue($row, $headerIndexMap, ['absent days deductions', 'absent_days_deductions', 'absent deduction'], 11, 'decimal'),
+                    'basic_salary_earned'           => PayrollColumn::extractValue($row, $headerIndexMap, ['basic salary earned', 'basic_salary_earned', 'earned basic'], 12, 'decimal') ?? $basicSalary,
+                    'bonus_earned'                  => PayrollColumn::extractValue($row, $headerIndexMap, ['bonus earned', 'bonus_earned', 'bonus', 'tt logistics allowance', 'tt_logistics_allowance_earned'], 13, 'decimal'),
+                    'gross_salary'                  => $grossSalary,
+                    'management_fee'                => PayrollColumn::extractValue($row, $headerIndexMap, ['management fee', 'management_fee', 'mgt fee'], 15, 'decimal'),
+                    'getfund'                       => PayrollColumn::extractValue($row, $headerIndexMap, ['getfund', 'get fund'], 16, 'decimal'),
+                    'nhil'                          => PayrollColumn::extractValue($row, $headerIndexMap, ['nhil'], 17, 'decimal'),
+                    'vat'                           => PayrollColumn::extractValue($row, $headerIndexMap, ['vat'], 18, 'decimal'),
+                    'ssf'                           => PayrollColumn::extractValue($row, $headerIndexMap, ['ssf', 'ssf 13%', 'employer ssnit', 'ssnit 13%'], 19, 'decimal'),
+                    'cost_to_gmoney'                => PayrollColumn::extractValue($row, $headerIndexMap, ['cost to gmoney', 'cost_to_gmoney', 'cost to client', 'ctc'], 20, 'decimal'),
+                    'ssnit_ee'                      => PayrollColumn::extractValue($row, $headerIndexMap, ['ssnit ee', 'ssnit_ee', 'ssnit 5.5%', 'employee ssnit'], 21, 'decimal'),
+                    'petra'                         => PayrollColumn::extractValue($row, $headerIndexMap, ['petra', 'tier 2', 'tier 2 5%'], 22, 'decimal'),
+                    'taxable_income'                => PayrollColumn::extractValue($row, $headerIndexMap, ['taxable income', 'taxable_income', 'taxable pay'], 23, 'decimal'),
+                    'paye'                          => PayrollColumn::extractValue($row, $headerIndexMap, ['paye', 'income tax', 'tax'], 24, 'decimal'),
+                    'total_deductions'              => PayrollColumn::extractValue($row, $headerIndexMap, ['total deductions', 'total_deductions', 'deductions'], 25, 'decimal'),
                     'take_home_pay'                 => $takeHomePay,
-                    'bank'                          => trim((string) ($row[27] ?? '')) ?: null,
-                    'gmoney_number'                 => trim((string) ($row[28] ?? '')) ?: null,
-                    'wallet_name'                   => trim((string) ($row[29] ?? '')) ?: null,
-                    'ssnit_number'                  => trim((string) ($row[30] ?? '')) ?: null,
-                    'gh_card_number'                => trim((string) ($row[31] ?? '')) ?: null,
+                    'bank'                          => trim((string) PayrollColumn::extractValue($row, $headerIndexMap, ['bank', 'bank name'], 27, 'string')) ?: null,
+                    'gmoney_number'                 => trim((string) PayrollColumn::extractValue($row, $headerIndexMap, ['gmoney number', 'gmoney_number', 'phone', 'account number', 'momo number'], 28, 'string')) ?: null,
+                    'wallet_name'                   => trim((string) PayrollColumn::extractValue($row, $headerIndexMap, ['wallet name', 'wallet_name', 'account name'], 29, 'string')) ?: null,
+                    'ssnit_number'                  => trim((string) PayrollColumn::extractValue($row, $headerIndexMap, ['ssnit number', 'ssnit_number', 'ssnit no', 'ssnit'], 30, 'string')) ?: null,
+                    'gh_card_number'                => trim((string) PayrollColumn::extractValue($row, $headerIndexMap, ['gh card number', 'gh_card_number', 'ghana card', 'ghcard'], 31, 'string')) ?: null,
                 ];
 
+                $customValues = PayrollColumn::extractCustomColumnValues($row, $headerIndexMap, $customCols, $tableName);
+                $record = array_merge($record, $customValues);
+
+                $validRecords[] = $record;
                 $existingIds[] = $staffid;
             }
 
@@ -254,10 +282,6 @@ class GmoneyPayController extends Controller
                 ->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────
-    // DELETE
-    // ─────────────────────────────────────────────────────────────────
     public function delete(Request $request)
     {
         $selectedMonth = $request->input('month', now()->format('Y-m'));
