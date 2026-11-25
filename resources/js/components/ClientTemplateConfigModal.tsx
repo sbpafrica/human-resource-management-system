@@ -659,17 +659,40 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
       <DialogContent
-        className={`flex flex-col p-0 overflow-hidden shadow-2xl border transition-all duration-150 ${
+        className={`flex flex-col p-0 gap-0 overflow-hidden shadow-2xl border transition-all duration-150 ${
           isMaximized
             ? "!fixed !inset-0 !w-screen !h-screen !max-w-none !max-h-none !rounded-none !border-0 z-50 !translate-x-0 !translate-y-0 !top-0 !left-0"
-            : "w-[96vw] max-w-[1650px] 2xl:max-w-[1800px] h-[94vh] max-h-[94vh] rounded-2xl border-gray-200"
+            : "!w-[98vw] !max-w-[98vw] !h-[96vh] !max-h-[96vh] rounded-2xl border-gray-200"
         }`}
         style={
           isMaximized
-            ? { transform: "none", top: 0, left: 0 }
+            ? {
+                position: "fixed",
+                inset: 0,
+                width: "100vw",
+                height: "100vh",
+                maxWidth: "100vw",
+                maxHeight: "100vh",
+                transform: "none",
+                top: 0,
+                left: 0,
+                borderRadius: 0,
+                display: "flex",
+                flexDirection: "column",
+                zIndex: 60,
+              }
             : {
+                width: "98vw",
+                maxWidth: "98vw",
+                height: "96vh",
+                maxHeight: "96vh",
+                top: "50%",
+                left: "50%",
                 transform: `translate(-50%, calc(-50% + ${dialogOffsetY}px))`,
                 transition: isDraggingDialog ? "none" : "transform 0.1s ease-out",
+                display: "flex",
+                flexDirection: "column",
+                zIndex: 50,
               }
         }
       >
