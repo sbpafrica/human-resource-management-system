@@ -20,6 +20,8 @@ import {
   Plus,
   ArrowUp,
   ArrowDown,
+  ChevronsUp,
+  ChevronsDown,
   Search,
   CheckCircle2,
   AlertCircle,
@@ -30,6 +32,7 @@ import {
   Save,
   CheckCheck,
   GripVertical,
+  Move,
 } from "lucide-react";
 
 export type ModuleType = "payroll" | "ssnit" | "petra" | "bank" | "gra" | "contract";
@@ -95,8 +98,84 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
   const [dirtyModules, setDirtyModules] = useState<Set<ModuleType>>(new Set());
 
   // Drag and drop state
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [draggedKey, setDraggedKey] = useState<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<"before" | "after">("before");
+
+  // Modal dialog drag state (allows dragging the entire modal up and down on the screen)
+  const [dialogOffsetY, setDialogOffsetY] = useState(0);
+  const [isDraggingDialog, setIsDraggingDialog] = useState(false);
+  const dragStartYRef = React.useRef(0);
+  const startOffsetYRef = React.useRef(0);
+
+  // Auto-scrolling while dragging columns
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const scrollIntervalRef = React.useRef<number | null>(null);
+
+  const stopAutoScroll = () => {
+    if (scrollIntervalRef.current) {
+      clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+  };
+
+  const handleContainerDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const rect = container.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    const scrollZone = 50;
+
+    if (offsetY < scrollZone) {
+      const speed = Math.max(6, Math.floor((scrollZone - offsetY) / 2));
+      if (!scrollIntervalRef.current) {
+        scrollIntervalRef.current = window.setInterval(() => {
+          if (container) container.scrollTop -= speed;
+        }, 16);
+      }
+    } else if (offsetY > rect.height - scrollZone) {
+      const distFromBottom = rect.height - offsetY;
+      const speed = Math.max(6, Math.floor((scrollZone - distFromBottom) / 2));
+      if (!scrollIntervalRef.current) {
+        scrollIntervalRef.current = window.setInterval(() => {
+          if (container) container.scrollTop += speed;
+        }, 16);
+      }
+    } else {
+      stopAutoScroll();
+    }
+  };
+
+  // Drag dialog up/down handler
+  const handleDialogHeaderMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button, input, select, a, textarea, [role='tab']")) return;
+    setIsDraggingDialog(true);
+    dragStartYRef.current = e.clientY;
+    startOffsetYRef.current = dialogOffsetY;
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingDialog) return;
+      const deltaY = e.clientY - dragStartYRef.current;
+      setDialogOffsetY(startOffsetYRef.current + deltaY);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingDialog(false);
+    };
+
+    if (isDraggingDialog) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDraggingDialog]);
 
   // Custom column dialog
   const [isAddCustomOpen, setIsAddCustomOpen] = useState(false);
@@ -162,15 +241,29 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
     });
   };
 
-  const handleMove = (index: number, direction: "up" | "down") => {
+  const handleMove = (index: number, direction: "up" | "down" | "top" | "bottom") => {
     updateCurrentColumns(prev => {
-      const targetIndex = direction === "up" ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      let targetIndex = index;
+      if (direction === "up") targetIndex = index - 1;
+      else if (direction === "down") targetIndex = index + 1;
+      else if (direction === "top") targetIndex = 0;
+      else if (direction === "bottom") targetIndex = prev.length - 1;
+
+      if (targetIndex < 0 || targetIndex >= prev.length || targetIndex === index) return prev;
       const next = [...prev];
-      const temp = next[index];
-      next[index] = next[targetIndex];
-      next[targetIndex] = temp;
-      // Re-assign sort orders
+      const [movedItem] = next.splice(index, 1);
+      next.splice(targetIndex, 0, movedItem);
+      return next.map((col, idx) => ({ ...col, sort_order: idx }));
+    });
+  };
+
+  const handleMoveToPosition = (fromIndex: number, newPosition1Based: number) => {
+    const toIndex = Math.max(0, Math.min(currentColumns.length - 1, newPosition1Based - 1));
+    if (fromIndex === toIndex) return;
+    updateCurrentColumns(prev => {
+      const next = [...prev];
+      const [movedItem] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, movedItem);
       return next.map((col, idx) => ({ ...col, sort_order: idx }));
     });
   };
@@ -185,44 +278,81 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
     });
   };
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    setDraggedIndex(index);
+  const handleDragStart = (e: React.DragEvent, colKey: string) => {
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", String(index));
+    e.dataTransfer.setData("text/plain", colKey);
+    // Defer state update so browser initializes drag image from untouched DOM node
+    setTimeout(() => {
+      setDraggedKey(colKey);
+    }, 0);
   };
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleRowDragOver = (e: React.DragEvent, colKey: string) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
-    if (dragOverIndex !== index) {
-      setDragOverIndex(index);
+
+    const targetRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = targetRect.top + targetRect.height / 2;
+    const pos = e.clientY < midY ? "before" : "after";
+
+    if (dragOverKey !== colKey || dropPosition !== pos) {
+      setDragOverKey(colKey);
+      setDropPosition(pos);
     }
   };
 
-  const handleDragLeave = () => {
-    // Leave handler
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
   };
 
   const handleDragEnd = () => {
-    setDraggedIndex(null);
-    setDragOverIndex(null);
+    stopAutoScroll();
+    setDraggedKey(null);
+    setDragOverKey(null);
   };
 
-  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+  const handleDrop = (e: React.DragEvent, targetColKey: string) => {
     e.preventDefault();
-    if (draggedIndex === null || draggedIndex === dropIndex) {
-      setDraggedIndex(null);
-      setDragOverIndex(null);
+    e.stopPropagation();
+    stopAutoScroll();
+
+    if (!draggedKey || draggedKey === targetColKey) {
+      setDraggedKey(null);
+      setDragOverKey(null);
       return;
     }
-    const movedColName = currentColumns[draggedIndex]?.display_label || "Column";
-    handleReorder(draggedIndex, dropIndex);
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-    setFeedback({
-      message: `Repositioned '${movedColName}' to position #${dropIndex + 1}. Click 'Save' to apply changes.`,
-      type: "success",
-    });
+
+    const fromIndex = currentColumns.findIndex(c => c.column_key === draggedKey);
+    const toIndex = currentColumns.findIndex(c => c.column_key === targetColKey);
+
+    if (fromIndex === -1 || toIndex === -1) {
+      setDraggedKey(null);
+      setDragOverKey(null);
+      return;
+    }
+
+    let finalIndex = toIndex;
+    if (dropPosition === "after") {
+      finalIndex = fromIndex < toIndex ? toIndex : toIndex + 1;
+    } else {
+      finalIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+    }
+
+    if (finalIndex < 0) finalIndex = 0;
+    if (finalIndex >= currentColumns.length) finalIndex = currentColumns.length - 1;
+
+    if (fromIndex !== finalIndex) {
+      const movedColName = currentColumns[fromIndex]?.display_label || "Column";
+      handleReorder(fromIndex, finalIndex);
+      setFeedback({
+        message: `Repositioned '${movedColName}' to position #${finalIndex + 1}. Click 'Save' to apply changes.`,
+        type: "success",
+      });
+    }
+
+    setDraggedKey(null);
+    setDragOverKey(null);
   };
 
   const handleDeleteColumn = async (col: TemplateColumnItem, index: number) => {
@@ -525,9 +655,19 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
 
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
-      <DialogContent className="max-w-4xl h-[90vh] max-h-[90vh] flex flex-col p-0 overflow-hidden shadow-2xl rounded-xl border border-gray-200">
-        {/* Header */}
-        <DialogHeader className="p-4 sm:p-5 pb-3 border-b bg-gray-50/90 shrink-0">
+      <DialogContent
+        className="max-w-4xl h-[90vh] max-h-[90vh] flex flex-col p-0 overflow-hidden shadow-2xl rounded-xl border border-gray-200"
+        style={{
+          transform: `translate(-50%, calc(-50% + ${dialogOffsetY}px))`,
+          transition: isDraggingDialog ? "none" : "transform 0.1s ease-out",
+        }}
+      >
+        {/* Header - Draggable on screen */}
+        <DialogHeader
+          onMouseDown={handleDialogHeaderMouseDown}
+          className="p-4 sm:p-5 pb-3 border-b bg-gray-50/90 shrink-0 cursor-grab active:cursor-grabbing select-none"
+          title="Click and drag header to move modal up/down on your screen"
+        >
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -540,6 +680,19 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
                   <span className="text-muted-foreground font-normal text-sm">
                     ({client?.client_name})
                   </span>
+                  {dialogOffsetY !== 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDialogOffsetY(0);
+                      }}
+                      className="ml-2 text-[11px] font-normal text-blue-600 hover:underline bg-blue-50 px-2 py-0.5 rounded border border-blue-200"
+                      title="Reset modal position to center"
+                    >
+                      Reset position
+                    </button>
+                  )}
                 </DialogTitle>
               </div>
               <DialogDescription className="text-xs text-muted-foreground">
@@ -780,20 +933,30 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
         </div>
 
         {/* Drag & Drop Instructions Banner */}
-        <div className="px-4 sm:px-6 py-1.5 bg-blue-50/70 dark:bg-blue-950/20 border-b border-blue-100 dark:border-blue-900/30 text-[11px] text-blue-800 dark:text-blue-300 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <GripVertical className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+        <div className="px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-blue-50/90 dark:from-blue-950/30 dark:to-blue-950/30 border-b border-blue-200/80 text-[11px] text-blue-900 dark:text-blue-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <GripVertical className="h-4 w-4 text-blue-600 shrink-0 animate-pulse" />
             <span>
-              <strong>Drag & Drop to Reorder:</strong> Drag the grip handle <span className="font-mono bg-blue-100/90 text-blue-900 px-1 py-0.5 rounded text-[10px]">⋮⋮</span> on any column to place it in your desired Excel position.
+              <strong>Drag Columns Up & Down:</strong> Click and drag the grip handle <span className="font-mono bg-white text-blue-800 border border-blue-300 px-1.5 py-0.5 rounded font-bold shadow-2xs">⋮⋮</span> or use the <strong>▲ / ▼</strong> arrow buttons to arrange columns to your exact desired position.
             </span>
           </div>
-          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium hidden sm:inline">
-            Active columns: Left-to-Right in Excel
-          </span>
+          <div className="flex items-center gap-3 shrink-0 text-[10px]">
+            <span className="bg-white/80 dark:bg-gray-800 px-2 py-0.5 rounded border border-blue-200 text-blue-700 dark:text-blue-300 font-semibold hidden md:inline">
+              Excel Order: Top = Column A, B, C...
+            </span>
+            <span className="text-gray-400 hidden lg:inline">
+              (Header is also draggable up/down)
+            </span>
+          </div>
         </div>
 
-        {/* Scrollable Column List */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-3 space-y-1.5">
+        {/* Scrollable Column List with Auto-Scroll on Drag */}
+        <div
+          ref={scrollContainerRef}
+          onDragOver={handleContainerDragOver}
+          onDrop={stopAutoScroll}
+          className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-3 space-y-2 relative"
+        >
           {loading ? (
             <div className="flex flex-col items-center justify-center h-48 gap-3 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
@@ -806,136 +969,178 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
           ) : (
             filteredColumns.map((col, idx) => {
               const originalIndex = currentColumns.findIndex(c => c.column_key === col.column_key);
+              const isBeingDragged = draggedKey === col.column_key;
+              const isDragOver = dragOverKey === col.column_key && !isBeingDragged;
+
               return (
-                <div
-                  key={col.column_key}
-                  draggable={true}
-                  onDragStart={(e) => handleDragStart(e, originalIndex)}
-                  onDragOver={(e) => handleDragOver(e, originalIndex)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e, originalIndex)}
-                  onDragEnd={handleDragEnd}
-                  className={`group flex items-center justify-between p-2 rounded-lg border transition-all text-sm select-none ${
-                    draggedIndex === originalIndex
-                      ? "opacity-30 border-dashed border-blue-500 bg-blue-50 scale-[0.99]"
-                      : dragOverIndex === originalIndex
-                      ? "border-blue-600 ring-2 ring-blue-500/50 bg-blue-50/70 shadow-sm"
-                      : col.is_active
-                      ? "bg-white border-gray-200 shadow-2xs hover:border-blue-300 hover:shadow-xs"
-                      : "bg-gray-50/70 border-gray-200 opacity-60 hover:opacity-100"
-                  }`}
-                >
-                  {/* Left: Drag Handle, Position Badge, Reorder, Active Checkbox, Label */}
-                  <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-4">
-                    {/* Drag Grip Handle */}
-                    <div
-                      className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-gray-400 group-hover:text-blue-600 rounded hover:bg-gray-100 transition-colors shrink-0"
-                      title="Click and drag to reposition in Excel"
-                    >
-                      <GripVertical className="h-4 w-4" />
+                <div key={col.column_key} className="relative">
+                  {/* Drop Indicator Line (Before) */}
+                  {isDragOver && dropPosition === "before" && (
+                    <div className="absolute -top-1.5 left-0 right-0 z-20 flex items-center">
+                      <div className="w-2.5 h-2.5 rounded-full bg-blue-600 shadow-sm -ml-1"></div>
+                      <div className="h-1 bg-blue-600 flex-1 rounded-full shadow-sm"></div>
+                      <div className="w-2.5 h-2.5 rounded-full bg-blue-600 shadow-sm -mr-1"></div>
                     </div>
+                  )}
 
-                    {/* Position Badge in Excel */}
-                    <span
-                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border shrink-0 ${
-                        col.is_active
-                          ? "bg-slate-100 text-slate-700 border-slate-300"
-                          : "bg-gray-100 text-gray-400 border-gray-200 line-through"
-                      }`}
-                      title={`Excel column position #${originalIndex + 1}`}
-                    >
-                      #{originalIndex + 1}
-                    </span>
-
-                    {/* Sort reorder buttons */}
-                    <div className="flex flex-col gap-0.5 shrink-0" onMouseDown={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => handleMove(originalIndex, "up")}
-                        disabled={originalIndex === 0}
-                        className="text-gray-400 hover:text-gray-700 disabled:opacity-20 p-0.5"
-                        title="Move Up"
+                  <div
+                    draggable={true}
+                    onDragStart={(e) => handleDragStart(e, col.column_key)}
+                    onDragOver={(e) => handleRowDragOver(e, col.column_key)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, col.column_key)}
+                    onDragEnd={handleDragEnd}
+                    className={`group flex items-center justify-between p-2.5 rounded-lg border transition-all text-sm select-none ${
+                      isBeingDragged
+                        ? "opacity-35 border-dashed border-blue-500 bg-blue-50/70 scale-[0.99] shadow-inner"
+                        : isDragOver
+                        ? "border-blue-500 ring-2 ring-blue-500/40 bg-blue-50/40 shadow-sm"
+                        : col.is_active
+                        ? "bg-white border-gray-200 shadow-2xs hover:border-blue-400 hover:shadow-xs"
+                        : "bg-gray-50/70 border-gray-200 opacity-60 hover:opacity-100"
+                    }`}
+                  >
+                    {/* Left: Drag Handle, Position Badge, Reorder Buttons, Active Checkbox, Label */}
+                    <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-3">
+                      {/* Big Drag Grip Handle */}
+                      <div
+                        className="cursor-grab active:cursor-grabbing p-1.5 -ml-1 text-gray-400 group-hover:text-blue-600 rounded-md hover:bg-blue-50 transition-colors shrink-0 flex items-center justify-center border border-transparent group-hover:border-blue-200"
+                        title="Click and drag up or down to reposition column"
                       >
-                        <ArrowUp className="h-2.5 w-2.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMove(originalIndex, "down")}
-                        disabled={originalIndex === currentColumns.length - 1}
-                        className="text-gray-400 hover:text-gray-700 disabled:opacity-20 p-0.5"
-                        title="Move Down"
-                      >
-                        <ArrowDown className="h-2.5 w-2.5" />
-                      </button>
-                    </div>
+                        <GripVertical className="h-4 w-4" />
+                      </div>
 
-                    {/* Active toggle */}
-                    <div onMouseDown={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        id={`col_${col.column_key}`}
-                        checked={col.is_active}
-                        disabled={col.is_required}
-                        onCheckedChange={() => handleToggleActive(originalIndex)}
-                        className="cursor-pointer"
-                      />
-                    </div>
-
-                    {/* Column Label Input */}
-                    <div className="flex-1 min-w-0" onMouseDown={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={col.display_label}
-                          onChange={e => handleLabelChange(originalIndex, e.target.value)}
-                          className={`h-7 text-xs font-medium ${
-                            col.is_active ? "text-gray-900 bg-white" : "text-gray-500 bg-transparent"
+                      {/* Position Badge in Excel with Quick Jump Selector */}
+                      <div className="flex items-center gap-1 shrink-0" onMouseDown={(e) => e.stopPropagation()}>
+                        <span
+                          className={`text-xs font-mono font-bold px-2 py-0.5 rounded border ${
+                            col.is_active
+                              ? "bg-blue-50 text-blue-800 border-blue-200 shadow-2xs"
+                              : "bg-gray-100 text-gray-400 border-gray-200 line-through"
                           }`}
+                          title={`Excel column position #${originalIndex + 1}`}
+                        >
+                          #{originalIndex + 1}
+                        </span>
+                      </div>
+
+                      {/* Instant Move Controls: Up / Down / Top / Bottom */}
+                      <div className="flex items-center gap-0.5 shrink-0 bg-gray-100/90 rounded border border-gray-200 p-0.5" onMouseDown={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => handleMove(originalIndex, "top")}
+                          disabled={originalIndex === 0}
+                          className="text-gray-500 hover:text-blue-600 hover:bg-white disabled:opacity-20 p-1 rounded transition-colors"
+                          title="Move to Top (Position #1)"
+                        >
+                          <ChevronsUp className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMove(originalIndex, "up")}
+                          disabled={originalIndex === 0}
+                          className="text-gray-600 hover:text-blue-600 hover:bg-white disabled:opacity-20 p-1 rounded transition-colors"
+                          title="Move Up 1 position"
+                        >
+                          <ArrowUp className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMove(originalIndex, "down")}
+                          disabled={originalIndex === currentColumns.length - 1}
+                          className="text-gray-600 hover:text-blue-600 hover:bg-white disabled:opacity-20 p-1 rounded transition-colors"
+                          title="Move Down 1 position"
+                        >
+                          <ArrowDown className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMove(originalIndex, "bottom")}
+                          disabled={originalIndex === currentColumns.length - 1}
+                          className="text-gray-500 hover:text-blue-600 hover:bg-white disabled:opacity-20 p-1 rounded transition-colors"
+                          title="Move to Bottom"
+                        >
+                          <ChevronsDown className="h-3 w-3" />
+                        </button>
+                      </div>
+
+                      {/* Active toggle */}
+                      <div onMouseDown={(e) => e.stopPropagation()} className="shrink-0">
+                        <Checkbox
+                          id={`col_${col.column_key}`}
+                          checked={col.is_active}
+                          disabled={col.is_required}
+                          onCheckedChange={() => handleToggleActive(originalIndex)}
+                          className="cursor-pointer"
                         />
-                        {col.is_required && (
-                          <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50 h-5 px-1.5 flex items-center gap-1 shrink-0">
-                            <Lock className="h-2.5 w-2.5" /> Required
-                          </Badge>
-                        )}
-                        {col.is_custom && (
-                          <Badge variant="outline" className="text-[10px] text-purple-700 border-purple-300 bg-purple-50 h-5 px-1.5 shrink-0">
-                            Custom
-                          </Badge>
-                        )}
                       </div>
-                      <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-500 font-mono">
-                        <span>Key: {col.column_key}</span>
-                        <span>•</span>
-                        <span>Type: {col.data_type}</span>
-                        {col.sample_value && (
-                          <>
-                            <span>•</span>
-                            <span>Sample: &ldquo;{col.sample_value}&rdquo;</span>
-                          </>
-                        )}
+
+                      {/* Column Label Input */}
+                      <div className="flex-1 min-w-0" onMouseDown={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={col.display_label}
+                            onChange={e => handleLabelChange(originalIndex, e.target.value)}
+                            className={`h-7 text-xs font-medium ${
+                              col.is_active ? "text-gray-900 bg-white" : "text-gray-500 bg-transparent"
+                            }`}
+                          />
+                          {col.is_required && (
+                            <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300 bg-amber-50 h-5 px-1.5 flex items-center gap-1 shrink-0">
+                              <Lock className="h-2.5 w-2.5" /> Required
+                            </Badge>
+                          )}
+                          {col.is_custom && (
+                            <Badge variant="outline" className="text-[10px] text-purple-700 border-purple-300 bg-purple-50 h-5 px-1.5 shrink-0">
+                              Custom
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-500 font-mono">
+                          <span>Key: {col.column_key}</span>
+                          <span>•</span>
+                          <span>Type: {col.data_type}</span>
+                          {col.sample_value && (
+                            <>
+                              <span>•</span>
+                              <span>Sample: &ldquo;{col.sample_value}&rdquo;</span>
+                            </>
+                          )}
+                        </div>
                       </div>
+                    </div>
+
+                    {/* Right: Status indicator & Delete action */}
+                    <div className="flex items-center gap-2 text-xs shrink-0" onMouseDown={(e) => e.stopPropagation()}>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                          col.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                        }`}
+                      >
+                        {col.is_active ? "In Excel" : "Excluded"}
+                      </span>
+
+                      {!col.is_required && !['staff_id', 'staffid', 'id', 'employid'].includes(col.column_key.toLowerCase()) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteColumn(col, originalIndex)}
+                          className="text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 p-1 rounded transition-colors"
+                          title="Delete column (excludes from Excel template)"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  {/* Right: Status indicator & Delete action */}
-                  <div className="flex items-center gap-2 text-xs" onMouseDown={(e) => e.stopPropagation()}>
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                        col.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-                      }`}
-                    >
-                      {col.is_active ? "In Excel" : "Excluded"}
-                    </span>
-
-                    {!col.is_required && !['staff_id', 'staffid', 'id', 'employid'].includes(col.column_key.toLowerCase()) && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteColumn(col, originalIndex)}
-                        className="text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 p-1 rounded transition-colors"
-                        title="Delete column (excludes from Excel template)"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
+                  {/* Drop Indicator Line (After) */}
+                  {isDragOver && dropPosition === "after" && (
+                    <div className="absolute -bottom-1.5 left-0 right-0 z-20 flex items-center">
+                      <div className="w-2.5 h-2.5 rounded-full bg-blue-600 shadow-sm -ml-1"></div>
+                      <div className="h-1 bg-blue-600 flex-1 rounded-full shadow-sm"></div>
+                      <div className="w-2.5 h-2.5 rounded-full bg-blue-600 shadow-sm -mr-1"></div>
+                    </div>
+                  )}
                 </div>
               );
             })
