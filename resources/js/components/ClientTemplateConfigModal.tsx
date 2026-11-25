@@ -35,6 +35,7 @@ import {
   Move,
   Maximize2,
   Minimize2,
+  X,
 } from "lucide-react";
 
 export type ModuleType = "payroll" | "ssnit" | "petra" | "bank" | "gra" | "contract";
@@ -656,108 +657,110 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
   const activeCount = currentColumns.filter(c => c.is_active).length;
   const totalCount = currentColumns.length;
 
-  return (
-    <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
-      <DialogContent
-        className={`flex flex-col p-0 gap-0 overflow-hidden shadow-2xl border transition-all duration-150 ${
-          isMaximized
-            ? "!fixed !inset-0 !w-screen !h-screen !max-w-none !max-h-none !rounded-none !border-0 !translate-x-0 !translate-y-0 !top-0 !left-0"
-            : "rounded-2xl border-gray-200"
-        }`}
-        style={
-          isMaximized
-            ? {
-                position: "fixed",
-                inset: 0,
-                width: "100vw",
-                height: "100vh",
-                maxWidth: "100vw",
-                maxHeight: "100vh",
-                transform: "none",
-                top: 0,
-                left: 0,
-                borderRadius: 0,
-                display: "flex",
-                flexDirection: "column",
-                zIndex: 60,
-              }
-            : {
-                width: "98vw",
-                maxWidth: "98vw",
-                height: "96vh",
-                maxHeight: "96vh",
-                transform: `translate(-50%, calc(-50% + ${dialogOffsetY}px))`,
-                transition: isDraggingDialog ? "none" : "transform 0.1s ease-out",
-                display: "flex",
-                flexDirection: "column",
-              }
-        }
-      >
-        {/* Header - Draggable on screen & Maximize Control */}
-        <DialogHeader
-          onMouseDown={handleDialogHeaderMouseDown}
-          className="p-4 sm:p-5 pb-3 border-b bg-gray-50/95 shrink-0 cursor-grab active:cursor-grabbing select-none"
-          title="Click and drag header to move modal up/down on your screen"
-        >
-          <div className="flex items-center justify-between pr-8">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-4 h-4 rounded-full border shadow-sm"
-                  style={{ backgroundColor: client?.color || "#3b82f6" }}
-                />
-                <DialogTitle className="text-xl sm:text-2xl font-bold flex items-center gap-2">
-                  <span>Excel Template Columns</span>
-                  <span className="text-muted-foreground font-normal text-base">
-                    ({client?.client_name})
-                  </span>
-                  {dialogOffsetY !== 0 && !isMaximized && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDialogOffsetY(0);
-                      }}
-                      className="ml-2 text-xs font-normal text-blue-600 hover:underline bg-blue-50 px-2 py-0.5 rounded border border-blue-200"
-                      title="Reset modal position to center"
-                    >
-                      Reset position
-                    </button>
-                  )}
-                </DialogTitle>
-              </div>
-              <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
-                Customize, drag & drop, and order the exact columns that appear when clients/staff download Excel templates to upload monthly payroll.
-              </DialogDescription>
-            </div>
+  if (!isOpen) return null;
 
-            {/* Maximize / Restore Toggle Button */}
-            <div className="flex items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setIsMaximized(!isMaximized);
-                  setDialogOffsetY(0);
-                }}
-                className="h-8 px-2.5 text-xs font-medium bg-white text-gray-700 hover:text-blue-600 hover:border-blue-300 shadow-2xs"
-                title={isMaximized ? "Restore window size" : "Expand to Fullscreen"}
-              >
-                {isMaximized ? (
-                  <>
-                    <Minimize2 className="h-3.5 w-3.5 mr-1.5" />
-                    <span>Restore Size</span>
-                  </>
-                ) : (
-                  <>
-                    <Maximize2 className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
-                    <span>Fullscreen</span>
-                  </>
-                )}
-              </Button>
+  return (
+    <>
+      {/* Full-screen backdrop */}
+      <div
+        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-hidden animate-in fade-in-0 duration-150"
+        onClick={(e) => {
+          if (e.target === e.currentTarget && !saving) {
+            onClose();
+          }
+        }}
+      >
+        {/* Modal Window Container */}
+        <div
+          className={`flex flex-col bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden transition-all duration-150 ${
+            isMaximized
+              ? "fixed inset-0 w-screen h-screen rounded-none border-0 z-50"
+              : "w-[98vw] max-w-[1700px] h-[95vh] max-h-[96vh] relative"
+          }`}
+          style={
+            !isMaximized && dialogOffsetY !== 0
+              ? {
+                  transform: `translateY(${dialogOffsetY}px)`,
+                  transition: isDraggingDialog ? "none" : "transform 0.1s ease-out",
+                }
+              : undefined
+          }
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header - Draggable on screen & Maximize Control */}
+          <div
+            onMouseDown={handleDialogHeaderMouseDown}
+            className="p-4 sm:p-5 pb-3 border-b bg-gray-50/95 shrink-0 cursor-grab active:cursor-grabbing select-none relative"
+            title="Click and drag header to move modal up/down on your screen"
+          >
+            <div className="flex items-center justify-between pr-10">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-4 h-4 rounded-full border shadow-xs"
+                    style={{ backgroundColor: client?.color || "#3b82f6" }}
+                  />
+                  <h2 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-gray-900">
+                    <span>Excel Template Columns</span>
+                    <span className="text-muted-foreground font-normal text-base">
+                      ({client?.client_name})
+                    </span>
+                    {dialogOffsetY !== 0 && !isMaximized && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDialogOffsetY(0);
+                        }}
+                        className="ml-2 text-xs font-normal text-blue-600 hover:underline bg-blue-50 px-2 py-0.5 rounded border border-blue-200"
+                        title="Reset modal position to center"
+                      >
+                        Reset position
+                      </button>
+                    )}
+                  </h2>
+                </div>
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  Customize, drag & drop, and order the exact columns that appear when clients/staff download Excel templates to upload monthly payroll.
+                </p>
+              </div>
+
+              {/* Header Right Actions: Fullscreen & Close */}
+              <div className="flex items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsMaximized(!isMaximized);
+                    setDialogOffsetY(0);
+                  }}
+                  className="h-8 px-2.5 text-xs font-medium bg-white text-gray-700 hover:text-blue-600 hover:border-blue-300 shadow-2xs"
+                  title={isMaximized ? "Restore window size" : "Expand to Fullscreen"}
+                >
+                  {isMaximized ? (
+                    <>
+                      <Minimize2 className="h-3.5 w-3.5 mr-1.5" />
+                      <span>Restore Size</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
+                      <span>Fullscreen</span>
+                    </>
+                  )}
+                </Button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={saving}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                  title="Close modal"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
-          </div>
 
           {/* Module Selector Tabs */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-3">
@@ -797,7 +800,7 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
               );
             })}
           </div>
-        </DialogHeader>
+        </div>
 
         {/* Toolbar & Actions */}
         <div className="px-4 sm:px-6 py-2.5 border-b bg-white shrink-0 flex flex-wrap items-center justify-between gap-2.5 text-xs">
@@ -1206,7 +1209,7 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
         </div>
 
         {/* Footer */}
-        <DialogFooter className="p-3 sm:p-4 border-t bg-gray-50/95 shrink-0 z-10 flex items-center justify-between sm:justify-between">
+        <div className="p-3 sm:p-4 border-t bg-gray-50/95 shrink-0 z-10 flex items-center justify-between sm:justify-between">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5 min-w-0 pr-2">
             <FileSpreadsheet className="h-4 w-4 text-green-600 shrink-0" />
             <span className="truncate">
@@ -1239,7 +1242,7 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
               size="sm"
               onClick={() => handleSaveModule()}
               disabled={saving || loading}
-              className={`text-white font-medium shadow-sm transition-all ${
+              className={`text-white font-medium shadow-xs transition-all ${
                 dirtyModules.has(activeModule)
                   ? "bg-emerald-600 hover:bg-emerald-700"
                   : "bg-blue-600 hover:bg-blue-700"
@@ -1249,8 +1252,9 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
               Save {MODULE_TABS.find(t => t.id === activeModule)?.label}
             </Button>
           </div>
-        </DialogFooter>
-      </DialogContent>
+        </div>
+      </div>
+    </div>
 
       {/* Sub-Dialog: Add Custom Column */}
       <Dialog open={isAddCustomOpen} onOpenChange={setIsAddCustomOpen}>
@@ -1311,6 +1315,6 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
           </form>
         </DialogContent>
       </Dialog>
-    </Dialog>
+    </>
   );
 }
