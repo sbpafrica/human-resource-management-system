@@ -197,182 +197,276 @@ public function export(Request $request)
 }
 
  public function upload(Request $request)
- {
- $request->validate([
- 'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
- 'month' => ['required', 'date_format:Y-m'],
- ]);
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
+            'month' => ['required', 'date_format:Y-m'],
+        ]);
 
- try {
- $selectedMonth = $request->input('month');
- session(['selected_month' => $selectedMonth]);
- $date = Carbon::createFromFormat('Y-m', $selectedMonth);
- $tableName = 'honda' . strtolower($date->format('F')) . $date->format('y');
+        try {
+            $selectedMonth = $request->input('month');
+            session(['selected_month' => $selectedMonth]);
+            $date = Carbon::createFromFormat('Y-m', $selectedMonth);
+            $tableName = 'honda' . strtolower($date->format('F')) . $date->format('y');
 
- // Create table if it doesn't exist
- HondaPay::createTableIfNotExists($tableName);
+            HondaPay::createTableIfNotExists($tableName);
+            \App\Models\PayrollColumn::ensureColumnsForTable($tableName, 'honda');
 
- $file = $request->file('file');
- $reader = new XlsxReader();
- $spreadsheet = $reader->load($file->getRealPath());
- $sheet = $spreadsheet->getActiveSheet();
- $rows = $sheet->toArray();
- array_shift($rows); // Remove header row
+            $file = $request->file('file');
+            $ext = strtolower($file->getClientOriginalExtension());
+            if ($ext === 'csv') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Csv();
+            } elseif ($ext === 'xls') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+            } elseif ($ext === 'ods') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Ods();
+            } else {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
+            }
+            $reader->setReadDataOnly(true);
+            $spreadsheet = $reader->load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray(null, true, false, false);
 
- // Check for existing staff IDs
- $existingStaffIds = DB::table($tableName)->pluck('STAFFID')->toArray();
- $duplicateStaffIds = [];
- $validRecords = [];
- $errors = [];
+            if (empty($rows)) {
+                return redirect()->route('hondapay.index', ['month' => $selectedMonth])
+                    ->with('error', 'Uploaded spreadsheet is empty.');
+            }
 
- foreach ($rows as $index => $row) {
- if (count($row) < 35) {
- $errors[] = "Row " . ($index + 2) . ": Expected 35 columns, found " . count($row);
- continue;
- }
+            // Find actual header row dynamically
+            $headerRowIndex = null;
+            $headerRow = [];
+            foreach ($rows as $rIdx => $r) {
+                if ($rIdx > 10) break;
+                $matchCount = 0;
+                foreach ($r as $cellVal) {
+                    if (!is_string($cellVal)) continue;
+                    $norm = strtolower(trim(preg_replace('/[\s\xc2\xa0]+/u', ' ', $cellVal)));
+                    if (preg_match('/^(staff(\s*id)?|name|position|basic|gross|take\s*home|net(\s*pay)?)/i', $norm)) {
+                        $matchCount++;
+                    }
+                }
+                if ($matchCount >= 2) {
+                    $headerRowIndex = $rIdx;
+                    $headerRow = $r;
+                    break;
+                }
+            }
 
-// === 35-COLUMN MAPPING FOR HONDA (0 → 34) ===
-$STAFFID                   = trim($row[0] ?? '') ?: null;
-$NAME                      = trim($row[1] ?? '') ?: null;
-$DATEOFEMPLOYMENT          = trim($row[2] ?? '') ?: null;
-$POSITION                  = trim($row[3] ?? '') ?: null;
+            if ($headerRowIndex === null) {
+                $headerRowIndex = 0;
+                $headerRow = $rows[0] ?? [];
+            }
 
-$BASICSALARY_GHC           = is_numeric($row[4] ?? '') ? (float)$row[4] : null;
-$LEGALWORKDAYS             = is_numeric($row[5] ?? '') ? (int)$row[5] : null;
-$NUMBEROFDAYSWORKED        = is_numeric($row[6] ?? '') ? (float)$row[6] : null;
-$LEAVEDAYS                 = is_numeric($row[7] ?? '') ? (float)$row[7] : null;
-$LEAVEAMOUNT               = is_numeric($row[8] ?? '') ? (float)$row[8] : null;
-$BASICSALARYEARNED_GHC     = is_numeric($row[9] ?? '') ? (float)$row[9] : null;
+            $dataRows = array_slice($rows, $headerRowIndex + 1);
 
-$PERFORMANCEBONUSSTANDARD  = is_numeric($row[10] ?? '') ? (float)$row[10] : null;
-$COEFFICIENT               = is_numeric($row[11] ?? '') ? (float)$row[11] : null;
-$PERFORMANCEBONUS          = is_numeric($row[12] ?? '') ? (float)$row[12] : null;
-$TRANSPORTALLOWANCE        = is_numeric($row[13] ?? '') ? (float)$row[13] : null;
-$foodallowance             = is_numeric($row[14] ?? '') ? (float)$row[14] : null;
-$holiovertime             = is_numeric($row[15] ?? '') ? (float)$row[15] : null;
-$holiovertimeamt            = is_numeric($row[16] ?? '') ? (float)$row[16] : null;
-$medicalinsurance          = is_numeric($row[17] ?? '') ? (float)$row[17] : null;
+            $fieldAliases = [
+                'STAFFID'                  => ['staff id', 'staffid', 'employee id'],
+                'NAME'                     => ['name', 'staff name', 'employee name'],
+                'DATEOFEMPLOYMENT'         => ['date of employment', 'employment date', 'join date'],
+                'POSITION'                 => ['position', 'role', 'designation'],
+                'BASICSALARY_GHC'          => ['basic salary (ghc)', 'basic salary', 'basic', 'basic pay'],
+                'LEGALWORKDAYS'            => ['legal work days', 'work days', 'legal workdays'],
+                'NUMBEROFDAYSWORKED'       => ['days worked', 'number of days worked'],
+                'LEAVEDAYS'                => ['leave days'],
+                'LEAVEAMOUNT'              => ['leave amount'],
+                'BASICSALARYEARNED_GHC'    => ['basic salary earned (ghc)', 'basic salary earned', 'basic earned'],
+                'PERFORMANCEBONUSSTANDARD' => ['performance bonus standard', 'perf bonus standard'],
+                'COEFFICIENT'              => ['coefficient'],
+                'PERFORMANCEBONUS'         => ['performance bonus', 'perf bonus'],
+                'TRANSPORTALLOWANCE'       => ['transport allowance', 'transport'],
+                'foodallowance'            => ['food allowance', 'food'],
+                'holiovertime'             => ['holiday overtime', 'holi overtime'],
+                'holiovertimeamt'          => ['holiday overtimeamt', 'holiday overtime amount', 'holiovertimeamt'],
+                'medicalinsurance'         => ['medical insurance', 'medical'],
+                'GROSSSALARY_GHC'          => ['gross salary (ghc)', 'gross salary', 'gross', 'gross pay'],
+                'MANAGEMENTFEE_8'          => ['management fee 8%', 'management fee'],
+                'GETFUND_2_5'              => ['getfund 2.5%', 'getfund'],
+                'NHIL_2_5'                 => ['nhil 2.5%', 'nhil'],
+                'VAT_15'                   => ['vat 15%', 'vat'],
+                'SSF_13'                   => ['ssf 13%', 'ssf'],
+                'COSTTOHONDA_GHC'          => ['cost to honda (ghc)', 'cost to honda'],
+                'SSNITEE_0_5'              => ['ssnit ee 0.5%', 'ssnit ee', 'ssnit 5.5%'],
+                'PETRA_5'                  => ['petra 5%', 'petra'],
+                'TAXABLEINCOME_GHC'        => ['taxable income (ghc)', 'taxable income', 'taxable'],
+                'PAYE_GHC'                 => ['paye (ghc)', 'paye', 'income tax'],
+                'TOTALDEDUCTIONS_GHC'      => ['total deductions (ghc)', 'total deductions', 'total deduction'],
+                'TAKEHOMEPAY_GHC'          => ['take home pay (ghc)', 'take home pay', 'take home', 'net pay', 'netpay', 'bank transfer'],
+                'BANK'                     => ['bank', 'bank name'],
+                'ACCOUNTNUMBER'            => ['account number', 'account no'],
+                'BRANCH'                   => ['branch'],
+                'SSNITNUMBER'              => ['ssnit number', 'ssnit no', 'ssnit'],
+                'GHCARDNUMBER'             => ['ghana card number', 'ghana card', 'gh card'],
+            ];
 
-$GROSSSALARY_GHC           = is_numeric($row[18] ?? '') ? (float)$row[18] : null;
+            $defaultIndexes = [
+                'STAFFID' => 0, 'NAME' => 1, 'DATEOFEMPLOYMENT' => 2, 'POSITION' => 3,
+                'BASICSALARY_GHC' => 4, 'LEGALWORKDAYS' => 5, 'NUMBEROFDAYSWORKED' => 6,
+                'LEAVEDAYS' => 7, 'LEAVEAMOUNT' => 8, 'BASICSALARYEARNED_GHC' => 9,
+                'PERFORMANCEBONUSSTANDARD' => 10, 'COEFFICIENT' => 11, 'PERFORMANCEBONUS' => 12,
+                'TRANSPORTALLOWANCE' => 13, 'foodallowance' => 14, 'holiovertime' => 15,
+                'holiovertimeamt' => 16, 'medicalinsurance' => 17, 'GROSSSALARY_GHC' => 18,
+                'MANAGEMENTFEE_8' => 19, 'GETFUND_2_5' => 20, 'NHIL_2_5' => 21,
+                'VAT_15' => 22, 'SSF_13' => 23, 'COSTTOHONDA_GHC' => 24,
+                'SSNITEE_0_5' => 25, 'PETRA_5' => 26, 'TAXABLEINCOME_GHC' => 27,
+                'PAYE_GHC' => 28, 'TOTALDEDUCTIONS_GHC' => 29, 'TAKEHOMEPAY_GHC' => 30,
+                'BANK' => 31, 'ACCOUNTNUMBER' => 32, 'BRANCH' => 33, 'SSNITNUMBER' => 34,
+                'GHCARDNUMBER' => 35,
+            ];
 
-$MANAGEMENTFEE_8           = is_numeric($row[19] ?? '') ? (float)$row[19] : null;
-$GETFUND_2_5               = is_numeric($row[20] ?? '') ? (float)$row[20] : null;
-$NHIL_2_5                  = is_numeric($row[21] ?? '') ? (float)$row[21] : null;
+            $headerIndexMap = \App\Models\PayrollColumn::buildHeaderIndexMap($headerRow, $fieldAliases, $defaultIndexes);
 
-$VAT_15                    = is_numeric($row[22] ?? '') ? (float)$row[22] : null;
-$SSF_13                    = is_numeric($row[23] ?? '') ? (float)$row[23] : null;
-$COSTTOHONDA_GHC           = is_numeric($row[24] ?? '') ? (float)$row[24] : null;
+            // Check for existing staff IDs
+            $existingStaffIds = DB::table($tableName)->pluck('STAFFID')->toArray();
+            $duplicateStaffIds = [];
+            $validRecords = [];
+            $errors = [];
 
-$SSNITEE_0_5               = is_numeric($row[25] ?? '') ? (float)$row[25] : null;
-$PETRA_5                   = is_numeric($row[26] ?? '') ? (float)$row[26] : null;
-$TAXABLEINCOME_GHC         = is_numeric($row[27] ?? '') ? (float)$row[27] : null;
-$PAYE_GHC                  = is_numeric($row[28] ?? '') ? (float)$row[28] : null;
-$TOTALDEDUCTIONS_GHC       = is_numeric($row[29] ?? '') ? (float)$row[29] : null;
+            foreach ($dataRows as $index => $row) {
+                // Skip empty rows
+                $allEmpty = true;
+                foreach ($row as $c) {
+                    if ($c !== null && trim((string)$c) !== '') {
+                        $allEmpty = false;
+                        break;
+                    }
+                }
+                if ($allEmpty) continue;
 
-// Take Home Pay – cleaned (last numeric column before bank details)
-$rawTakehome               = trim($row[30] ?? '');
-$cleanTakehome             = preg_replace('/[^0-9.-]/', '', $rawTakehome);
-$TAKEHOMEPAY_GHC           = is_numeric($cleanTakehome) ? (float)$cleanTakehome : null;
+                $STAFFID = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['STAFFID'], 'str');
+                $NAME    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['NAME'], 'str');
 
-$BANK                      = trim($row[31] ?? '') ?: null;
-$ACCOUNTNUMBER             = trim($row[32] ?? '') ?: null;
-$BRANCH                    = trim($row[33] ?? '') ?: null;
-$SSNITNUMBER               = trim($row[34] ?? '') ?: null;
-$GHCARDNUMBER              = trim($row[35] ?? '') ?: null;
+                if (empty($STAFFID) && empty($NAME)) {
+                    continue;
+                }
 
+                $DATEOFEMPLOYMENT         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['DATEOFEMPLOYMENT'], 'str');
+                $POSITION                 = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['POSITION'], 'str');
+                $BASICSALARY_GHC          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['BASICSALARY_GHC'], 'req_num');
+                $LEGALWORKDAYS            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['LEGALWORKDAYS'], 'int');
+                $NUMBEROFDAYSWORKED       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['NUMBEROFDAYSWORKED'], 'num');
+                $LEAVEDAYS                = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['LEAVEDAYS'], 'num');
+                $LEAVEAMOUNT              = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['LEAVEAMOUNT'], 'num');
+                $BASICSALARYEARNED_GHC    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['BASICSALARYEARNED_GHC'], 'num');
+                $PERFORMANCEBONUSSTANDARD = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['PERFORMANCEBONUSSTANDARD'], 'num');
+                $COEFFICIENT              = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['COEFFICIENT'], 'num', 1.0);
+                $PERFORMANCEBONUS         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['PERFORMANCEBONUS'], 'num');
+                $TRANSPORTALLOWANCE       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['TRANSPORTALLOWANCE'], 'num');
+                $foodallowance            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['foodallowance'], 'num');
+                $holiovertime             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['holiovertime'], 'num');
+                $holiovertimeamt          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['holiovertimeamt'], 'num');
+                $medicalinsurance         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['medicalinsurance'], 'num');
+                $GROSSSALARY_GHC          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['GROSSSALARY_GHC'], 'req_num');
+                $MANAGEMENTFEE_8          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['MANAGEMENTFEE_8'], 'num');
+                $GETFUND_2_5              = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['GETFUND_2_5'], 'num');
+                $NHIL_2_5                 = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['NHIL_2_5'], 'num');
+                $VAT_15                   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['VAT_15'], 'num');
+                $SSF_13                   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['SSF_13'], 'num');
+                $COSTTOHONDA_GHC          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['COSTTOHONDA_GHC'], 'num');
+                $SSNITEE_0_5              = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['SSNITEE_0_5'], 'num');
+                $PETRA_5                  = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['PETRA_5'], 'num');
+                $TAXABLEINCOME_GHC        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['TAXABLEINCOME_GHC'], 'num');
+                $PAYE_GHC                 = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['PAYE_GHC'], 'num');
+                $TOTALDEDUCTIONS_GHC      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['TOTALDEDUCTIONS_GHC'], 'num');
+                $TAKEHOMEPAY_GHC          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['TAKEHOMEPAY_GHC'], 'req_num');
+                $BANK                     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['BANK'], 'str');
+                $ACCOUNTNUMBER            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ACCOUNTNUMBER'], 'str');
+                $BRANCH                   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['BRANCH'], 'str');
+                $SSNITNUMBER              = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['SSNITNUMBER'], 'str');
+                $GHCARDNUMBER             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['GHCARDNUMBER'], 'str');
 
- // Validation
- if (empty($STAFFID)) {
- $errors[] = "Row " . ($index + 2) . ": Staff ID cannot be empty.";
- continue;
- }
- if (empty($NAME)) {
- $errors[] = "Row " . ($index + 2) . ": Name cannot be empty.";
- continue;
- }
- if (is_null($TAKEHOMEPAY_GHC )) {
- $errors[] = "Row " . ($index + 2) . ": Net Pay must be a valid number (found: '$rawNetPay').";
- continue;
- }
+                // Validation
+                if (empty($STAFFID)) {
+                    $errors[] = "Row " . ($index + 2) . ": Staff ID cannot be empty.";
+                    continue;
+                }
+                if (empty($NAME)) {
+                    $errors[] = "Row " . ($index + 2) . ": Name cannot be empty.";
+                    continue;
+                }
+                if (is_null($TAKEHOMEPAY_GHC)) {
+                    $errors[] = "Row " . ($index + 2) . ": Net Pay must be a valid number.";
+                    continue;
+                }
 
- if (in_array($STAFFID, $existingStaffIds) || in_array($STAFFID, $duplicateStaffIds)) {
- $duplicateStaffIds[] = $STAFFID;
- continue;
- }
+                if (in_array($STAFFID, $existingStaffIds) || in_array($STAFFID, $duplicateStaffIds)) {
+                    $duplicateStaffIds[] = $STAFFID;
+                    continue;
+                }
 
- $data = [
-    'STAFFID'                  => $STAFFID,
-    'NAME'                     => $NAME,
-    'DATEOFEMPLOYMENT'         => $DATEOFEMPLOYMENT,
-    'POSITION'                 => $POSITION,
-    'BASICSALARY_GHC'          => $BASICSALARY_GHC,
-    'LEGALWORKDAYS'            => $LEGALWORKDAYS,
-    'NUMBEROFDAYSWORKED'       => $NUMBEROFDAYSWORKED,
-    'LEAVEDAYS'                => $LEAVEDAYS,
-    'LEAVEAMOUNT'              => $LEAVEAMOUNT,
-    'BASICSALARYEARNED_GHC'    => $BASICSALARYEARNED_GHC,
-    'PERFORMANCEBONUSSTANDARD' => $PERFORMANCEBONUSSTANDARD,
-    'COEFFICIENT'              => $COEFFICIENT,
-    'PERFORMANCEBONUS'         => $PERFORMANCEBONUS,
-    'TRANSPORTALLOWANCE'       => $TRANSPORTALLOWANCE,
-    'foodallowance'            => $foodallowance,
-    'holiovertime'            => $holiovertime,
-    'holiovertimeamt'            => $holiovertimeamt,
-    'medicalinsurance'         => $medicalinsurance,
-    'GROSSSALARY_GHC'          => $GROSSSALARY_GHC,
-    'MANAGEMENTFEE_8'          => $MANAGEMENTFEE_8,
-    'GETFUND_2_5'              => $GETFUND_2_5,
-    'NHIL_2_5'                 => $NHIL_2_5,
-    'VAT_15'                   => $VAT_15,
-    'SSF_13'                   => $SSF_13,
-    'COSTTOHONDA_GHC'          => $COSTTOHONDA_GHC,
-    'SSNITEE_0_5'              => $SSNITEE_0_5,
-    'PETRA_5'                  => $PETRA_5,
-    'TAXABLEINCOME_GHC'        => $TAXABLEINCOME_GHC,
-    'PAYE_GHC'                 => $PAYE_GHC,
-    'TOTALDEDUCTIONS_GHC'      => $TOTALDEDUCTIONS_GHC,
-    'TAKEHOMEPAY_GHC'          => $TAKEHOMEPAY_GHC,
-    'BANK'                     => $BANK,
-    'ACCOUNTNUMBER'            => $ACCOUNTNUMBER,
-    'BRANCH'                   => $BRANCH,
-    'SSNITNUMBER'              => $SSNITNUMBER,
-    'GHCARDNUMBER'             => $GHCARDNUMBER,
-];
+                $data = [
+                    'STAFFID'                  => $STAFFID,
+                    'NAME'                     => $NAME,
+                    'DATEOFEMPLOYMENT'         => $DATEOFEMPLOYMENT,
+                    'POSITION'                 => $POSITION,
+                    'BASICSALARY_GHC'          => $BASICSALARY_GHC,
+                    'LEGALWORKDAYS'            => $LEGALWORKDAYS,
+                    'NUMBEROFDAYSWORKED'       => $NUMBEROFDAYSWORKED,
+                    'LEAVEDAYS'                => $LEAVEDAYS,
+                    'LEAVEAMOUNT'              => $LEAVEAMOUNT,
+                    'BASICSALARYEARNED_GHC'    => $BASICSALARYEARNED_GHC,
+                    'PERFORMANCEBONUSSTANDARD' => $PERFORMANCEBONUSSTANDARD,
+                    'COEFFICIENT'              => $COEFFICIENT,
+                    'PERFORMANCEBONUS'         => $PERFORMANCEBONUS,
+                    'TRANSPORTALLOWANCE'       => $TRANSPORTALLOWANCE,
+                    'foodallowance'            => $foodallowance,
+                    'holiovertime'             => $holiovertime,
+                    'holiovertimeamt'          => $holiovertimeamt,
+                    'medicalinsurance'         => $medicalinsurance,
+                    'GROSSSALARY_GHC'          => $GROSSSALARY_GHC,
+                    'MANAGEMENTFEE_8'          => $MANAGEMENTFEE_8,
+                    'GETFUND_2_5'              => $GETFUND_2_5,
+                    'NHIL_2_5'                 => $NHIL_2_5,
+                    'VAT_15'                   => $VAT_15,
+                    'SSF_13'                   => $SSF_13,
+                    'COSTTOHONDA_GHC'          => $COSTTOHONDA_GHC,
+                    'SSNITEE_0_5'              => $SSNITEE_0_5,
+                    'PETRA_5'                  => $PETRA_5,
+                    'TAXABLEINCOME_GHC'        => $TAXABLEINCOME_GHC,
+                    'PAYE_GHC'                 => $PAYE_GHC,
+                    'TOTALDEDUCTIONS_GHC'      => $TOTALDEDUCTIONS_GHC,
+                    'TAKEHOMEPAY_GHC'          => $TAKEHOMEPAY_GHC,
+                    'BANK'                     => $BANK,
+                    'ACCOUNTNUMBER'            => $ACCOUNTNUMBER,
+                    'BRANCH'                   => $BRANCH,
+                    'SSNITNUMBER'              => $SSNITNUMBER,
+                    'GHCARDNUMBER'             => $GHCARDNUMBER,
+                ];
 
- $validRecords[] = $data;
- $existingStaffIds[] = $STAFFID;
- }
+                // Dynamic custom columns
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'honda');
+                if (!empty($customVals)) {
+                    $data = array_merge($data, $customVals);
+                }
 
- if (!empty($errors)) {
- Log::error("Upload errors: " . implode(' | ', $errors));
- $errorMessage = count($errors) > 3
- ? implode(' | ', array_slice($errors, 0, 3)) . ' | ... and ' . (count($errors) - 3) . ' more errors.'
- : implode(' | ', $errors);
- return redirect()->route('hondapay.index', ['month' => $selectedMonth])
- ->with('error', $errorMessage);
- }
+                $validRecords[] = $data;
+                $existingStaffIds[] = $STAFFID;
+            }
 
- if (!empty($duplicateStaffIds)) {
- Log::error("Duplicate Staff IDs: " . implode(', ', array_unique($duplicateStaffIds)));
- return redirect()->route('hondapay.index', ['month' => $selectedMonth])
- ->with('error', 'Duplicate Staff IDs found: ' . implode(', ', array_unique($duplicateStaffIds)));
- }
+            if (!empty($errors)) {
+                Log::error("Upload errors: " . implode(' | ', $errors));
+                $errorMessage = count($errors) > 3
+                    ? implode(' | ', array_slice($errors, 0, 3)) . ' | ... and ' . (count($errors) - 3) . ' more errors.'
+                    : implode(' | ', $errors);
+                return redirect()->route('hondapay.index', ['month' => $selectedMonth])
+                    ->with('error', $errorMessage);
+            }
 
- if (!empty($validRecords)) {
- DB::table($tableName)->insert($validRecords);
- Log::info("Upload: Inserted " . count($validRecords) . " records into {$tableName}");
- } else {
- Log::warning("Upload: No valid records to insert into {$tableName}");
- }
+            if (!empty($validRecords)) {
+                DB::table($tableName)->insert($validRecords);
+                Log::info("Upload: Inserted " . count($validRecords) . " records into {$tableName}");
+            } else {
+                Log::warning("Upload: No valid records to insert into {$tableName}");
+            }
 
- return redirect()->route('hondapay.index', ['month' => $selectedMonth])
- ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
- } catch (\Exception $e) {
- Log::error('File upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
- return redirect()->route('hondapay.index', ['month' => $selectedMonth])
- ->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
- }
- }
+            return redirect()->route('hondapay.index', ['month' => $selectedMonth])
+                ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
+        } catch (\Exception $e) {
+            Log::error('File upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return redirect()->route('hondapay.index', ['month' => $selectedMonth])
+                ->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
+        }
+    }
 
  public function delete(Request $request)
  {

@@ -126,6 +126,7 @@ class DriverPayController extends Controller
             $tableName = $this->resolveTableName($date);
 
             DriverPay::createTableIfNotExists($tableName);
+            \App\Models\PayrollColumn::ensureColumnsForTable($tableName, 'driverssnit');
 
             // Fetch table columns to know what fields exist
             $tableColumns = array_column(DB::select("DESCRIBE `$tableName`"), 'Field');
@@ -400,6 +401,11 @@ class DriverPayController extends Controller
                 if ($hasSsfyeed)  $record['ssfyeed']   = $ssfyeed;
                 if ($hasSsfyer)   $record['ssfyer']    = $ssfyerd;
                 if ($hasSsfyerd)  $record['ssfyerd']   = $ssfyerd;
+
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'driverssnit');
+                if (!empty($customVals)) {
+                    $record = array_merge($record, $customVals);
+                }
 
                 $validRecords[] = $record;
                 $existingIds[]  = $employ;

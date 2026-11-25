@@ -215,58 +215,161 @@ public function export(Request $request)
             $tableName = 'centurypay' . strtolower($date->format('F')) . $date->format('y');
 
             CenturyPay::createTableIfNotExists($tableName);
+            \App\Models\PayrollColumn::ensureColumnsForTable($tableName, 'centurypay');
 
             $file = $request->file('file');
-            $reader = new XlsxReader();
+            $ext = strtolower($file->getClientOriginalExtension());
+            if ($ext === 'csv') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Csv();
+            } elseif ($ext === 'xls') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+            } elseif ($ext === 'ods') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Ods();
+            } else {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
+            }
+            $reader->setReadDataOnly(true);
             $spreadsheet = $reader->load($file->getRealPath());
-            $rows = $spreadsheet->getActiveSheet()->toArray();
-            array_shift($rows); // remove header
+            $rows = $spreadsheet->getActiveSheet()->toArray(null, true, false, false);
+
+            if (empty($rows)) {
+                return redirect()->route('centurypay.index', ['month' => $selectedMonth])
+                    ->with('error', 'Uploaded spreadsheet is empty.');
+            }
+
+            // Find actual header row dynamically (scanning first 10 rows)
+            $headerRowIndex = null;
+            $headerRow = [];
+            foreach ($rows as $rIdx => $r) {
+                if ($rIdx > 10) break;
+                $matchCount = 0;
+                foreach ($r as $cellVal) {
+                    if (!is_string($cellVal)) continue;
+                    $norm = strtolower(trim(preg_replace('/[\s\xc2\xa0]+/u', ' ', $cellVal)));
+                    if (preg_match('/^(staff(\s*id)?|employee(\s*id)?|employ|name|basic|gross|net(\s*pay)?|bank\s*transfer)/i', $norm)) {
+                        $matchCount++;
+                    }
+                }
+                if ($matchCount >= 2) {
+                    $headerRowIndex = $rIdx;
+                    $headerRow = $r;
+                    break;
+                }
+            }
+
+            if ($headerRowIndex === null) {
+                $headerRowIndex = 0;
+                $headerRow = $rows[0] ?? [];
+            }
+
+            $dataRows = array_slice($rows, $headerRowIndex + 1);
+
+            $fieldAliases = [
+                'employ'            => ['staff id', 'staffid', 'employee id', 'employ', 'id', 'staff_id'],
+                'empoyeename'       => ['employee name', 'name', 'employeename', 'staff name', 'fullname', 'names'],
+                'outsourced'        => ['outsourced', 'outsource'],
+                'desig'             => ['designation', 'desig', 'position', 'role', 'title'],
+                'joindate'          => ['join date', 'joindate', 'start date'],
+                'shopname'          => ['shop name', 'shopname', 'shop', 'branch', 'location'],
+                'actualdays'        => ['actual days', 'actualdays', 'days worked', 'workdays'],
+                'night'             => ['night', 'night days'],
+                'halfdays'          => ['half days', 'halfdays'],
+                'satoffdays'        => ['sat off days', 'satoffdays'],
+                'sunoffdays'        => ['sun off days', 'sunoffdays'],
+                'leavedays'         => ['leave days', 'leavedays'],
+                'absentdays'        => ['absent days', 'absentdays'],
+                'holiday'           => ['holiday', 'holidays'],
+                'weekdaysOT'        => ['weekdays ot', 'weekdaysot', 'weekday ot', 'weekday_ot'],
+                'weekendOT'         => ['weekend ot', 'weekendot', 'weekends ot', 'weekend_ot'],
+                'basic'             => ['basic salary', 'basic', 'basic pay', 'basicsalary'],
+                'absentwithoutpay'  => ['absent without pay', 'absentwithoutpay'],
+                'basicentitlement'  => ['basic entitlement', 'basicentitlement', 'basic entitled'],
+                'transport'         => ['transport allowance', 'transport', 'transportallowance'],
+                'nightallowance'    => ['night allowance', 'nightallowance'],
+                'normalovertime'    => ['normal overtime', 'normalovertime'],
+                'saturdayovertime'  => ['saturday overtime', 'saturdayovertime'],
+                'gross'             => ['gross salary', 'gross', 'gross pay', 'totalearn', 'total earnings'],
+                'ssniter'           => ['ssniter', 'ssnit er', 'ssnit (er)'],
+                'ssnitee'           => ['ssnitee', 'ssnit ee', 'ssnit (ee)', 'ssnitee0.5', 'ssnit_ee'],
+                'ssnit'             => ['ssnitee5', 'ssnit', 'ssnit 5.5%', 'ssnit5'],
+                'taxabled'          => ['taxable', 'taxabled', 'taxable income'],
+                'paye'              => ['paye', 'income tax'],
+                'totalovertime'     => ['total overtime', 'totalovertime'],
+                'overtimetax'       => ['overtime tax', 'overtimetax', 'ot tax'],
+                'totaltax'          => ['total tax', 'totaltax'],
+                'advance'           => ['advance', 'salary advance'],
+                'totaldeduction'    => ['total deduction', 'totaldeduction', 'total deductions', 'totaldeduct'],
+                'netpay'            => ['net pay', 'bank transfer', 'take home pay', 'take home', 'netpay', 'net_pay', 'banktransfer'],
+            ];
+
+            $defaultIndexes = [
+                'employ' => 0, 'empoyeename' => 1, 'outsourced' => 2, 'desig' => 3, 'joindate' => 4,
+                'shopname' => 5, 'actualdays' => 6, 'night' => 7, 'halfdays' => 8, 'satoffdays' => 9,
+                'sunoffdays' => 10, 'leavedays' => 11, 'absentdays' => 12, 'holiday' => 13,
+                'weekdaysOT' => 14, 'weekendOT' => 15, 'basic' => 16, 'absentwithoutpay' => 17,
+                'basicentitlement' => 18, 'transport' => 19, 'nightallowance' => 20, 'normalovertime' => 21,
+                'saturdayovertime' => 22, 'gross' => 23, 'ssniter' => 24, 'ssnitee' => 25,
+                'ssnit' => 26, 'taxabled' => 27, 'paye' => 28, 'totalovertime' => 29,
+                'overtimetax' => 30, 'totaltax' => 31, 'advance' => 32, 'totaldeduction' => 33, 'netpay' => 34,
+            ];
+
+            $headerIndexMap = \App\Models\PayrollColumn::buildHeaderIndexMap($headerRow, $fieldAliases, $defaultIndexes);
 
             $existingStaffIds = DB::table($tableName)->pluck('employ')->toArray();
             $validRecords = [];
             $errors = [];
 
-            foreach ($rows as $index => $row) {
-                if (count($row) < 35) {
-                    $errors[] = "Row " . ($index + 2) . ": Expected at least 33 columns, found " . count($row);
+            foreach ($dataRows as $index => $row) {
+                // Skip completely empty rows
+                $allEmpty = true;
+                foreach ($row as $c) {
+                    if ($c !== null && trim((string)$c) !== '') {
+                        $allEmpty = false;
+                        break;
+                    }
+                }
+                if ($allEmpty) continue;
+
+                $employ           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['employ'], 'str');
+                $empoyeename      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['empoyeename'], 'str');
+
+                if (empty($employ) && empty($empoyeename)) {
                     continue;
                 }
 
-                $employ           = trim($row[0] ?? '') ?: null;
-                $empoyeename      = trim($row[1] ?? '') ?: null;
-                $outsourced       = trim($row[2] ?? '') ?: null;
-                $desig            = trim($row[3] ?? '') ?: null;
-                $joindate         = trim($row[4] ?? '') ?: null;
-                $shopname         = trim($row[5] ?? '') ?: null;
-                $actualdays       = (int)($row[6] ?? 0);
-                $night            = (int)($row[7] ?? 0);
-                $halfdays         = (int)($row[8] ?? 0);
-                $satoffdays       = (int)($row[9] ?? 0);
-                $sunoffdays       = (int)($row[10] ?? 0);
-                $leavedays        = (int)($row[11] ?? 0);
-                $absentdays       = (int)($row[12] ?? 0);
-                $holiday          = (int)($row[13] ?? 0);
-                $weekdaysOT       = (int)($row[14] ?? 0);
-                $weekendOT        = (int)($row[15] ?? 0);
-                $basic            = is_numeric($row[16] ?? '') ? (float)$row[16] : null;
-                $absentwithoutpay = (float)($row[17] ?? 0);
-                $basicentitlement = (float)($row[18] ?? 0);
-                $transport        = (float)($row[19] ?? 0);
-                $nightallowance   = (float)($row[20] ?? 0);
-                $normalovertime   = (float)($row[21] ?? 0);
-                $saturdayovertime = (float)($row[22] ?? 0);
-                $gross            = is_numeric($row[23] ?? '') ? (float)$row[23] : null;
-                $ssniter            = (float)($row[24] ?? 0);
-                $ssnitee            = (float)($row[25] ?? 0);
-                $ssnit            = (float)($row[26] ?? 0);
-                $taxabled         = (float)($row[27] ?? 0);
-                $paye             = (float)($row[28] ?? 0);
-                $totalovertime    = (float)($row[29] ?? 0);
-                $overtimetax      = (float)($row[30] ?? 0);
-                $totaltax         = (float)($row[31] ?? 0);
-                $advance          = (float)($row[32] ?? 0);
-                $totaldeduction   = (float)($row[33] ?? 0);
-                $netpay           = is_numeric($row[34] ?? '') ? (float)$row[34] : null;
+                $outsourced       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['outsourced'], 'str');
+                $desig            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['desig'], 'str');
+                $joindate         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['joindate'], 'str');
+                $shopname         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['shopname'], 'str');
+                $actualdays       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['actualdays'], 'int', 0);
+                $night            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['night'], 'int', 0);
+                $halfdays         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['halfdays'], 'int', 0);
+                $satoffdays       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['satoffdays'], 'int', 0);
+                $sunoffdays       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['sunoffdays'], 'int', 0);
+                $leavedays        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['leavedays'], 'int', 0);
+                $absentdays       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['absentdays'], 'int', 0);
+                $holiday          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['holiday'], 'int', 0);
+                $weekdaysOT       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekdaysOT'], 'int', 0);
+                $weekendOT        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekendOT'], 'int', 0);
+                $basic            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['basic'], 'req_num');
+                $absentwithoutpay = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['absentwithoutpay'], 'num', 0.0);
+                $basicentitlement = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['basicentitlement'], 'num', 0.0);
+                $transport        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['transport'], 'num', 0.0);
+                $nightallowance   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['nightallowance'], 'num', 0.0);
+                $normalovertime   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['normalovertime'], 'num', 0.0);
+                $saturdayovertime = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['saturdayovertime'], 'num', 0.0);
+                $gross            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['gross'], 'req_num');
+                $ssniter          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssniter'], 'num', 0.0);
+                $ssnitee          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnitee'], 'num', 0.0);
+                $ssnit            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnit'], 'num', 0.0);
+                $taxabled         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['taxabled'], 'num', 0.0);
+                $paye             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['paye'], 'num', 0.0);
+                $totalovertime    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['totalovertime'], 'num', 0.0);
+                $overtimetax      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['overtimetax'], 'num', 0.0);
+                $totaltax         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['totaltax'], 'num', 0.0);
+                $advance          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['advance'], 'num', 0.0);
+                $totaldeduction   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['totaldeduction'], 'num', 0.0);
+                $netpay           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['netpay'], 'req_num');
 
                 if (empty($employ)) {
                     $errors[] = "Row " . ($index + 2) . ": Staff ID is required.";
@@ -285,7 +388,7 @@ public function export(Request $request)
                     continue;
                 }
 
-                $validRecords[] = [
+                $record = [
                     'employ'            => $employ,
                     'empoyeename'       => $empoyeename,
                     'outsourced'        => $outsourced,
@@ -310,9 +413,9 @@ public function export(Request $request)
                     'normalovertime'    => $normalovertime,
                     'saturdayovertime'  => $saturdayovertime,
                     'gross'             => $gross,
-                    'ssniter'             => $ssniter,
-                     'ssnitee'             => $ssnitee,
-                      'ssnit'             => $ssnit,
+                    'ssniter'           => $ssniter,
+                    'ssnitee'           => $ssnitee,
+                    'ssnit'             => $ssnit,
                     'taxabled'          => $taxabled,
                     'paye'              => $paye,
                     'totalovertime'     => $totalovertime,
@@ -323,6 +426,20 @@ public function export(Request $request)
                     'netpay'            => $netpay,
                 ];
 
+                // Extract all dynamic custom columns from template
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'centurypay');
+                if (!empty($customVals)) {
+                    foreach (array_keys($customVals) as $cCol) {
+                        if (!\Illuminate\Support\Facades\Schema::hasColumn($tableName, $cCol)) {
+                            try {
+                                DB::statement("ALTER TABLE `{$tableName}` ADD COLUMN `{$cCol}` DOUBLE NULL DEFAULT 0");
+                            } catch (\Throwable $e) {}
+                        }
+                    }
+                    $record = array_merge($record, $customVals);
+                }
+
+                $validRecords[] = $record;
                 $existingStaffIds[] = $employ;
             }
 

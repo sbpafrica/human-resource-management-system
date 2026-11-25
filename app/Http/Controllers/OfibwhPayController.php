@@ -214,187 +214,270 @@ public function export(Request $request)
 }
 
  public function upload(Request $request)
- {
- $request->validate([
- 'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
- 'month' => ['required', 'date_format:Y-m'],
- ]);
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
+            'month' => ['required', 'date_format:Y-m'],
+        ]);
 
- try {
- $selectedMonth = $request->input('month');
- session(['selected_month' => $selectedMonth]);
- $date = Carbon::createFromFormat('Y-m', $selectedMonth);
- $tableName = 'olambwh' . strtolower($date->format('F')) . $date->format('y');
+        try {
+            $selectedMonth = $request->input('month');
+            session(['selected_month' => $selectedMonth]);
+            $date = Carbon::createFromFormat('Y-m', $selectedMonth);
+            $tableName = 'olambwh' . strtolower($date->format('F')) . $date->format('y');
 
- // Create table if it doesn't exist
- OfibwhPay::createTableIfNotExists($tableName);
+            OfibwhPay::createTableIfNotExists($tableName);
+            \App\Models\PayrollColumn::ensureColumnsForTable($tableName, 'olambwh');
 
- $file = $request->file('file');
- $reader = new XlsxReader();
- $spreadsheet = $reader->load($file->getRealPath());
- $sheet = $spreadsheet->getActiveSheet();
- $rows = $sheet->toArray();
- array_shift($rows); // Remove header row
+            $file = $request->file('file');
+            $ext = strtolower($file->getClientOriginalExtension());
+            if ($ext === 'csv') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Csv();
+            } elseif ($ext === 'xls') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+            } elseif ($ext === 'ods') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Ods();
+            } else {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
+            }
+            $reader->setReadDataOnly(true);
+            $spreadsheet = $reader->load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray(null, true, false, false);
 
- // Check for existing staff IDs
- $existingStaffIds = DB::table($tableName)->pluck('id')->toArray();
- $duplicateStaffIds = [];
- $validRecords = [];
- $errors = [];
+            if (empty($rows)) {
+                return redirect()->route('ofibwhpay.index', ['month' => $selectedMonth])
+                    ->with('error', 'Uploaded spreadsheet is empty.');
+            }
 
- foreach ($rows as $index => $row) {
- if (count($row) < 38) {
- $errors[] = "Row " . ($index + 2) . ": Expected 37 columns, found " . count($row);
- continue;
- }
+            $headerRowIndex = null;
+            $headerRow = [];
+            foreach ($rows as $rIdx => $r) {
+                if ($rIdx > 10) break;
+                $matchCount = 0;
+                foreach ($r as $cellVal) {
+                    if (!is_string($cellVal)) continue;
+                    $norm = strtolower(trim(preg_replace('/[\s\xc2\xa0]+/u', ' ', $cellVal)));
+                    if (preg_match('/^(staff(\s*id)?|id|name|basic|net(\s*pay)?)/i', $norm)) {
+                        $matchCount++;
+                    }
+                }
+                if ($matchCount >= 2) {
+                    $headerRowIndex = $rIdx;
+                    $headerRow = $r;
+                    break;
+                }
+            }
 
- // === 38-COLUMN MAPPING (0 → 37) ===
-$id                  = trim($row[0] ?? '') ?: null;      // Staff ID or Employee ID
-$name                = trim($row[1] ?? '') ?: null;
-$basic               = is_numeric($row[2] ?? '') ? (float)$row[2] : null;
-$workdays            = is_numeric($row[3] ?? '') ? (float)$row[3] : null;
+            if ($headerRowIndex === null) {
+                $headerRowIndex = 0;
+                $headerRow = $rows[0] ?? [];
+            }
 
-$f_and_t_rate        = is_numeric($row[4] ?? '') ? (float)$row[4] : null;
-$weekdayhr           = is_numeric($row[5] ?? '') ? (float)$row[5] : null;
-$weekdaytonage       = is_numeric($row[6] ?? '') ? (float)$row[6] : null;
-$weekdayrate         = is_numeric($row[7] ?? '') ? (float)$row[7] : null;
-$amt                 = is_numeric($row[8] ?? '') ? (float)$row[8] : null;
+            $dataRows = array_slice($rows, $headerRowIndex + 1);
 
-$weekdayothr         = is_numeric($row[9] ?? '') ? (float)$row[9] : null;
-$weekdayottonage     = is_numeric($row[10] ?? '') ? (float)$row[10] : null;
-$weekdayotrate       = is_numeric($row[11] ?? '') ? (float)$row[11] : null;
-$weekdayotamt1       = is_numeric($row[12] ?? '') ? (float)$row[12] : null;
+            $fieldAliases = [
+                'id'              => ['staff id', 'id', 'staffid', 'employee id'],
+                'name'            => ['name', 'staff name', 'employee name'],
+                'basic'           => ['basic salary', 'basic', 'basic pay'],
+                'workdays'        => ['work days', 'workdays', 'days worked'],
+                'f&trate'         => ['f&t rate', 'f&trate'],
+                'weekdayhr'       => ['weekday hours', 'weekdayhr'],
+                'weekdaytonage'   => ['weekday tonnage', 'weekdaytonage'],
+                'weekdayrate'     => ['weekday rate', 'weekdayrate'],
+                'amt'             => ['amount', 'amt'],
+                'weekdayothr'     => ['weekday ot hours', 'weekdayothr'],
+                'weekdayottonage' => ['weekday ot tonnage', 'weekdayottonage'],
+                'weekdayotrate'   => ['weekday ot rate', 'weekdayotrate'],
+                'weekdayotamt1'   => ['weekday ot amount', 'weekdayotamt1'],
+                'weekendhr'       => ['weekend hours', 'weekendhr'],
+                'weekendtonage'   => ['weekend tonnage', 'weekendtonage'],
+                'weekendrate'     => ['weekend rate', 'weekendrate'],
+                'amount'          => ['weekend amount', 'amount'],
+                'leavedays'       => ['leave days', 'leavedays'],
+                'totalamount'     => ['total amount', 'totalamount'],
+                'phonecredit'     => ['phone credit', 'phonecredit'],
+                'ssnit13'         => ['ssnit 13%', 'ssnit13'],
+                'f&tamount'       => ['f&t amount', 'f&tamount'],
+                'servicecharge'   => ['service charge', 'servicecharge'],
+                'getfund'         => ['getfund', 'get fund'],
+                'nhil'            => ['nhil'],
+                'vat'             => ['vat'],
+                'costtoolam'      => ['cost to olam', 'costtoolam'],
+                'ssnitee'         => ['ssnit ee', 'ssnitee'],
+                'petra'           => ['petra', 'tier 2', 'petra 5%'],
+                'taxincome'       => ['taxable income', 'taxincome'],
+                'totaltax'        => ['total tax', 'totaltax'],
+                'totaldeduction'  => ['total deduction', 'totaldeduction'],
+                'netpay'          => ['net pay', 'netpay', 'take home pay', 'take home', 'bank transfer'],
+                'bank1'           => ['bank', 'bank1'],
+                'account2'        => ['account number', 'account2', 'account no'],
+                'branch'          => ['branch'],
+                'ssnit2'          => ['ssnit no', 'ssnit2', 'ssnit'],
+                'ghcard1'         => ['ghana card', 'ghcard1', 'gh card'],
+            ];
 
-$weekendhr           = is_numeric($row[13] ?? '') ? (float)$row[13] : null;
-$weekendtonage       = is_numeric($row[14] ?? '') ? (float)$row[14] : null;
-$weekendrate         = is_numeric($row[15] ?? '') ? (float)$row[15] : null;
-$amount               = is_numeric($row[16] ?? '') ? (float)$row[16] : null;
+            $defaultIndexes = [
+                'id' => 0, 'name' => 1, 'basic' => 2, 'workdays' => 3, 'f&trate' => 4,
+                'weekdayhr' => 5, 'weekdaytonage' => 6, 'weekdayrate' => 7, 'amt' => 8,
+                'weekdayothr' => 9, 'weekdayottonage' => 10, 'weekdayotrate' => 11,
+                'weekdayotamt1' => 12, 'weekendhr' => 13, 'weekendtonage' => 14,
+                'weekendrate' => 15, 'amount' => 16, 'leavedays' => 17, 'totalamount' => 18,
+                'phonecredit' => 19, 'ssnit13' => 20, 'f&tamount' => 21, 'servicecharge' => 22,
+                'getfund' => 23, 'nhil' => 24, 'vat' => 25, 'costtoolam' => 26, 'ssnitee' => 27,
+                'petra' => 28, 'taxincome' => 29, 'totaltax' => 30, 'totaldeduction' => 31,
+                'netpay' => 32, 'bank1' => 33, 'account2' => 34, 'branch' => 35,
+                'ssnit2' => 36, 'ghcard1' => 37,
+            ];
 
-$leavedays           = is_numeric($row[17] ?? '') ? (float)$row[17] : null;
-$totalamount         = is_numeric($row[18] ?? '') ? (float)$row[18] : null;
-$phonecredit         = is_numeric($row[19] ?? '') ? (float)$row[19] : null;
+            $headerIndexMap = \App\Models\PayrollColumn::buildHeaderIndexMap($headerRow, $fieldAliases, $defaultIndexes);
 
-$ssnit13             = is_numeric($row[20] ?? '') ? (float)$row[20] : null;
-$f_and_t_amount      = is_numeric($row[21] ?? '') ? (float)$row[21] : null;
-$servicecharge       = is_numeric($row[22] ?? '') ? (float)$row[22] : null;
-$getfund             = is_numeric($row[23] ?? '') ? (float)$row[23] : null;
-$nhil                = is_numeric($row[24] ?? '') ? (float)$row[24] : null;
-$vat                 = is_numeric($row[25] ?? '') ? (float)$row[25] : null;
-$costtoolam          = is_numeric($row[26] ?? '') ? (float)$row[26] : null;
+            $existingStaffIds = DB::table($tableName)->pluck('id')->toArray();
+            $duplicateStaffIds = [];
+            $validRecords = [];
+            $errors = [];
 
-$ssnitee             = is_numeric($row[27] ?? '') ? (float)$row[27] : null;
-$petra               = is_numeric($row[28] ?? '') ? (float)$row[28] : null;
-$taxincome           = is_numeric($row[29] ?? '') ? (float)$row[29] : null;
-$totaltax            = is_numeric($row[30] ?? '') ? (float)$row[30] : null;
-$totaldeduction      = is_numeric($row[31] ?? '') ? (float)$row[31] : null;
+            foreach ($dataRows as $index => $row) {
+                $allEmpty = true;
+                foreach ($row as $c) {
+                    if ($c !== null && trim((string)$c) !== '') {
+                        $allEmpty = false;
+                        break;
+                    }
+                }
+                if ($allEmpty) continue;
 
-// Net Pay – cleaned
-$rawNetpay           = trim($row[32] ?? '');
-$cleanNetpay         = preg_replace('/[^0-9.-]/', '', $rawNetpay);
-$netpay              = is_numeric($cleanNetpay) ? (float)$cleanNetpay : null;
+                $id   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['id'], 'str');
+                $name = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['name'], 'str');
 
-$bank1               = trim($row[33] ?? '') ?: null;
-$account2            = trim($row[34] ?? '') ?: null;
-$branch              = trim($row[35] ?? '') ?: null;
-$ssnit2              = trim($row[36] ?? '') ?: null;
-$ghcard1             = trim($row[37] ?? '') ?: null;
+                if (empty($id) && empty($name)) continue;
 
+                $basic           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['basic'], 'req_num');
+                $workdays        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['workdays'], 'num');
+                $f_and_t_rate    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['f&trate'], 'num');
+                $weekdayhr       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekdayhr'], 'num');
+                $weekdaytonage   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekdaytonage'], 'num');
+                $weekdayrate     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekdayrate'], 'num');
+                $amt             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['amt'], 'num');
+                $weekdayothr     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekdayothr'], 'num');
+                $weekdayottonage = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekdayottonage'], 'num');
+                $weekdayotrate   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekdayotrate'], 'num');
+                $weekdayotamt1   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekdayotamt1'], 'num');
+                $weekendhr       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekendhr'], 'num');
+                $weekendtonage   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekendtonage'], 'num');
+                $weekendrate     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekendrate'], 'num');
+                $amount          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['amount'], 'num');
+                $leavedays       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['leavedays'], 'num');
+                $totalamount     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['totalamount'], 'num');
+                $phonecredit     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['phonecredit'], 'num');
+                $ssnit13         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnit13'], 'num');
+                $f_and_t_amount  = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['f&tamount'], 'num');
+                $servicecharge   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['servicecharge'], 'num');
+                $getfund         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['getfund'], 'num');
+                $nhil            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['nhil'], 'num');
+                $vat             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['vat'], 'num');
+                $costtoolam      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['costtoolam'], 'num');
+                $ssnitee         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnitee'], 'num');
+                $petra           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['petra'], 'num');
+                $taxincome       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['taxincome'], 'num');
+                $totaltax        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['totaltax'], 'num');
+                $totaldeduction  = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['totaldeduction'], 'num');
+                $netpay          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['netpay'], 'req_num');
+                $bank1           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['bank1'], 'str');
+                $account2        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['account2'], 'str');
+                $branch          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['branch'], 'str');
+                $ssnit2          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnit2'], 'str');
+                $ghcard1         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ghcard1'], 'str');
 
+                if (empty($id)) {
+                    $errors[] = "Row " . ($index + 2) . ": Staff ID cannot be empty.";
+                    continue;
+                }
+                if (empty($name)) {
+                    $errors[] = "Row " . ($index + 2) . ": Name cannot be empty.";
+                    continue;
+                }
+                if (is_null($netpay)) {
+                    $errors[] = "Row " . ($index + 2) . ": Net Pay must be a valid number.";
+                    continue;
+                }
 
- // Validation
- if (empty($id)) {
- $errors[] = "Row " . ($index + 2) . ": Staff ID cannot be empty.";
- continue;
- }
- if (empty($name)) {
- $errors[] = "Row " . ($index + 2) . ": Name cannot be empty.";
- continue;
- }
- if (is_null($netpay)) {
- $errors[] = "Row " . ($index + 2) . ": Net Pay must be a valid number (found: '$rawNetPay').";
- continue;
- }
+                if (in_array($id, $existingStaffIds) || in_array($id, $duplicateStaffIds)) {
+                    $duplicateStaffIds[] = $id;
+                    continue;
+                }
 
- if (in_array($id, $existingStaffIds) || in_array($id, $duplicateStaffIds)) {
- $duplicateStaffIds[] = $id;
- continue;
- }
+                $data = [
+                    'id'               => $id,
+                    'name'             => $name,
+                    'basic'            => $basic,
+                    'workdays'         => $workdays,
+                    'f&trate'          => $f_and_t_rate,
+                    'weekdayhr'        => $weekdayhr,
+                    'weekdaytonage'    => $weekdaytonage,
+                    'weekdayrate'      => $weekdayrate,
+                    'amt'              => $amt,
+                    'weekdayothr'      => $weekdayothr,
+                    'weekdayottonage'  => $weekdayottonage,
+                    'weekdayotrate'    => $weekdayotrate,
+                    'weekdayotamt1'    => $weekdayotamt1,
+                    'weekendhr'        => $weekendhr,
+                    'weekendtonage'    => $weekendtonage,
+                    'weekendrate'      => $weekendrate,
+                    'amount'           => $amount,
+                    'leavedays'        => $leavedays,
+                    'totalamount'      => $totalamount,
+                    'phonecredit'      => $phonecredit,
+                    'ssnit13'          => $ssnit13,
+                    'f&tamount'        => $f_and_t_amount,
+                    'servicecharge'    => $servicecharge,
+                    'getfund'          => $getfund,
+                    'nhil'             => $nhil,
+                    'vat'              => $vat,
+                    'costtoolam'       => $costtoolam,
+                    'ssnitee'          => $ssnitee,
+                    'petra'            => $petra,
+                    'taxincome'        => $taxincome,
+                    'totaltax'         => $totaltax,
+                    'totaldeduction'   => $totaldeduction,
+                    'netpay'           => $netpay,
+                    'bank1'            => $bank1,
+                    'account2'         => $account2,
+                    'branch'           => $branch,
+                    'ssnit2'           => $ssnit2,
+                    'ghcard1'          => $ghcard1,
+                ];
 
- $data = [
-    'id'               => $id,
-    'name'             => $name,
-    'basic'            => $basic,
-    'workdays'         => $workdays,
-    'f&trate'          => $f_and_t_rate,
-    'weekdayhr'        => $weekdayhr,
-    'weekdaytonage'    => $weekdaytonage,
-    'weekdayrate'      => $weekdayrate,
-    'amt'              => $amt,
-    'weekdayothr'      => $weekdayothr,
-    'weekdayottonage'  => $weekdayottonage,
-    'weekdayotrate'    => $weekdayotrate,
-    'weekdayotamt1'    => $weekdayotamt1,
-    'weekendhr'        => $weekendhr,
-    'weekendtonage'    => $weekendtonage,
-    'weekendrate'      => $weekendrate,
-    'amount'           => $amount,
-    'leavedays'        => $leavedays,
-    'totalamount'      => $totalamount,
-    'phonecredit'      => $phonecredit,
-    'ssnit13'          => $ssnit13,
-    'f&tamount'        => $f_and_t_amount,
-    'servicecharge'    => $servicecharge,
-    'getfund'          => $getfund,
-    'nhil'             => $nhil,
-    'vat'              => $vat,
-    'costtoolam'       => $costtoolam,
-    'ssnitee'          => $ssnitee,
-     'petra'          => $petra,
-    'taxincome'        => $taxincome,
-    'totaltax'         => $totaltax,
-    'totaldeduction'   => $totaldeduction,
-    'netpay'           => $netpay,
-    'bank1'            => $bank1,
-    'account2'         => $account2,
-    'branch'           => $branch,
-    'ssnit2'           => $ssnit2,
-    'ghcard1'          => $ghcard1,
-];
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'olambwh');
+                if (!empty($customVals)) {
+                    $data = array_merge($data, $customVals);
+                }
 
- $validRecords[] = $data;
- $existingStaffIds[] = $id;
- }
+                $validRecords[] = $data;
+                $existingStaffIds[] = $id;
+            }
 
- if (!empty($errors)) {
- Log::error("Upload errors: " . implode(' | ', $errors));
- $errorMessage = count($errors) > 3
- ? implode(' | ', array_slice($errors, 0, 3)) . ' | ... and ' . (count($errors) - 3) . ' more errors.'
- : implode(' | ', $errors);
- return redirect()->route('ofibwhpay.index', ['month' => $selectedMonth])
- ->with('error', $errorMessage);
- }
+            if (!empty($errors)) {
+                Log::error("Upload errors: " . implode(' | ', $errors));
+                $errorMessage = count($errors) > 3
+                    ? implode(' | ', array_slice($errors, 0, 3)) . ' | ... and ' . (count($errors) - 3) . ' more errors.'
+                    : implode(' | ', $errors);
+                return redirect()->route('ofibwhpay.index', ['month' => $selectedMonth])
+                    ->with('error', $errorMessage);
+            }
 
- if (!empty($duplicateStaffIds)) {
- Log::error("Duplicate Staff IDs: " . implode(', ', array_unique($duplicateStaffIds)));
- return redirect()->route('ofibwhpay.index', ['month' => $selectedMonth])
- ->with('error', 'Duplicate Staff IDs found: ' . implode(', ', array_unique($duplicateStaffIds)));
- }
+            if (!empty($validRecords)) {
+                DB::table($tableName)->insert($validRecords);
+            }
 
- if (!empty($validRecords)) {
- DB::table($tableName)->insert($validRecords);
- Log::info("Upload: Inserted " . count($validRecords) . " records into {$tableName}");
- } else {
- Log::warning("Upload: No valid records to insert into {$tableName}");
- }
-
- return redirect()->route('ofibwhpay.index', ['month' => $selectedMonth])
- ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
- } catch (\Exception $e) {
- Log::error('File upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
- return redirect()->route('ofibwhpay.index', ['month' => $selectedMonth])
- ->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
- }
- }
+            return redirect()->route('ofibwhpay.index', ['month' => $selectedMonth])
+                ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
+        } catch (\Exception $e) {
+            Log::error('Upload failed: ' . $e->getMessage());
+            return redirect()->route('ofibwhpay.index', ['month' => $selectedMonth])
+                ->with('error', 'Upload failed: ' . $e->getMessage());
+        }
+    }
 
  public function delete(Request $request)
  {

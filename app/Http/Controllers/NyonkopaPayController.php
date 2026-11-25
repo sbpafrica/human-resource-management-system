@@ -254,73 +254,152 @@ class NyonkopaPayController extends Controller
             $tableName = $this->buildTableName($date);
 
             NyonkopaPay::createTableIfNotExists($tableName);
+            \App\Models\PayrollColumn::ensureColumnsForTable($tableName, 'nyonkopa');
 
             $file = $request->file('file');
-
-            // Auto-detect reader by file extension (was hardcoded XlsxReader)
-            $reader = IOFactory::createReaderForFile($file->getRealPath());
+            $ext = strtolower($file->getClientOriginalExtension());
+            if ($ext === 'csv') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Csv();
+            } elseif ($ext === 'xls') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+            } elseif ($ext === 'ods') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Ods();
+            } else {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
+            }
             $reader->setReadDataOnly(true);
             $spreadsheet = $reader->load($file->getRealPath());
             $sheet       = $spreadsheet->getActiveSheet();
-            $rows        = $sheet->toArray();
-            array_shift($rows); // drop header row
+            $rows        = $sheet->toArray(null, true, false, false);
+
+            if (empty($rows)) {
+                return redirect()->route('nyonkopapay.index', ['month' => $selectedMonth])
+                    ->with('error', 'Uploaded spreadsheet is empty.');
+            }
+
+            // Find actual header row dynamically
+            $headerRowIndex = null;
+            $headerRow = [];
+            foreach ($rows as $rIdx => $r) {
+                if ($rIdx > 10) break;
+                $matchCount = 0;
+                foreach ($r as $cellVal) {
+                    if (!is_string($cellVal)) continue;
+                    $norm = strtolower(trim(preg_replace('/[\s\xc2\xa0]+/u', ' ', $cellVal)));
+                    if (preg_match('/^(staff(\s*id)?|employee(\s*name)?|name|base(\s*salary)?|gross|take\s*home)/i', $norm)) {
+                        $matchCount++;
+                    }
+                }
+                if ($matchCount >= 2) {
+                    $headerRowIndex = $rIdx;
+                    $headerRow = $r;
+                    break;
+                }
+            }
+
+            if ($headerRowIndex === null) {
+                $headerRowIndex = 0;
+                $headerRow = $rows[0] ?? [];
+            }
+
+            $dataRows = array_slice($rows, $headerRowIndex + 1);
+
+            $fieldAliases = [
+                'staff_id'                  => ['staff id', 'staffid', 'employee id', 'staff_id'],
+                'employee_name'             => ['employee name', 'name', 'staff name', 'fullname'],
+                'start_date'                => ['start date', 'hire date', 'employment date', 'join date'],
+                'position'                  => ['position', 'role', 'designation'],
+                'work_location'             => ['work location', 'location', 'workplace'],
+                'base_salary'               => ['base salary', 'basic salary', 'basic'],
+                'fuel_and_rent_allowance'   => ['fuel and rent allowance', 'fuel allowance', 'rent allowance', 'allowance'],
+                'gross_salary'              => ['gross salary', 'gross'],
+                'management_fee_8'          => ['management fee 8%', 'management fee'],
+                'getfund_2_5'               => ['getfund 2.5%', 'getfund'],
+                'nhil_2_5'                  => ['nhil 2.5%', 'nhil'],
+                'vat_15'                    => ['vat 15%', 'vat'],
+                'medical_insurance'         => ['medical insurance', 'medical'],
+                'employer_provident_fund_5' => ['employer provident fund 5%', 'employer pf', 'employer provident fund'],
+                'thirteenth_month_bonus'    => ['13th month bonus', '13th month'],
+                'workman'                   => ['workman compensation', 'workman', 'workmen compensation'],
+                'ssnit_er_13'               => ['ssnit er 13%', 'ssnit er'],
+                'cost_to_nyonkopa'          => ['cost to nyonkopa', 'cost to company'],
+                'ssnit_ee_5_5'              => ['ssnit ee 5.5%', 'ssnit ee'],
+                'petra'                     => ['petra', 'tier 2', 'petra 5%'],
+                'employeepf'                => ['employeepf 3%', 'employee pf', 'employeepf'],
+                'taxable_income'            => ['taxable income', 'taxable'],
+                'paye'                      => ['paye', 'income tax'],
+                'thirteenth_month_tax'      => ['13th month tax', 'bonus tax'],
+                'total_taxation'            => ['total taxation', 'total tax'],
+                'deductions'                => ['deductions', 'deduction'],
+                'total_deductions'          => ['total deductions', 'total deduction'],
+                'take_home_pay'             => ['take home pay', 'take home', 'net pay', 'netpay', 'bank transfer'],
+            ];
+
+            $defaultIndexes = [
+                'staff_id' => 0, 'employee_name' => 1, 'start_date' => 2, 'position' => 3,
+                'work_location' => 4, 'base_salary' => 5, 'fuel_and_rent_allowance' => 6,
+                'gross_salary' => 7, 'management_fee_8' => 8, 'getfund_2_5' => 9,
+                'nhil_2_5' => 10, 'vat_15' => 11, 'medical_insurance' => 12,
+                'employer_provident_fund_5' => 13, 'thirteenth_month_bonus' => 14,
+                'workman' => 15, 'ssnit_er_13' => 16, 'cost_to_nyonkopa' => 17,
+                'ssnit_ee_5_5' => 18, 'petra' => 19, 'employeepf' => 20,
+                'taxable_income' => 21, 'paye' => 22, 'thirteenth_month_tax' => 23,
+                'total_taxation' => 24, 'deductions' => 25, 'total_deductions' => 26,
+                'take_home_pay' => 27,
+            ];
+
+            $headerIndexMap = \App\Models\PayrollColumn::buildHeaderIndexMap($headerRow, $fieldAliases, $defaultIndexes);
 
             $existingStaffIds = DB::table($tableName)->pluck('staff_id')->toArray();
             $errors = [];
             $validRecords = [];
-            $seenInFile = [];   // dedupe staff IDs within this file itself
+            $seenInFile = [];
 
-            foreach ($rows as $index => $row) {
+            foreach ($dataRows as $index => $row) {
                 // Skip empty rows silently
-                if (empty(array_filter($row, fn ($v) => $v !== null && $v !== ''))) {
+                $allEmpty = true;
+                foreach ($row as $c) {
+                    if ($c !== null && trim((string)$c) !== '') {
+                        $allEmpty = false;
+                        break;
+                    }
+                }
+                if ($allEmpty) continue;
+
+                $staff_id      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['staff_id'], 'str');
+                $employee_name = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['employee_name'], 'str');
+
+                if (empty($staff_id) && empty($employee_name)) {
                     continue;
                 }
 
-                if (count($row) < 28) {
-                    $errors[] = "Row " . ($index + 2) . ": Expected 28 columns, found " . count($row);
-                    continue;
-                }
+                $start_date                = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['start_date'], 'str');
+                $position                  = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['position'], 'str');
+                $work_location             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['work_location'], 'str');
+                $base_salary               = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['base_salary'], 'req_num');
+                $fuel_and_rent_allowance   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['fuel_and_rent_allowance'], 'num');
+                $gross_salary              = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['gross_salary'], 'req_num');
+                $management_fee_8          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['management_fee_8'], 'num');
+                $getfund_2_5               = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['getfund_2_5'], 'num');
+                $nhil_2_5                  = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['nhil_2_5'], 'num');
+                $vat_15                    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['vat_15'], 'num');
+                $medical_insurance         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['medical_insurance'], 'num');
+                $employer_provident_fund_5 = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['employer_provident_fund_5'], 'num');
+                $thirteenth_month_bonus    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['thirteenth_month_bonus'], 'num');
+                $workman                   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['workman'], 'num');
+                $ssnit_er_13               = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnit_er_13'], 'num');
+                $cost_to_nyonkopa          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['cost_to_nyonkopa'], 'num');
+                $ssnit_ee_5_5              = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnit_ee_5_5'], 'num');
+                $petra                     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['petra'], 'num');
+                $employeepf                = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['employeepf'], 'num');
+                $taxable_income            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['taxable_income'], 'num');
+                $paye                      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['paye'], 'num');
+                $thirteenth_month_tax      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['thirteenth_month_tax'], 'num');
+                $total_taxation            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['total_taxation'], 'num');
+                $deductions                = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['deductions'], 'num');
+                $total_deductions          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['total_deductions'], 'num');
+                $take_home_pay             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['take_home_pay'], 'req_num');
 
-                // ── Column mapping (0 → 27, must match template headers) ──
-                $staff_id                  = trim((string) ($row[0]  ?? '')) ?: null;
-                $employee_name             = trim((string) ($row[1]  ?? '')) ?: null;
-                $start_date                = trim((string) ($row[2]  ?? '')) ?: null;
-                $position                  = trim((string) ($row[3]  ?? '')) ?: null;
-                $work_location             = trim((string) ($row[4]  ?? '')) ?: null;
-
-                $base_salary               = is_numeric($row[5]  ?? '') ? (float) $row[5]  : null;
-                $fuel_and_rent_allowance   = is_numeric($row[6]  ?? '') ? (float) $row[6]  : null;
-                $gross_salary              = is_numeric($row[7]  ?? '') ? (float) $row[7]  : null;
-
-                $management_fee_8          = is_numeric($row[8]  ?? '') ? (float) $row[8]  : null;
-                $getfund_2_5               = is_numeric($row[9]  ?? '') ? (float) $row[9]  : null;
-                $nhil_2_5                  = is_numeric($row[10] ?? '') ? (float) $row[10] : null;
-
-                $vat_15                    = is_numeric($row[11] ?? '') ? (float) $row[11] : null;
-                $medical_insurance         = is_numeric($row[12] ?? '') ? (float) $row[12] : null;
-                $employer_provident_fund_5 = is_numeric($row[13] ?? '') ? (float) $row[13] : null;
-                $thirteenth_month_bonus    = is_numeric($row[14] ?? '') ? (float) $row[14] : null;
-
-                $workman                   = is_numeric($row[15] ?? '') ? (float) $row[15] : null;
-                $ssnit_er_13               = is_numeric($row[16] ?? '') ? (float) $row[16] : null;
-                $cost_to_nyonkopa          = is_numeric($row[17] ?? '') ? (float) $row[17] : null;
-
-                $ssnit_ee_5_5              = is_numeric($row[18] ?? '') ? (float) $row[18] : null;
-                $petra                     = is_numeric($row[19] ?? '') ? (float) $row[19] : null;
-                $employeepf                = is_numeric($row[20] ?? '') ? (float) $row[20] : null;
-                $taxable_income            = is_numeric($row[21] ?? '') ? (float) $row[21] : null;
-                $paye                      = is_numeric($row[22] ?? '') ? (float) $row[22] : null;
-                $thirteenth_month_tax      = is_numeric($row[23] ?? '') ? (float) $row[23] : null;
-                $total_taxation            = is_numeric($row[24] ?? '') ? (float) $row[24] : null;
-                $deductions                = is_numeric($row[25] ?? '') ? (float) $row[25] : null;
-                $total_deductions          = is_numeric($row[26] ?? '') ? (float) $row[26] : null;
-
-                // Take Home Pay – cleaned (commas / spaces / currency symbols stripped)
-                $rawTakeHome   = trim((string) ($row[27] ?? ''));
-                $cleanTakeHome = preg_replace('/[^0-9.\-]/', '', $rawTakeHome);
-                $take_home_pay = is_numeric($cleanTakeHome) ? (float) $cleanTakeHome : null;
-
-                // ── Validation ────────────────────────────────────────────
                 if (empty($staff_id)) {
                     $errors[] = "Row " . ($index + 2) . ": Staff ID is required.";
                     continue;
@@ -334,8 +413,7 @@ class NyonkopaPayController extends Controller
                     continue;
                 }
                 if (is_null($take_home_pay)) {
-                    // FIXED: was referencing undefined $rawBankTransfer
-                    $errors[] = "Row " . ($index + 2) . ": Take Home Pay must be a valid number. Found: '{$rawTakeHome}'";
+                    $errors[] = "Row " . ($index + 2) . ": Take Home Pay must be a valid number.";
                     continue;
                 }
                 if (in_array($staff_id, $existingStaffIds, true)) {
@@ -347,7 +425,7 @@ class NyonkopaPayController extends Controller
                     continue;
                 }
 
-                $validRecords[] = [
+                $record = [
                     'staff_id'                  => $staff_id,
                     'employee_name'             => $employee_name,
                     'start_date'                => $start_date,
@@ -378,51 +456,37 @@ class NyonkopaPayController extends Controller
                     'take_home_pay'             => $take_home_pay,
                 ];
 
+                // Dynamic custom columns from payroll_columns
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'nyonkopa');
+                if (!empty($customVals)) {
+                    $record = array_merge($record, $customVals);
+                }
+
+                $validRecords[] = $record;
+                $existingStaffIds[] = $staff_id;
                 $seenInFile[] = $staff_id;
             }
 
             if (!empty($errors)) {
-                Log::error('NyonkopaPay upload errors: ' . implode(' | ', $errors));
-                $message = count($errors) > 3
+                $errorMessage = count($errors) > 3
                     ? implode(' | ', array_slice($errors, 0, 3)) . ' | ... and ' . (count($errors) - 3) . ' more errors.'
                     : implode(' | ', $errors);
-
                 return redirect()->route('nyonkopapay.index', ['month' => $selectedMonth])
-                    ->with('error', $message);
+                    ->with('error', $errorMessage);
             }
 
-            if (empty($validRecords)) {
-                Log::warning("NyonkopaPay upload: no valid records found for {$tableName}");
-                return redirect()->route('nyonkopapay.index', ['month' => $selectedMonth])
-                    ->with('error', 'No valid records found in the uploaded file.');
+            if (!empty($validRecords)) {
+                DB::table($tableName)->insert($validRecords);
             }
-
-            // Atomic insert — chunked to keep query size sane
-            DB::transaction(function () use ($tableName, $validRecords) {
-                foreach (array_chunk($validRecords, 200) as $chunk) {
-                    DB::table($tableName)->insert($chunk);
-                }
-            });
-
-            Log::info("NyonkopaPay upload: inserted " . count($validRecords) . " records into {$tableName}");
 
             return redirect()->route('nyonkopapay.index', ['month' => $selectedMonth])
                 ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
-
         } catch (\Exception $e) {
-            Log::error('NyonkopaPay file upload failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
+            Log::error('Nyonkopa upload failed', ['error' => $e->getMessage()]);
             return redirect()->route('nyonkopapay.index', ['month' => $selectedMonth])
                 ->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    //  DELETE (all records for a month)
-    // ─────────────────────────────────────────────────────────────────────
     public function delete(Request $request)
     {
         $selectedMonth = $request->input('month', session('selected_month', now()->format('Y-m')));

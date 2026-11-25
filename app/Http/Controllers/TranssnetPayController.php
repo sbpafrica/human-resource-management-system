@@ -204,205 +204,309 @@ public function export(Request $request)
 /**
      * Upload Excel file
      */
-   public function upload(Request $request)
- {
- $request->validate([
- 'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
- 'month' => ['required', 'date_format:Y-m'],
- ]);
+    public function upload(Request $request)
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
+            'month' => ['required', 'date_format:Y-m'],
+        ]);
 
- try {
- $selectedMonth = $request->input('month');
- session(['selected_month' => $selectedMonth]);
- $date = Carbon::createFromFormat('Y-m', $selectedMonth);
- $tableName = 'transsnet' . strtolower($date->format('F')) . $date->format('y');
+        try {
+            $selectedMonth = $request->input('month');
+            session(['selected_month' => $selectedMonth]);
+            $date = Carbon::createFromFormat('Y-m', $selectedMonth);
+            $tableName = 'transsnet' . strtolower($date->format('F')) . $date->format('y');
 
- // Create table if it doesn't exist
- TranssnetPay::createTableIfNotExists($tableName);
+            TranssnetPay::createTableIfNotExists($tableName);
+            \App\Models\PayrollColumn::ensureColumnsForTable($tableName, 'transsnet');
 
- $file = $request->file('file');
- $reader = new XlsxReader();
- $spreadsheet = $reader->load($file->getRealPath());
- $sheet = $spreadsheet->getActiveSheet();
- $rows = $sheet->toArray();
- array_shift($rows); // Remove header row
+            $file = $request->file('file');
+            $ext = strtolower($file->getClientOriginalExtension());
+            if ($ext === 'csv') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Csv();
+            } elseif ($ext === 'xls') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+            } elseif ($ext === 'ods') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Ods();
+            } else {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
+            }
+            $reader->setReadDataOnly(true);
+            $spreadsheet = $reader->load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray(null, true, false, false);
 
- // Check for existing staff IDs
- $existingStaffIds = DB::table($tableName)->pluck('staffid')->toArray();
- $duplicateStaffIds = [];
- $validRecords = [];
- $errors = [];
+            if (empty($rows)) {
+                return redirect()->route('transsnetpay.index', ['month' => $selectedMonth])
+                    ->with('error', 'Uploaded spreadsheet is empty.');
+            }
 
- foreach ($rows as $index => $row) {
-    if (count($row) < 44) {
-        $errors[] = "Row " . ($index + 2) . ": Expected 46 columns, found " . count($row);
-        continue;
+            // Find actual header row dynamically
+            $headerRowIndex = null;
+            $headerRow = [];
+            foreach ($rows as $rIdx => $r) {
+                if ($rIdx > 10) break;
+                $matchCount = 0;
+                foreach ($r as $cellVal) {
+                    if (!is_string($cellVal)) continue;
+                    $norm = strtolower(trim(preg_replace('/[\s\xc2\xa0]+/u', ' ', $cellVal)));
+                    if (preg_match('/^(staff(\s*id)?|name|basic|gross(\s*salary)?|net(\s*pay)?)/i', $norm)) {
+                        $matchCount++;
+                    }
+                }
+                if ($matchCount >= 2) {
+                    $headerRowIndex = $rIdx;
+                    $headerRow = $r;
+                    break;
+                }
+            }
+
+            if ($headerRowIndex === null) {
+                $headerRowIndex = 0;
+                $headerRow = $rows[0] ?? [];
+            }
+
+            $dataRows = array_slice($rows, $headerRowIndex + 1);
+
+            $fieldAliases = [
+                'staffid'                  => ['staff id', 'staffid', 'employee id', 'staff_id'],
+                'name'                     => ['name', 'staff name', 'employee name', 'fullname'],
+                'business_line'            => ['business line', 'businessline'],
+                'department'               => ['department', 'dept'],
+                'position'                 => ['position', 'role', 'designation'],
+                'hired_date'               => ['hired date', 'hire date', 'start date'],
+                'last_date'                => ['last date', 'end date'],
+                'work_place'               => ['work place', 'workplace', 'location'],
+                'staff_category'           => ['staff category', 'category'],
+                'expiration_date'          => ['expiration date', 'expiry date'],
+                'contracting_entity'       => ['contracting entity', 'entity'],
+                'bank_name'                => ['bank name', 'bank'],
+                'account_name'             => ['account name'],
+                'bank_account_no'          => ['bank account no', 'bank account number', 'account no', 'account number'],
+                'branch_code'              => ['branch code', 'branch'],
+                'basic'                    => ['basic', 'basic salary', 'basic pay'],
+                'performance_basis'        => ['performance basis', 'perf basis'],
+                'coefficient'              => ['coefficient'],
+                'performance_final'        => ['performance final', 'perf final'],
+                'call_allowance'           => ['call allowance'],
+                'house_allowance'          => ['house allowance'],
+                'traffic_allowance'        => ['traffic allowance'],
+                'commission'               => ['commission'],
+                'severance_pay'            => ['severance pay', 'severance'],
+                'other_income'             => ['other income', 'other'],
+                'work_days'                => ['work days', 'workdays', 'days worked'],
+                'absent_days'              => ['absent days', 'absentdays'],
+                'absent_days_deduction'    => ['absent days deduction', 'absent deduction'],
+                'other_deduction'          => ['other deduction', 'other deductions'],
+                'gross_salary'             => ['gross salary', 'gross', 'gross pay'],
+                'petra_ee_5'               => ['petra ee 5%', 'petra ee', 'petra', 'tier 2'],
+                'ssnit_ee_05'              => ['ssnit ee 0.5%', 'ssnit ee', 'ssnit_ee_05', 'ssnit 5.5%'],
+                'base_for_paye'            => ['base for paye', 'paye base', 'taxable income'],
+                'ee_paye'                  => ['ee paye', 'paye', 'income tax'],
+                'ssnit_er_13'              => ['ssnit er 13%', 'ssnit er'],
+                'outsourced_service'       => ['outsourced service', 'outsource service'],
+                'getfund'                  => ['getfund', 'get fund'],
+                'nhiil'                    => ['nhiil', 'nhil'],
+                'vat_for_music_ghana'      => ['vat for music ghana', 'vat'],
+                'total_cost_of_outsource_service' => ['total cost of outsource service', 'total outsource cost'],
+                'ee_cost'                  => ['ee cost'],
+                'er_cost'                  => ['er cost'],
+                'after_tax_deductions'     => ['after tax deductions', 'after tax deduction'],
+                'netpay'                   => ['net pay', 'netpay', 'take home pay', 'take home', 'bank transfer'],
+                'total_hr_cost'            => ['total hr cost', 'hr cost'],
+            ];
+
+            $defaultIndexes = [
+                'staffid' => 0, 'name' => 1, 'business_line' => 2, 'department' => 3, 'position' => 4,
+                'hired_date' => 5, 'last_date' => 6, 'work_place' => 7, 'staff_category' => 8,
+                'expiration_date' => 9, 'contracting_entity' => 10, 'bank_name' => 11, 'account_name' => 12,
+                'bank_account_no' => 13, 'branch_code' => 14, 'basic' => 15, 'performance_basis' => 16,
+                'coefficient' => 17, 'performance_final' => 18, 'call_allowance' => 19, 'house_allowance' => 20,
+                'traffic_allowance' => 21, 'commission' => 22, 'severance_pay' => 23, 'other_income' => 24,
+                'work_days' => 25, 'absent_days' => 26, 'absent_days_deduction' => 27, 'other_deduction' => 28,
+                'gross_salary' => 29, 'petra_ee_5' => 30, 'ssnit_ee_05' => 31, 'base_for_paye' => 32,
+                'ee_paye' => 33, 'ssnit_er_13' => 34, 'outsourced_service' => 35, 'getfund' => 36,
+                'nhiil' => 37, 'vat_for_music_ghana' => 38, 'total_cost_of_outsource_service' => 39,
+                'ee_cost' => 40, 'er_cost' => 41, 'after_tax_deductions' => 42, 'netpay' => 43,
+                'total_hr_cost' => 44,
+            ];
+
+            $headerIndexMap = \App\Models\PayrollColumn::buildHeaderIndexMap($headerRow, $fieldAliases, $defaultIndexes);
+
+            // Check for existing staff IDs
+            $existingStaffIds = DB::table($tableName)->pluck('staffid')->toArray();
+            $duplicateStaffIds = [];
+            $validRecords = [];
+            $errors = [];
+
+            foreach ($dataRows as $index => $row) {
+                // Skip empty rows
+                $allEmpty = true;
+                foreach ($row as $c) {
+                    if ($c !== null && trim((string)$c) !== '') {
+                        $allEmpty = false;
+                        break;
+                    }
+                }
+                if ($allEmpty) continue;
+
+                $staffid = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['staffid'], 'str');
+                $name    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['name'], 'str');
+
+                if (empty($staffid) && empty($name)) {
+                    continue;
+                }
+
+                $business_line         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['business_line'], 'str');
+                $department            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['department'], 'str');
+                $position              = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['position'], 'str');
+                $hired_date            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['hired_date'], 'str');
+                $last_date             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['last_date'], 'str');
+                $work_place            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['work_place'], 'str');
+                $staff_category        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['staff_category'], 'str');
+                $expiration_date       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['expiration_date'], 'str');
+                $contracting_entity    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['contracting_entity'], 'str');
+                $bank_name             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['bank_name'], 'str');
+                $account_name          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['account_name'], 'str');
+                $bank_account_no       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['bank_account_no'], 'str');
+                $branch_code           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['branch_code'], 'str');
+                $basic                 = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['basic'], 'req_num', 0.0);
+                $performance_basis     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['performance_basis'], 'str');
+                $coefficient           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['coefficient'], 'num', 1.0);
+                $performance_final     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['performance_final'], 'num', 0.0);
+                $call_allowance        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['call_allowance'], 'num', 0.0);
+                $house_allowance       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['house_allowance'], 'num', 0.0);
+                $traffic_allowance     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['traffic_allowance'], 'num', 0.0);
+                $commission            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['commission'], 'num', 0.0);
+                $severance_pay         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['severance_pay'], 'num', 0.0);
+                $other_income          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['other_income'], 'num', 0.0);
+                $work_days             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['work_days'], 'int', 0);
+                $absent_days           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['absent_days'], 'int', 0);
+                $absent_days_deduction = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['absent_days_deduction'], 'num', 0.0);
+                $other_deduction       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['other_deduction'], 'num', 0.0);
+                $gross_salary          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['gross_salary'], 'req_num', 0.0);
+                $petra_ee_5            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['petra_ee_5'], 'num', 0.0);
+                $ssnit_ee_05           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnit_ee_05'], 'num', 0.0);
+                $base_for_paye         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['base_for_paye'], 'num', 0.0);
+                $ee_paye               = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ee_paye'], 'num', 0.0);
+                $ssnit_er_13           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnit_er_13'], 'num', 0.0);
+                $outsourced_service    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['outsourced_service'], 'num', 0.0);
+                $getfund               = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['getfund'], 'num', 0.0);
+                $nhiil                 = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['nhiil'], 'num', 0.0);
+                $vat_for_music_ghana   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['vat_for_music_ghana'], 'num', 0.0);
+                $total_cost_of_outsource_service = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['total_cost_of_outsource_service'], 'num', 0.0);
+                $ee_cost               = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ee_cost'], 'num', 0.0);
+                $er_cost               = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['er_cost'], 'num', 0.0);
+                $after_tax_deductions  = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['after_tax_deductions'], 'num', 0.0);
+                $netpay                = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['netpay'], 'req_num');
+                $total_hr_cost         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['total_hr_cost'], 'num', 0.0);
+
+                // Validation
+                if (empty($staffid)) {
+                    $errors[] = "Row " . ($index + 2) . ": Staff ID is required.";
+                    continue;
+                }
+                if (empty($name)) {
+                    $errors[] = "Row " . ($index + 2) . ": Name is required.";
+                    continue;
+                }
+                if (is_null($basic) || is_null($gross_salary)) {
+                    $errors[] = "Row " . ($index + 2) . ": Basic and Gross Pay are required.";
+                    continue;
+                }
+                if (is_null($netpay)) {
+                    $errors[] = "Row " . ($index + 2) . ": Bank Transfer (Net Pay) must be a valid number.";
+                    continue;
+                }
+
+                // Duplicate check
+                if (in_array($staffid, $existingStaffIds)) {
+                    $errors[] = "Row " . ($index + 2) . ": Duplicate Staff ID: $staffid";
+                    continue;
+                }
+
+                $data = [
+                    'staffid'                        => $staffid,
+                    'name'                           => $name,
+                    'business_line'                  => $business_line,
+                    'department'                     => $department,
+                    'position'                       => $position,
+                    'hired_date'                     => $hired_date,
+                    'last_date'                      => $last_date,
+                    'work_place'                     => $work_place,
+                    'staff_category'                 => $staff_category,
+                    'expiration_date'                => $expiration_date,
+                    'contracting_entity'             => $contracting_entity,
+                    'bank_name'                      => $bank_name,
+                    'account_name'                   => $account_name,
+                    'bank_account_no'                => $bank_account_no,
+                    'branch_code'                    => $branch_code,
+                    'basic'                          => $basic,
+                    'performance_basis'              => $performance_basis,
+                    'coefficient'                    => $coefficient,
+                    'performance_final'              => $performance_final,
+                    'call_allowance'                 => $call_allowance,
+                    'house_allowance'                => $house_allowance,
+                    'traffic_allowance'              => $traffic_allowance,
+                    'commission'                     => $commission,
+                    'severance_pay'                  => $severance_pay,
+                    'other_income'                   => $other_income,
+                    'work_days'                      => $work_days,
+                    'absent_days'                    => $absent_days,
+                    'absent_days_deduction'          => $absent_days_deduction,
+                    'other_deduction'                => $other_deduction,
+                    'gross_salary'                   => $gross_salary,
+                    'petra_ee_5'                     => $petra_ee_5,
+                    'ssnit_ee_05'                    => $ssnit_ee_05,
+                    'base_for_paye'                  => $base_for_paye,
+                    'ee_paye'                        => $ee_paye,
+                    'ssnit_er_13'                    => $ssnit_er_13,
+                    'outsourced_service'             => $outsourced_service,
+                    'getfund'                        => $getfund,
+                    'nhiil'                          => $nhiil,
+                    'vat_for_music_ghana'            => $vat_for_music_ghana,
+                    'total_cost_of_outsource_service'=> $total_cost_of_outsource_service,
+                    'ee_cost'                        => $ee_cost,
+                    'er_cost'                        => $er_cost,
+                    'after_tax_deductions'           => $after_tax_deductions,
+                    'netpay'                         => $netpay,
+                    'total_hr_cost'                  => $total_hr_cost,
+                ];
+
+                // Dynamic custom columns
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'transsnet');
+                if (!empty($customVals)) {
+                    $data = array_merge($data, $customVals);
+                }
+
+                $validRecords[] = $data;
+                $existingStaffIds[] = $staffid;
+            }
+
+            if (!empty($errors)) {
+                Log::error("Upload errors: " . implode(' | ', $errors));
+                $errorMessage = count($errors) > 3
+                    ? implode(' | ', array_slice($errors, 0, 3)) . ' | ... and ' . (count($errors) - 3) . ' more errors.'
+                    : implode(' | ', $errors);
+                return redirect()->route('transsnetpay.index', ['month' => $selectedMonth])
+                    ->with('error', $errorMessage);
+            }
+
+            if (!empty($validRecords)) {
+                DB::table($tableName)->insert($validRecords);
+                Log::info("Upload: Inserted " . count($validRecords) . " records into {$tableName}");
+            } else {
+                Log::warning("Upload: No valid records to insert into {$tableName}");
+            }
+
+            return redirect()->route('transsnetpay.index', ['month' => $selectedMonth])
+                ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
+        } catch (\Exception $e) {
+            Log::error('File upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return redirect()->route('transsnetpay.index', ['month' => $selectedMonth])
+                ->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
+        }
     }
-
-    // === CONVERTED TO MATCH FIRST STYLE ===
-$staffid                  = trim($row[0] ?? '')  ?: null;   // assuming column 0 is staffid (not present in array keys, adjust if needed)
-$name                     = trim($row[1] ?? '')  ?: null;
-$business_line            = trim($row[2] ?? '')  ?: null;
-$department               = trim($row[3] ?? '')  ?: null;
-$position                 = trim($row[4] ?? '')  ?: null;
-$hired_date               = trim($row[5] ?? '')  ?: null;
-$last_date                = trim($row[6] ?? '')  ?: null;
-$work_place               = trim($row[7] ?? '')  ?: null;
-$staff_category           = trim($row[8] ?? '')  ?: null;
-$expiration_date          = trim($row[9] ?? '')  ?: null;
-$contracting_entity       = trim($row[10] ?? '') ?: null;
-$bank_name                = trim($row[11] ?? '') ?: null;
-$account_name             = trim($row[12] ?? '') ?: null;
-$bank_account_no          = trim($row[13] ?? '') ?: null;
-$branch_code              = trim($row[14] ?? '') ?: null;
-$basic                    = is_numeric($row[15] ?? '') ? (float)$row[15] : 0;
-$performance_basis        = trim($row[16] ?? '') ?: null;
-$coefficient              = is_numeric($row[17] ?? '') ? (float)$row[17] : 0;
-$performance_final        = is_numeric($row[18] ?? '') ? (float)$row[18] : 0;
-$call_allowance           = is_numeric($row[19] ?? '') ? (float)$row[19] : 0;
-$house_allowance          = is_numeric($row[20] ?? '') ? (float)$row[20] : 0;
-$traffic_allowance        = is_numeric($row[21] ?? '') ? (float)$row[21] : 0;
-$commission               = is_numeric($row[22] ?? '') ? (float)$row[22] : 0;
-$severance_pay            = is_numeric($row[23] ?? '') ? (float)$row[23] : 0;
-$other_income             = is_numeric($row[24] ?? '') ? (float)$row[24] : 0;
-$work_days                = is_numeric($row[25] ?? '') ? (int)$row[25]   : 0;
-$absent_days              = is_numeric($row[26] ?? '') ? (int)$row[26]   : 0;
-$absent_days_deduction    = is_numeric($row[27] ?? '') ? (float)$row[27] : 0;
-$other_deduction          = is_numeric($row[28] ?? '') ? (float)$row[28] : 0;
-$gross_salary             = is_numeric($row[29] ?? '') ? (float)$row[29] : 0;
-$petra_ee_5               = is_numeric($row[30] ?? '') ? (float)$row[30] : 0;
-$ssnit_ee_05              = is_numeric($row[31] ?? '') ? (float)$row[31] : 0;
-$base_for_paye            = is_numeric($row[32] ?? '') ? (float)$row[32] : 0;
-$ee_paye                  = is_numeric($row[33] ?? '') ? (float)$row[33] : 0;
-$ssnit_er_13              = is_numeric($row[34] ?? '') ? (float)$row[34] : 0;
-$outsourced_service       = is_numeric($row[35] ?? '') ? (float)$row[35] : 0;
-$getfund                  = is_numeric($row[36] ?? '') ? (float)$row[36] : 0;
-$nhiil                    = is_numeric($row[37] ?? '') ? (float)$row[37] : 0;
-
-$vat_for_music_ghana      = is_numeric($row[38] ?? '') ? (float)$row[38] : 0;
-$total_cost_of_outsource_service = is_numeric($row[39] ?? '') ? (float)$row[39] : 0;
-$ee_cost                  = is_numeric($row[40] ?? '') ? (float)$row[40] : 0;
-$er_cost                  = is_numeric($row[41] ?? '') ? (float)$row[41] : 0;
-$after_tax_deductions     = is_numeric($row[42] ?? '') ? (float)$row[42] : 0;
-
-// Net Pay (last column) – clean any non-numeric characters just like banktransfer in the first example
-$rawNetpay                = trim($row[43] ?? '');
-$cleanNetpay              = preg_replace('/[^0-9.-]/', '', $rawNetpay);
-$netpay                   = is_numeric($cleanNetpay) ? (float)$cleanNetpay : null;
-
-$total_hr_cost            = is_numeric($row[44] ?? '') ? (float)$row[45] : 0;
-
-    // === VALIDATION ===
-    if (empty($staffid)) {
-        $errors[] = "Row " . ($index + 2) . ": Staff ID is required.";
-        continue;
-    }
-
-    if (empty($name)) {
-        $errors[] = "Row " . ($index + 2) . ": Name is required.";
-        continue;
-    }
-
-    if (is_null($basic) || is_null($gross_salary )) {
-        $errors[] = "Row " . ($index + 2) . ": Basic and Gross Pay are required.";
-        continue;
-    }
-
-    if (is_null($netpay)) {
-        $errors[] = "Row " . ($index + 2) . ": Bank Transfer (Net Pay) must be a valid number. Found: '$rawBankTransfer'";
-        continue;
-    }
-
-    // Duplicate check
-    if (in_array($staffid, $existingStaffIds)) {
-        $errors[] = "Row " . ($index + 2) . ": Duplicate Staff ID: $staffid";
-        continue;
-    }
-
-    // === FINAL DATA ARRAY - MATCHING THE SECOND FORMAT ===
-$data = [
-    'staffid'                        => $staffid,
-    'name'                           => $name,
-    'business_line'                  => $business_line,
-    'department'                     => $department,
-    'position'                       => $position,
-    'hired_date'                     => $hired_date,
-    'last_date'                      => $last_date,
-    'work_place'                     => $work_place,
-    'staff_category'                 => $staff_category,
-    'expiration_date'                => $expiration_date,
-    'contracting_entity'             => $contracting_entity,
-    'bank_name'                      => $bank_name,
-    'account_name'                   => $account_name,
-    'bank_account_no'                => $bank_account_no,
-    'branch_code'                    => $branch_code,
-    'basic'                          => $basic,
-    'performance_basis'              => $performance_basis,
-    'coefficient'                    => $coefficient,
-    'performance_final'              => $performance_final,
-    'call_allowance'                 => $call_allowance,
-    'house_allowance'                => $house_allowance,
-    'traffic_allowance'              => $traffic_allowance,
-    'commission'                     => $commission,
-    'severance_pay'                  => $severance_pay,
-    'other_income'                   => $other_income,
-    'work_days'                      => $work_days,
-    'absent_days'                    => $absent_days,
-    'absent_days_deduction'          => $absent_days_deduction,
-    'other_deduction'                => $other_deduction,
-    'gross_salary'                   => $gross_salary,
-    'petra_ee_5'                     => $petra_ee_5,
-    'ssnit_ee_05'                    => $ssnit_ee_05,
-    'base_for_paye'                  => $base_for_paye,
-    'ee_paye'                        => $ee_paye,
-    'ssnit_er_13'                    => $ssnit_er_13,
-    'outsourced_service'             => $outsourced_service,
-    'getfund'                        => $getfund,
-    'nhiil'                          => $nhiil,
-    
-    'vat_for_music_ghana'            => $vat_for_music_ghana,
-    'total_cost_of_outsource_service'=> $total_cost_of_outsource_service,
-    'ee_cost'                        => $ee_cost,
-    'er_cost'                        => $er_cost,
-    'after_tax_deductions'           => $after_tax_deductions,
-    'netpay'                         => $netpay,       // This IS the Net Pay (cleaned exactly like banktransfer in the first example)
-    'total_hr_cost'                  => $total_hr_cost,
-];
-
-    $validRecords[] = $data;
-    $existingStaffIds[] = $staffid;
-}
-
- if (!empty($errors)) {
- Log::error("Upload errors: " . implode(' | ', $errors));
- $errorMessage = count($errors) > 3
- ? implode(' | ', array_slice($errors, 0, 3)) . ' | ... and ' . (count($errors) - 3) . ' more errors.'
- : implode(' | ', $errors);
- return redirect()->route('transsnetpay.index', ['month' => $selectedMonth])
- ->with('error', $errorMessage);
- }
-
- if (!empty($duplicateStaffIds)) {
- Log::error("Duplicate Staff IDs: " . implode(', ', array_unique($duplicateStaffIds)));
- return redirect()->route('transsnetpay.index', ['month' => $selectedMonth])
- ->with('error', 'Duplicate Staff IDs found: ' . implode(', ', array_unique($duplicateStaffIds)));
- }
-
- if (!empty($validRecords)) {
- DB::table($tableName)->insert($validRecords);
- Log::info("Upload: Inserted " . count($validRecords) . " records into {$tableName}");
- } else {
- Log::warning("Upload: No valid records to insert into {$tableName}");
- }
-
- return redirect()->route('transsnetpay.index', ['month' => $selectedMonth])
- ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
- } catch (\Exception $e) {
- Log::error('File upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
- return redirect()->route('transsnetpay.index', ['month' => $selectedMonth])
- ->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
- }
- }
 
  public function delete(Request $request)
  {

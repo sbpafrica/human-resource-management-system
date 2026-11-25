@@ -219,239 +219,309 @@ public function export(Request $request)
      * Upload Excel file
      */
    public function upload(Request $request)
- {
- $request->validate([
- 'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
- 'month' => ['required', 'date_format:Y-m'],
- ]);
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'extensions:xlsx,xls,csv,ods', 'max:2048'],
+            'month' => ['required', 'date_format:Y-m'],
+        ]);
 
- try {
- $selectedMonth = $request->input('month');
- session(['selected_month' => $selectedMonth]);
- $date = Carbon::createFromFormat('Y-m', $selectedMonth);
- $tableName = 'twellium' . strtolower($date->format('F')) . $date->format('y');
+        try {
+            $selectedMonth = $request->input('month');
+            session(['selected_month' => $selectedMonth]);
+            $date = Carbon::createFromFormat('Y-m', $selectedMonth);
+            $tableName = 'twellium' . strtolower($date->format('F')) . $date->format('y');
 
- // Create table if it doesn't exist
- TwelliumPay::createTableIfNotExists($tableName);
+            TwelliumPay::createTableIfNotExists($tableName);
+            \App\Models\PayrollColumn::ensureColumnsForTable($tableName, 'twellium');
 
- $file = $request->file('file');
- $reader = new XlsxReader();
- $spreadsheet = $reader->load($file->getRealPath());
- $sheet = $spreadsheet->getActiveSheet();
- $rows = $sheet->toArray();
- $headerRow = array_shift($rows); // Remove header row
+            $file = $request->file('file');
+            $ext = strtolower($file->getClientOriginalExtension());
+            if ($ext === 'csv') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Csv();
+            } elseif ($ext === 'xls') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+            } elseif ($ext === 'ods') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Ods();
+            } else {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
+            }
+            $reader->setReadDataOnly(true);
+            $spreadsheet = $reader->load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray(null, true, false, false);
 
- // New Kumasi layout (47 cols) has Total Cash Emolument (col M) and Total Assessable Income (col O).
- // Detect by header name; legacy 45-col files still work.
- $hasNewCols = false;
- foreach ($headerRow as $h) {
-     $headerStr = strtolower(trim((string)$h));
-     if (str_contains($headerStr, 'total cash emolument') || str_contains($headerStr, 'cash emolument') || str_contains($headerStr, 'assessable income')) {
-         $hasNewCols = true;
-         break;
-     }
- }
- if (!$hasNewCols && count($headerRow) >= 47) {
-     $hasNewCols = true;
- }
+            if (empty($rows)) {
+                return redirect()->route('twelliumpay.index', ['month' => $selectedMonth])
+                    ->with('error', 'Uploaded spreadsheet is empty.');
+            }
 
- // Check for existing staff IDs
- $existingStaffIds = DB::table($tableName)->pluck('employ')->toArray();
- $duplicateStaffIds = [];
- $validRecords = [];
- $errors = [];
+            // Find actual header row dynamically
+            $headerRowIndex = null;
+            $headerRow = [];
+            foreach ($rows as $rIdx => $r) {
+                if ($rIdx > 10) break;
+                $matchCount = 0;
+                foreach ($r as $cellVal) {
+                    if (!is_string($cellVal)) continue;
+                    $norm = strtolower(trim(preg_replace('/[\s\xc2\xa0]+/u', ' ', $cellVal)));
+                    if (preg_match('/^(staff(\s*id)?|name|employ|basic|gross|net(\s*pay)?|take\s*home)/i', $norm)) {
+                        $matchCount++;
+                    }
+                }
+                if ($matchCount >= 2) {
+                    $headerRowIndex = $rIdx;
+                    $headerRow = $r;
+                    break;
+                }
+            }
 
- foreach ($rows as $index => $row) {
-    $minCols = $hasNewCols ? 47 : 45;
-    if (count($row) < $minCols) {
-        $errors[] = "Row " . ($index + 2) . ": Expected {$minCols} columns, found " . count($row);
-        continue;
+            if ($headerRowIndex === null) {
+                $headerRowIndex = 0;
+                $headerRow = $rows[0] ?? [];
+            }
+
+            $dataRows = array_slice($rows, $headerRowIndex + 1);
+
+            $fieldAliases = [
+                'employ'                        => ['staff id', 'staffid', 'employee id', 'employ'],
+                'name'                          => ['name', 'staff name', 'employee name', 'fullname'],
+                'department'                    => ['department', 'dept'],
+                'dateemploy'                    => ['date employed', 'date of employment', 'date of joining', 'dateemploy', 'hire date'],
+                'expected_work_days'            => ['expected work days', 'expected days'],
+                'total_hours_worked'            => ['total hours worked', 'total hours', 'hours worked'],
+                'basic'                         => ['basic', 'basic salary'],
+                'basic_earned'                  => ['basic earned', 'basic salary earned'],
+                'food_allowance'                => ['food allowance', 'food'],
+                'night_allowance'               => ['night allowance', 'night'],
+                'refund'                        => ['refund'],
+                'allowance'                     => ['allowance', 'allowances'],
+                'deduction'                     => ['deduction', 'deductions'],
+                'ssnit_ee'                      => ['ssnit ee', 'ssnit_ee', 'ssnit'],
+                'petra'                         => ['petra', 'tier 2', 'petra 5%'],
+                'taxable_income'                => ['taxable income', 'taxable'],
+                'paye'                          => ['paye', 'income tax'],
+                'ssf'                           => ['ssf', 'ssf 13%'],
+                'welfare'                       => ['welfare'],
+                'medical_insurance'             => ['medical insurance', 'medical'],
+                'workmens_compensation'          => ['workmens compensation', 'workmen compensation', 'workmen'],
+                'risk_allowance'                => ['risk allowance'],
+                'end_of_year'                   => ['end of year', 'end of year bonus'],
+                'ppe'                           => ['ppe'],
+                'staff_cost'                    => ['staff cost'],
+                'mgt_fee'                       => ['mgt fee', 'management fee', 'mgt_fee'],
+                'gfl'                           => ['gfl', 'getfund'],
+                'nhil'                          => ['nhil'],
+                'covid'                         => ['covid', 'covid-19'],
+                'vat'                           => ['vat'],
+                'c2c'                           => ['c2c', 'cost to company', 'cost to twellium'],
+                'weekday_overtime_hours'        => ['weekday ot hours', 'weekday overtime hours'],
+                'weekday_overtime_rate'         => ['weekday ot rate', 'weekday overtime rate'],
+                'weekday_overtime_amount'       => ['weekday ot amount', 'weekday overtime amount'],
+                'offday_holiday_overtime_hours' => ['offday/holiday ot hours', 'offday ot hours', 'holiday ot hours'],
+                'offday_holiday_overtime_rate'  => ['offday/holiday ot rate', 'offday ot rate', 'holiday ot rate'],
+                'offday_holiday_overtime_total' => ['offday/holiday ot total', 'offday ot total', 'holiday ot total', 'offday/holiday ot amount'],
+                'special_day_overtime_hours'    => ['special day ot hours', 'special ot hours'],
+                'special_day_overtime_rate'     => ['special day ot rate', 'special ot rate'],
+                'special_day_overtime_amount'   => ['special day ot amount', 'special ot amount'],
+                'total_overtime_amount'         => ['total overtime amount', 'total overtime', 'total ot amount'],
+                'overtime_tax'                  => ['overtime tax', 'ot tax'],
+                'total_taxation'                => ['total taxation', 'total tax'],
+                'total_deductions'              => ['total deductions', 'total deduction'],
+                'netpay'                        => ['net pay', 'netpay', 'take home pay', 'take home', 'bank transfer'],
+            ];
+
+            $defaultIndexes = [
+                'employ' => 0, 'name' => 1, 'department' => 2, 'dateemploy' => 3,
+                'expected_work_days' => 4, 'total_hours_worked' => 5,
+                'basic' => 6, 'basic_earned' => 7, 'food_allowance' => 8, 'night_allowance' => 9,
+                'refund' => 10, 'allowance' => 11, 'deduction' => 12,
+                'ssnit_ee' => 13, 'petra' => 14, 'taxable_income' => 15, 'paye' => 16,
+                'ssf' => 17, 'welfare' => 18, 'medical_insurance' => 19, 'workmens_compensation' => 20,
+                'risk_allowance' => 21, 'end_of_year' => 22, 'ppe' => 23, 'staff_cost' => 24,
+                'mgt_fee' => 25, 'gfl' => 26, 'nhil' => 27, 'covid' => 28, 'vat' => 29,
+                'c2c' => 30, 'weekday_overtime_hours' => 31, 'weekday_overtime_rate' => 32,
+                'weekday_overtime_amount' => 33, 'offday_holiday_overtime_hours' => 34,
+                'offday_holiday_overtime_rate' => 35, 'offday_holiday_overtime_total' => 36,
+                'special_day_overtime_hours' => 37, 'special_day_overtime_rate' => 38,
+                'special_day_overtime_amount' => 39, 'total_overtime_amount' => 40,
+                'overtime_tax' => 41, 'total_taxation' => 42, 'total_deductions' => 43,
+                'netpay' => 44,
+            ];
+
+            $headerIndexMap = \App\Models\PayrollColumn::buildHeaderIndexMap($headerRow, $fieldAliases, $defaultIndexes);
+
+            // Check for existing staff IDs
+            $existingStaffIds = DB::table($tableName)->pluck('employ')->toArray();
+            $duplicateStaffIds = [];
+            $validRecords = [];
+            $errors = [];
+
+            foreach ($dataRows as $index => $row) {
+                // Skip empty rows
+                $allEmpty = true;
+                foreach ($row as $c) {
+                    if ($c !== null && trim((string)$c) !== '') {
+                        $allEmpty = false;
+                        break;
+                    }
+                }
+                if ($allEmpty) continue;
+
+                $employ = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['employ'], 'str');
+                $name   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['name'], 'str');
+
+                if (empty($employ) && empty($name)) {
+                    continue;
+                }
+
+                $department                    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['department'], 'str');
+                $dateemploy                    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['dateemploy'], 'str');
+                $expected_work_days            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['expected_work_days'], 'num');
+                $total_hours_worked            = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['total_hours_worked'], 'num');
+                $basic                         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['basic'], 'req_num');
+                $basic_earned                  = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['basic_earned'], 'num');
+                $food_allowance                = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['food_allowance'], 'num');
+                $night_allowance               = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['night_allowance'], 'num');
+                $refund                        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['refund'], 'num');
+                $allowance                     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['allowance'], 'num');
+                $deduction                     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['deduction'], 'num');
+                $ssnit_ee                      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnit_ee'], 'num');
+                $petra                         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['petra'], 'num');
+                $taxable_income                = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['taxable_income'], 'num');
+                $paye                          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['paye'], 'num');
+                $ssf                           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssf'], 'num');
+                $welfare                       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['welfare'], 'num');
+                $medical_insurance             = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['medical_insurance'], 'num');
+                $workmens_compensation         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['workmens_compensation'], 'num');
+                $risk_allowance                = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['risk_allowance'], 'num');
+                $end_of_year                   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['end_of_year'], 'num');
+                $ppe                           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ppe'], 'num');
+                $staff_cost                    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['staff_cost'], 'num');
+                $mgt_fee                       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['mgt_fee'], 'num');
+                $gfl                           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['gfl'], 'num');
+                $nhil                          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['nhil'], 'num');
+                $covid                         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['covid'], 'num');
+                $vat                           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['vat'], 'num');
+                $c2c                           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['c2c'], 'num');
+                $weekday_overtime_hours        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekday_overtime_hours'], 'num');
+                $weekday_overtime_rate         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekday_overtime_rate'], 'num');
+                $weekday_overtime_amount       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['weekday_overtime_amount'], 'num');
+                $offday_holiday_overtime_hours = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['offday_holiday_overtime_hours'], 'num');
+                $offday_holiday_overtime_rate  = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['offday_holiday_overtime_rate'], 'num');
+                $offday_holiday_overtime_total = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['offday_holiday_overtime_total'], 'num');
+                $special_day_overtime_hours    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['special_day_overtime_hours'], 'num');
+                $special_day_overtime_rate     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['special_day_overtime_rate'], 'num');
+                $special_day_overtime_amount   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['special_day_overtime_amount'], 'num');
+                $total_overtime_amount         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['total_overtime_amount'], 'num');
+                $overtime_tax                  = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['overtime_tax'], 'num');
+                $total_taxation                = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['total_taxation'], 'num');
+                $total_deductions              = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['total_deductions'], 'num');
+                $netpay                        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['netpay'], 'req_num');
+
+                if (empty($employ)) {
+                    $errors[] = "Row " . ($index + 2) . ": Staff ID is required.";
+                    continue;
+                }
+                if (empty($name)) {
+                    $errors[] = "Row " . ($index + 2) . ": Name is required.";
+                    continue;
+                }
+                if (is_null($basic)) {
+                    $errors[] = "Row " . ($index + 2) . ": Basic is required.";
+                    continue;
+                }
+                if (is_null($netpay)) {
+                    $errors[] = "Row " . ($index + 2) . ": Net Pay must be a valid number.";
+                    continue;
+                }
+
+                if (in_array($employ, $existingStaffIds)) {
+                    $errors[] = "Row " . ($index + 2) . ": Duplicate Staff ID: $employ";
+                    continue;
+                }
+
+                $data = [
+                    'employ'                        => $employ,
+                    'name'                          => $name,
+                    'department'                    => $department,
+                    'dateemploy'                    => $dateemploy,
+                    'expected_work_days'            => $expected_work_days,
+                    'total_hours_worked'            => $total_hours_worked,
+                    'basic'                         => $basic,
+                    'basic_earned'                  => $basic_earned,
+                    'food_allowance'                => $food_allowance,
+                    'night_allowance'               => $night_allowance,
+                    'refund'                        => $refund,
+                    'allowance'                     => $allowance,
+                    'deduction'                     => $deduction,
+                    'ssnit_ee'                      => $ssnit_ee,
+                    'petra'                         => $petra,
+                    'taxable_income'                => $taxable_income,
+                    'paye'                          => $paye,
+                    'ssf'                           => $ssf,
+                    'welfare'                       => $welfare,
+                    'medical_insurance'             => $medical_insurance,
+                    'workmens_compensation'         => $workmens_compensation,
+                    'risk_allowance'                => $risk_allowance,
+                    'end_of_year'                   => $end_of_year,
+                    'ppe'                           => $ppe,
+                    'staff_cost'                    => $staff_cost,
+                    'mgt_fee'                       => $mgt_fee,
+                    'gfl'                           => $gfl,
+                    'nhil'                          => $nhil,
+                    'covid'                         => $covid,
+                    'vat'                           => $vat,
+                    'c2c'                           => $c2c,
+                    'weekday_overtime_hours'        => $weekday_overtime_hours,
+                    'weekday_overtime_rate'         => $weekday_overtime_rate,
+                    'weekday_overtime_amount'       => $weekday_overtime_amount,
+                    'offday_holiday_overtime_hours' => $offday_holiday_overtime_hours,
+                    'offday_holiday_overtime_rate'  => $offday_holiday_overtime_rate,
+                    'offday_holiday_overtime_total' => $offday_holiday_overtime_total,
+                    'special_day_overtime_hours'    => $special_day_overtime_hours,
+                    'special_day_overtime_rate'     => $special_day_overtime_rate,
+                    'special_day_overtime_amount'   => $special_day_overtime_amount,
+                    'total_overtime_amount'         => $total_overtime_amount,
+                    'overtime_tax'                  => $overtime_tax,
+                    'total_taxation'                => $total_taxation,
+                    'total_deductions'              => $total_deductions,
+                    'netpay'                        => $netpay,
+                ];
+
+                // Dynamic custom columns from payroll_columns
+                $customVals = \App\Models\PayrollColumn::extractCustomColumnValues($row, $headerRow, 'twellium');
+                if (!empty($customVals)) {
+                    $data = array_merge($data, $customVals);
+                }
+
+                $validRecords[] = $data;
+                $existingStaffIds[] = $employ;
+            }
+
+            if (!empty($errors)) {
+                Log::error("Upload errors: " . implode(' | ', $errors));
+                $errorMessage = count($errors) > 3
+                    ? implode(' | ', array_slice($errors, 0, 3)) . ' | ... and ' . (count($errors) - 3) . ' more errors.'
+                    : implode(' | ', $errors);
+                return redirect()->route('twelliumpay.index', ['month' => $selectedMonth])
+                    ->with('error', $errorMessage);
+            }
+
+            if (!empty($validRecords)) {
+                DB::table($tableName)->insert($validRecords);
+                Log::info("Upload: Inserted " . count($validRecords) . " records into {$tableName}");
+            } else {
+                Log::warning("Upload: No valid records to insert into {$tableName}");
+            }
+
+            return redirect()->route('twelliumpay.index', ['month' => $selectedMonth])
+                ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
+        } catch (\Exception $e) {
+            Log::error('File upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return redirect()->route('twelliumpay.index', ['month' => $selectedMonth])
+                ->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
+        }
     }
-
-    // Skip fully empty rows
-    if (empty(array_filter($row, fn($v) => !is_null($v) && trim((string)$v) !== ''))) {
-        continue;
-    }
-
-    // Pull out the two new columns and normalise the row back to the legacy positions
-    $total_cash_emolument = null;
-    $total_assessable_income = null;
-    if ($hasNewCols) {
-        $total_cash_emolument    = is_numeric($row[12] ?? '') ? (float)$row[12] : null;
-        $total_assessable_income = is_numeric($row[14] ?? '') ? (float)$row[14] : null;
-        unset($row[14], $row[12]);
-        $row = array_values($row);
-    }
-
-   // === MAPPED TO 24-COLUMN DATABASE STRUCTURE ===
-// === MAPPED TO 45-COLUMN DATABASE STRUCTURE ===
-$employ                          = trim($row[0] ?? '') ?: null;
-$name                            = trim($row[1] ?? '') ?: null;
-$department                      = trim($row[2] ?? '') ?: null;
-$dateemploy                      = trim($row[3] ?? '') ?: null;
-
-$expected_work_days              = is_numeric($row[4] ?? '') ? (float)$row[4] : null;
-$total_hours_worked              = is_numeric($row[5] ?? '') ? (float)$row[5] : null;
-
-$basic                           = is_numeric($row[6] ?? '') ? (float)$row[6] : null;
-$basic_earned                    = is_numeric($row[7] ?? '') ? (float)$row[7] : null;
-$food_allowance                  = is_numeric($row[8] ?? '') ? (float)$row[8] : null;
-$night_allowance                 = is_numeric($row[9] ?? '') ? (float)$row[9] : null;
-$refund                          = is_numeric($row[10] ?? '') ? (float)$row[10] : null;
-$allowance                       = is_numeric($row[11] ?? '') ? (float)$row[11] : null;
-$deduction                       = is_numeric($row[12] ?? '') ? (float)$row[12] : null;
-
-$ssnit_ee                        = is_numeric($row[13] ?? '') ? (float)$row[13] : null;
-$petra                        = is_numeric($row[14] ?? '') ? (float)$row[14] : null;
-$taxable_income                  = is_numeric($row[15] ?? '') ? (float)$row[15] : null;
-$paye                            = is_numeric($row[16] ?? '') ? (float)$row[16] : null;
-$ssf                             = is_numeric($row[17] ?? '') ? (float)$row[17] : null;
-$welfare                         = is_numeric($row[18] ?? '') ? (float)$row[18] : null;
-$medical_insurance               = is_numeric($row[19] ?? '') ? (float)$row[19] : null;
-$workmens_compensation           = is_numeric($row[20] ?? '') ? (float)$row[20] : null;
-$risk_allowance                  = is_numeric($row[21] ?? '') ? (float)$row[21] : null;
-$end_of_year                     = is_numeric($row[22] ?? '') ? (float)$row[22] : null;
-$ppe                             = is_numeric($row[23] ?? '') ? (float)$row[23] : null;
-$staff_cost                      = is_numeric($row[24] ?? '') ? (float)$row[24] : null;
-$mgt_fee                         = is_numeric($row[25] ?? '') ? (float)$row[25] : null;
-$gfl                             = is_numeric($row[26] ?? '') ? (float)$row[26] : null;
-$nhil                            = is_numeric($row[27] ?? '') ? (float)$row[27] : null;
-$covid                           = is_numeric($row[28] ?? '') ? (float)$row[28] : null;
-$vat                             = is_numeric($row[29] ?? '') ? (float)$row[29] : null;
-$c2c                             = is_numeric($row[30] ?? '') ? (float)$row[30] : null;
-
-$weekday_overtime_hours          = is_numeric($row[31] ?? '') ? (float)$row[31] : null;
-$weekday_overtime_rate           = is_numeric($row[32] ?? '') ? (float)$row[32] : null;
-$weekday_overtime_amount         = is_numeric($row[33] ?? '') ? (float)$row[33] : null;
-$offday_holiday_overtime_hours   = is_numeric($row[34] ?? '') ? (float)$row[34] : null;
-$offday_holiday_overtime_rate    = is_numeric($row[35] ?? '') ? (float)$row[35] : null;
-$offday_holiday_overtime_total   = is_numeric($row[36] ?? '') ? (float)$row[36] : null;
-$special_day_overtime_hours      = is_numeric($row[37] ?? '') ? (float)$row[37] : null;
-$special_day_overtime_rate       = is_numeric($row[38] ?? '') ? (float)$row[38] : null;
-$special_day_overtime_amount     = is_numeric($row[39] ?? '') ? (float)$row[39] : null;
-$total_overtime_amount           = is_numeric($row[40] ?? '') ? (float)$row[40] : null;
-$overtime_tax                    = is_numeric($row[41] ?? '') ? (float)$row[41] : null;
-
-$total_taxation                  = is_numeric($row[42] ?? '') ? (float)$row[42] : null;
-$total_deductions                = is_numeric($row[43] ?? '') ? (float)$row[43] : null;
-
-// Net Pay – cleaned (last column)
-$rawNetpay                       = trim($row[44] ?? '');
-$cleanNetpay                     = preg_replace('/[^0-9.-]/', '', $rawNetpay);
-$netpay                          = is_numeric($cleanNetpay) ? (float)$cleanNetpay : null;
-
-    // === VALIDATION ===
-    if (empty($employ)) {
-        $errors[] = "Row " . ($index + 2) . ": Staff ID is required.";
-        continue;
-    }
-
-    if (empty($name)) {
-        $errors[] = "Row " . ($index + 2) . ": Name is required.";
-        continue;
-    }
-
-    if (is_null($basic)) {
-        $errors[] = "Row " . ($index + 2) . ": Basic is required.";
-        continue;
-    }
-
-    if (is_null($netpay)) {
-        $errors[] = "Row " . ($index + 2) . ": Bank Transfer (Net Pay) must be a valid number. Found: '$rawNetpay'";
-        continue;
-    }
-
-    // Duplicate check
-    if (in_array($employ, $existingStaffIds)) {
-        $errors[] = "Row " . ($index + 2) . ": Duplicate Staff ID: $employ";
-        continue;
-    }
-
-    // === FINAL DATA ARRAY - MATCHING THE SECOND FORMAT ===
-$data = [
-    'employ'                          => $employ,
-    'name'                            => $name,
-    'department'                      => $department,
-    'dateemploy'                      => $dateemploy,
-    'expected_work_days'              => $expected_work_days,
-    'total_hours_worked'              => $total_hours_worked,
-    'basic'                           => $basic,
-    'basic_earned'                    => $basic_earned,
-    'food_allowance'                  => $food_allowance,
-    'night_allowance'                 => $night_allowance,
-    'refund'                          => $refund,
-    'allowance'                       => $allowance,
-    'total_cash_emolument'            => $total_cash_emolument,
-    'deduction'                       => $deduction,
-    'total_assessable_income'         => $total_assessable_income,
-    'ssnit_ee'                        => $ssnit_ee,
-    'petra'                        => $petra,
-    'taxable_income'                  => $taxable_income,
-    'paye'                            => $paye,
-    'ssf'                             => $ssf,
-    'welfare'                         => $welfare,
-    'medical_insurance'               => $medical_insurance,
-    'workmens_compensation'           => $workmens_compensation,
-    'risk_allowance'                  => $risk_allowance,
-    'end_of_year'                     => $end_of_year,
-    'ppe'                             => $ppe,
-    'staff_cost'                      => $staff_cost,
-    'mgt_fee'                         => $mgt_fee,
-    'gfl'                             => $gfl,
-    'nhil'                            => $nhil,
-    'covid'                           => $covid,
-    'vat'                             => $vat,
-    'c2c'                             => $c2c,
-    'weekday_overtime_hours'          => $weekday_overtime_hours,
-    'weekday_overtime_rate'           => $weekday_overtime_rate,
-    'weekday_overtime_amount'         => $weekday_overtime_amount,
-    'offday_holiday_overtime_hours'   => $offday_holiday_overtime_hours,
-    'offday_holiday_overtime_rate'    => $offday_holiday_overtime_rate,
-    'offday_holiday_overtime_total'   => $offday_holiday_overtime_total,
-    'special_day_overtime_hours'      => $special_day_overtime_hours,
-    'special_day_overtime_rate'       => $special_day_overtime_rate,
-    'special_day_overtime_amount'     => $special_day_overtime_amount,
-    'total_overtime_amount'           => $total_overtime_amount,
-    'overtime_tax'                    => $overtime_tax,
-    'total_taxation'                  => $total_taxation,
-    'total_deductions'                => $total_deductions,
-    'netpay'                          => $netpay,
-];
-
-    $validRecords[] = $data;
-    $existingStaffIds[] = $employ;
-}
-
- if (!empty($errors)) {
- Log::error("Upload errors: " . implode(' | ', $errors));
- $errorMessage = count($errors) > 3
- ? implode(' | ', array_slice($errors, 0, 3)) . ' | ... and ' . (count($errors) - 3) . ' more errors.'
- : implode(' | ', $errors);
- return redirect()->route('twelliumpay.index', ['month' => $selectedMonth])
- ->with('error', $errorMessage);
- }
-
- if (!empty($duplicateStaffIds)) {
- Log::error("Duplicate Staff IDs: " . implode(', ', array_unique($duplicateStaffIds)));
- return redirect()->route('twelliumpay.index', ['month' => $selectedMonth])
- ->with('error', 'Duplicate Staff IDs found: ' . implode(', ', array_unique($duplicateStaffIds)));
- }
-
- if (!empty($validRecords)) {
- DB::table($tableName)->insert($validRecords);
- Log::info("Upload: Inserted " . count($validRecords) . " records into {$tableName}");
- } else {
- Log::warning("Upload: No valid records to insert into {$tableName}");
- }
-
- return redirect()->route('twelliumpay.index', ['month' => $selectedMonth])
- ->with('success', 'Successfully uploaded ' . count($validRecords) . ' record(s).');
- } catch (\Exception $e) {
- Log::error('File upload failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
- return redirect()->route('twelliumpay.index', ['month' => $selectedMonth])
- ->with('error', 'Failed to process the uploaded file: ' . $e->getMessage());
- }
- }
 
  public function delete(Request $request)
  {

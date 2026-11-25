@@ -217,123 +217,218 @@ public function export(Request $request)
  $date = Carbon::createFromFormat('Y-m', $selectedMonth);
  $tableName = 'xiaomi' . strtolower($date->format('F')) . $date->format('y');
 
- // Create table if it doesn't exist
- XiaomiPay::createTableIfNotExists($tableName);
+        XiaomiPay::createTableIfNotExists($tableName);
+        \App\Models\PayrollColumn::ensureColumnsForTable($tableName, 'xiaomi');
 
- $file = $request->file('file');
- $reader = new XlsxReader();
- $spreadsheet = $reader->load($file->getRealPath());
- $sheet = $spreadsheet->getActiveSheet();
- $rows = $sheet->toArray();
- array_shift($rows); // Remove header row
+        $file = $request->file('file');
+        $ext = strtolower($file->getClientOriginalExtension());
+        if ($ext === 'csv') {
+            $reader = new \PhpOffice\PhpSpreadsheet\Reader\Csv();
+        } elseif ($ext === 'xls') {
+            $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+        } elseif ($ext === 'ods') {
+            $reader = new \PhpOffice\PhpSpreadsheet\Reader\Ods();
+        } else {
+            $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
+        }
+        $reader->setReadDataOnly(true);
+        $spreadsheet = $reader->load($file->getRealPath());
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray(null, true, false, false);
 
- // Check for existing staff IDs
- $existingStaffIds = DB::table($tableName)->pluck('staffida')->toArray();
- $duplicateStaffIds = [];
- $validRecords = [];
- $errors = [];
+        if (empty($rows)) {
+            return redirect()->route('xiaomipay.index', ['month' => $selectedMonth])
+                ->with('error', 'Uploaded spreadsheet is empty.');
+        }
 
- foreach ($rows as $index => $row) {
- if (count($row) < 46) {
- $errors[] = "Row " . ($index + 2) . ": Expected 46 columns, found " . count($row);
- continue;
- }
+        // Find actual header row dynamically
+        $headerRowIndex = null;
+        $headerRow = [];
+        foreach ($rows as $rIdx => $r) {
+            if ($rIdx > 10) break;
+            $matchCount = 0;
+            foreach ($r as $cellVal) {
+                if (!is_string($cellVal)) continue;
+                $norm = strtolower(trim(preg_replace('/[\s\xc2\xa0]+/u', ' ', $cellVal)));
+                if (preg_match('/^(staff(\s*id)?|name|basic|gross(\s*pay)?|net(\s*pay)?|brand(\s*name)?)/i', $norm)) {
+                    $matchCount++;
+                }
+            }
+            if ($matchCount >= 2) {
+                $headerRowIndex = $rIdx;
+                $headerRow = $r;
+                break;
+            }
+        }
 
- // Map all columns from Excel
- $staffId = trim($row[0] ?? '') ?: null;
- $name = trim($row[1] ?? '') ?: null;
- $department = trim($row[2] ?? '') ?: null;
- $hiredate = trim($row[3] ?? '') ?: null;
- $constart = trim($row[4] ?? '') ?: null;
- $conend = trim($row[5] ?? '') ?: null;
- $position = trim($row[6] ?? '') ?: null;
- $grade = trim($row[7] ?? '') ?: null;
- $categories = trim($row[8] ?? '') ?: null;
- $workplace = trim($row[9] ?? '') ?: null;
- $bankname = trim($row[10] ?? '') ?: null;
- $alcnum = trim($row[11] ?? '') ?: null;
- $branch = trim($row[12] ?? '') ?: null;
- $ssnit = trim($row[13] ?? '') ?: null;
- $col12 = trim($row[14] ?? '') ?: null;
- $workdays = is_numeric($row[15] ?? '') ? (int) $row[15] : null;
- $leavedays = is_numeric($row[16] ?? '') ? (int) $row[16] : null;
- $otworkdays = is_numeric($row[17] ?? '') ? (int) $row[17] : null;
- $otweekend = is_numeric($row[18] ?? '') ? (int) $row[18] : null;
- $basic = is_numeric($row[19] ?? '') ? (float) $row[19] : null;
- $performbonus = is_numeric($row[20] ?? '') ? (float) $row[20] : null;
- $coefficient = is_numeric($row[21] ?? '') ? (float) $row[21] : null;
- $performstand = is_numeric($row[22] ?? '') ? (float) $row[22] : null;
- $allowance = is_numeric($row[23] ?? '') ? (float) $row[23] : null;
- $commission = is_numeric($row[24] ?? '') ? (float) $row[24] : null;
- $otworkingday = is_numeric($row[25] ?? '') ? (float) $row[25] : null;
- $otholiday = is_numeric($row[26] ?? '') ? (float) $row[26] : null;
- $other = is_numeric($row[27] ?? '') ? (float) $row[27] : null;
- $annaulbonus = is_numeric($row[28] ?? '') ? (float) $row[28] : 0;
- $leavededuction = is_numeric($row[29] ?? '') ? (float) $row[29] : null;
- $otherdeduction = is_numeric($row[30] ?? '') ? (float) $row[30] : null;
- $loan = is_numeric($row[31] ?? '') ? (float) $row[31] : null;
- $grosspay = is_numeric($row[32] ?? '') ? (float) $row[32] : null;
- $excess = is_numeric($row[33] ?? '') ? (float) $row[33] : 0;
- $totalemolu = is_numeric($row[34] ?? '') ? (float) $row[34] : 0;
- $accommodation = is_numeric($row[35] ?? '') ? (float) $row[35] : 0;
- $chargeincome = is_numeric($row[36] ?? '') ? (float) $row[36] : 0;
- $petra = is_numeric($row[37] ?? '') ? (float) $row[37] : 0;
- $ssnitamt = is_numeric($row[38] ?? '') ? (float) $row[38] : 0;
- $nssf = is_numeric($row[39] ?? '') ? (float) $row[39] : 0;
- $taxbase = is_numeric($row[40] ?? '') ? (float) $row[40] : 0;
- $paye = is_numeric($row[41] ?? '') ? (float) $row[41] : 0;
- $annaultax = is_numeric($row[42] ?? '') ? (float) $row[42] : 0;
- $rawNetPay = trim($row[43] ?? '');
- $cleanNetPay = preg_replace('/[^0-9.]/', '', $rawNetPay);
- $decimalCount = substr_count($cleanNetPay, '.');
- $netpay = ($decimalCount <= 1 && is_numeric($cleanNetPay)) ? (float) $cleanNetPay : null;
- $hrcost = is_numeric($row[44] ?? '') ? (float) $row[44] : 0;
- $brandname = trim($row[45] ?? '') ?: null;
+        if ($headerRowIndex === null) {
+            $headerRowIndex = 0;
+            $headerRow = $rows[0] ?? [];
+        }
 
- // Log row data for debugging
- Log::info("Processing row " . ($index + 2) . ": ", [
- 'staffId' => $staffId,
- 'name' => $name,
- 'department' => $department,
- 'hiredate' => $hiredate,
- 'constart' => $constart,
- 'conend' => $conend,
- 'position' => $position,
- 'grade' => $grade,
- 'bankname' => $bankname,
- 'alcnum' => $alcnum,
- 'branch' => $branch,
- 'netpay' => $rawNetPay,
- 'cleanNetPay' => $cleanNetPay,
- ]);
+        $dataRows = array_slice($rows, $headerRowIndex + 1);
 
- // Validation
- if (empty($staffId)) {
- $errors[] = "Row " . ($index + 2) . ": Staff ID cannot be empty.";
- continue;
- }
- if (empty($name)) {
- $errors[] = "Row " . ($index + 2) . ": Name cannot be empty.";
- continue;
- }
- if (is_null($netpay)) {
- $errors[] = "Row " . ($index + 2) . ": Net Pay must be a valid number (found: '$rawNetPay').";
- continue;
- }
+        $fieldAliases = [
+            'staffId'        => ['staff id', 'staffid', 'employee id', 'staffida'],
+            'name'           => ['name', 'employee name', 'fullname', 'staff name'],
+            'department'     => ['department', 'dept'],
+            'hiredate'       => ['hire date', 'hiredate', 'start date', 'join date'],
+            'constart'       => ['contract start', 'constart', 'con start'],
+            'conend'         => ['contract end', 'conend', 'con end'],
+            'position'       => ['position', 'designation', 'role', 'title'],
+            'grade'          => ['grade'],
+            'categories'     => ['categories', 'category'],
+            'workplace'      => ['workplace', 'work place', 'location'],
+            'bankname'       => ['bank name', 'bankname', 'bank'],
+            'alcnum'         => ['account number', 'alcnum', 'account no', 'account'],
+            'branch'         => ['branch', 'bank branch'],
+            'ssnit'          => ['ssnit', 'ssnit number', 'ssnit no'],
+            'col12'          => ['col 12', 'col12', 'gh card', 'ghana card'],
+            'workdays'       => ['work days', 'workdays', 'days worked'],
+            'leavedays'      => ['leave days', 'leavedays'],
+            'otworkdays'     => ['ot work days', 'otworkdays', 'overtime work days'],
+            'otweekend'      => ['ot weekend', 'otweekend', 'weekend ot'],
+            'basic'          => ['basic', 'basic salary', 'basic pay'],
+            'performbonus'   => ['performance bonus', 'performbonus', 'perf bonus'],
+            'coefficient'    => ['coefficient'],
+            'performstand'   => ['performance standard', 'performstand'],
+            'allowance'      => ['allowance', 'allowances'],
+            'commission'     => ['commission'],
+            'otworkingday'   => ['ot working day', 'otworkingday', 'overtime working day'],
+            'otholiday'      => ['ot holiday', 'otholiday', 'holiday ot'],
+            'other'          => ['other', 'other earnings'],
+            'annaulbonus'    => ['annual bonus', 'annaulbonus', '13th month'],
+            'leavededuction' => ['leave deduction', 'leavededuction'],
+            'otherdeduction' => ['other deduction', 'otherdeduction'],
+            'loan'           => ['loan', 'salary loan'],
+            'grosspay'       => ['gross pay', 'grosspay', 'gross', 'gross salary'],
+            'excess'         => ['excess'],
+            'totalemolu'     => ['total emoluments', 'totalemolu', 'total emolument'],
+            'accommodation'  => ['accommodation'],
+            'chargeincome'   => ['charge income', 'chargeincome'],
+            'petra'          => ['petra', 'tier 2', 'petra 5%'],
+            'ssnitamt'       => ['ssnit amount', 'ssnitamt', 'ssnit ee'],
+            'nssf'           => ['nssf', 'tier 1'],
+            'taxbase'        => ['tax base', 'taxbase', 'taxable income'],
+            'paye'           => ['paye', 'income tax'],
+            'annaultax'      => ['annual tax', 'annaultax', 'bonus tax'],
+            'netpay'         => ['net pay', 'netpay', 'take home pay', 'take home'],
+            'hrcost'         => ['hr cost', 'hrcost'],
+            'brandname'      => ['brand name', 'brandname', 'brand'],
+        ];
 
- if (in_array($staffId, $existingStaffIds) || in_array($staffId, $duplicateStaffIds)) {
- $duplicateStaffIds[] = $staffId;
- continue;
- }
+        $defaultIndexes = [
+            'staffId' => 0, 'name' => 1, 'department' => 2, 'hiredate' => 3, 'constart' => 4,
+            'conend' => 5, 'position' => 6, 'grade' => 7, 'categories' => 8, 'workplace' => 9,
+            'bankname' => 10, 'alcnum' => 11, 'branch' => 12, 'ssnit' => 13, 'col12' => 14,
+            'workdays' => 15, 'leavedays' => 16, 'otworkdays' => 17, 'otweekend' => 18,
+            'basic' => 19, 'performbonus' => 20, 'coefficient' => 21, 'performstand' => 22,
+            'allowance' => 23, 'commission' => 24, 'otworkingday' => 25, 'otholiday' => 26,
+            'other' => 27, 'annaulbonus' => 28, 'leavededuction' => 29, 'otherdeduction' => 30,
+            'loan' => 31, 'grosspay' => 32, 'excess' => 33, 'totalemolu' => 34,
+            'accommodation' => 35, 'chargeincome' => 36, 'petra' => 37, 'ssnitamt' => 38,
+            'nssf' => 39, 'taxbase' => 40, 'paye' => 41, 'annaultax' => 42,
+            'netpay' => 43, 'hrcost' => 44, 'brandname' => 45,
+        ];
 
- $data = [
- 'staffida' => $staffId,
- 'name' => $name,
- 'department' => $department,
- 'hiredate' => $hiredate,
- 'constart' => $constart,
- 'conend' => $conend,
- 'position' => $position,
+        $headerIndexMap = \App\Models\PayrollColumn::buildHeaderIndexMap($headerRow, $fieldAliases, $defaultIndexes);
+
+        // Check for existing staff IDs
+        $existingStaffIds = DB::table($tableName)->pluck('staffida')->toArray();
+        $duplicateStaffIds = [];
+        $validRecords = [];
+        $errors = [];
+
+        foreach ($dataRows as $index => $row) {
+            // Skip empty rows
+            $allEmpty = true;
+            foreach ($row as $c) {
+                if ($c !== null && trim((string)$c) !== '') {
+                    $allEmpty = false;
+                    break;
+                }
+            }
+            if ($allEmpty) continue;
+
+            $staffId = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['staffId'], 'str');
+            $name    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['name'], 'str');
+
+            if (empty($staffId) && empty($name)) {
+                continue;
+            }
+
+            $department     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['department'], 'str');
+            $hiredate       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['hiredate'], 'str');
+            $constart       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['constart'], 'str');
+            $conend         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['conend'], 'str');
+            $position       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['position'], 'str');
+            $grade          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['grade'], 'str');
+            $categories     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['categories'], 'str');
+            $workplace      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['workplace'], 'str');
+            $bankname       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['bankname'], 'str');
+            $alcnum         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['alcnum'], 'str');
+            $branch         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['branch'], 'str');
+            $ssnit          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnit'], 'str');
+            $col12          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['col12'], 'str');
+            $workdays       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['workdays'], 'int', 0);
+            $leavedays      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['leavedays'], 'int', 0);
+            $otworkdays     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['otworkdays'], 'int', 0);
+            $otweekend      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['otweekend'], 'int', 0);
+            $basic          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['basic'], 'req_num');
+            $performbonus   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['performbonus'], 'num', 0.0);
+            $coefficient    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['coefficient'], 'num', 1.0);
+            $performstand   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['performstand'], 'num', 0.0);
+            $allowance      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['allowance'], 'num', 0.0);
+            $commission     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['commission'], 'num', 0.0);
+            $otworkingday   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['otworkingday'], 'num', 0.0);
+            $otholiday      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['otholiday'], 'num', 0.0);
+            $other          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['other'], 'num', 0.0);
+            $annaulbonus    = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['annaulbonus'], 'num', 0.0);
+            $leavededuction = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['leavededuction'], 'num', 0.0);
+            $otherdeduction = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['otherdeduction'], 'num', 0.0);
+            $loan           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['loan'], 'num', 0.0);
+            $grosspay       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['grosspay'], 'req_num');
+            $excess         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['excess'], 'num', 0.0);
+            $totalemolu     = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['totalemolu'], 'num', 0.0);
+            $accommodation  = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['accommodation'], 'num', 0.0);
+            $chargeincome   = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['chargeincome'], 'num', 0.0);
+            $petra          = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['petra'], 'num', 0.0);
+            $ssnitamt       = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['ssnitamt'], 'num', 0.0);
+            $nssf           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['nssf'], 'num', 0.0);
+            $taxbase        = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['taxbase'], 'num', 0.0);
+            $paye           = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['paye'], 'num', 0.0);
+            $annaultax      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['annaultax'], 'num', 0.0);
+            $netpay         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['netpay'], 'req_num');
+            $hrcost         = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['hrcost'], 'num', 0.0);
+            $brandname      = \App\Models\PayrollColumn::extractValue($row, $headerIndexMap['brandname'], 'str');
+
+            // Validation
+            if (empty($staffId)) {
+                $errors[] = "Row " . ($index + 2) . ": Staff ID cannot be empty.";
+                continue;
+            }
+            if (empty($name)) {
+                $errors[] = "Row " . ($index + 2) . ": Name cannot be empty.";
+                continue;
+            }
+            if (is_null($netpay)) {
+                $errors[] = "Row " . ($index + 2) . ": Net Pay must be a valid number.";
+                continue;
+            }
+
+            if (in_array($staffId, $existingStaffIds) || in_array($staffId, $duplicateStaffIds)) {
+                $duplicateStaffIds[] = $staffId;
+                continue;
+            }
+
+            $data = [
+                'staffida' => $staffId,
+                'name' => $name,
+                'department' => $department,
+                'hiredate' => $hiredate,
+                'constart' => $constart,
+                'conend' => $conend,
+                'position' => $position,
  'grade' => $grade,
  'categories' => $categories,
  'workplace' => $workplace,

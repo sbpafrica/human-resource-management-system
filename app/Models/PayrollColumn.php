@@ -41,10 +41,16 @@ class PayrollColumn extends Model
      */
     public static function getColumnsForClient(string $clientDbname)
     {
+        $variants = array_unique(array_filter([
+            $clientDbname,
+            \App\Models\Client::where('client_dbname', $clientDbname)->value('slug'),
+            \App\Models\Client::where('slug', $clientDbname)->value('client_dbname'),
+        ]));
+
         return static::where('is_active', true)
             ->where('is_custom', true)
-            ->where(function ($q) use ($clientDbname) {
-                $q->where('client_dbname', $clientDbname)
+            ->where(function ($q) use ($variants) {
+                $q->whereIn('client_dbname', $variants)
                   ->orWhere('client_dbname', 'all');
             })
             ->orderBy('id', 'asc')
@@ -4031,5 +4037,93 @@ class PayrollColumn extends Model
         }
 
         return $extracted;
+    }
+
+    /**
+     * Build dynamic header-to-column index mapping.
+     * Matches header labels against recognized field aliases, falling back to default positional indexes if not found.
+     *
+     * @param array $headerRow Array of raw string header labels from spreadsheet row 1
+     * @param array $fieldAliases Map of ['field_name' => ['alias1', 'alias2', ...]]
+     * @param array $defaultIndexes Map of ['field_name' => default_index]
+     * @return array Map of ['field_name' => matched_or_default_column_index]
+     */
+    public static function buildHeaderIndexMap(array $headerRow, array $fieldAliases, array $defaultIndexes = []): array
+    {
+        $normalizedHeaders = [];
+        foreach ($headerRow as $idx => $rawHeader) {
+            $norm = self::normalizeHeader((string)$rawHeader);
+            if ($norm !== '') {
+                $normalizedHeaders[$idx] = $norm;
+            }
+        }
+
+        $map = [];
+        foreach ($fieldAliases as $field => $aliases) {
+            foreach ($aliases as $alias) {
+                $normAlias = self::normalizeHeader($alias);
+                if ($normAlias === '') continue;
+
+                foreach ($normalizedHeaders as $idx => $normHeader) {
+                    if ($normHeader === $normAlias) {
+                        $map[$field] = $idx;
+                        break 2;
+                    }
+                }
+            }
+        }
+
+        // Fill remaining unmapped fields from defaultIndexes
+        foreach ($defaultIndexes as $field => $defIdx) {
+            if (!isset($map[$field])) {
+                $map[$field] = $defIdx;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Extract a typed value safely from a row by column index.
+     * Handles string trimming, comma stripping, currency symbols, and numeric evaluation.
+     */
+    public static function extractValue(array $row, ?int $idx, string $type = 'str', $default = null)
+    {
+        if ($idx === null || !array_key_exists($idx, $row)) {
+            return $default;
+        }
+
+        $raw = $row[$idx];
+
+        switch ($type) {
+            case 'int':
+                if ($raw === null || trim((string)$raw) === '' || trim((string)$raw) === '-') {
+                    return $default ?? 0;
+                }
+                $clean = preg_replace('/[^\d-]/', '', str_replace(',', '', (string)$raw));
+                return is_numeric($clean) ? (int)$clean : ($default ?? 0);
+
+            case 'num':
+                if ($raw === null || trim((string)$raw) === '' || trim((string)$raw) === '-') {
+                    return $default ?? 0.0;
+                }
+                if (is_numeric($raw)) return (float)$raw;
+                $clean = preg_replace('/[^\d.-]/', '', str_replace(',', '', (string)$raw));
+                return (is_numeric($clean) && $clean !== '' && $clean !== '-' && $clean !== '.') ? (float)$clean : ($default ?? 0.0);
+
+            case 'req_num':
+                if ($raw === null || trim((string)$raw) === '' || trim((string)$raw) === '-') {
+                    return null;
+                }
+                if (is_numeric($raw)) return (float)$raw;
+                $clean = preg_replace('/[^\d.-]/', '', str_replace(',', '', (string)$raw));
+                return (is_numeric($clean) && $clean !== '' && $clean !== '-' && $clean !== '.') ? (float)$clean : null;
+
+            case 'str':
+            default:
+                if ($raw === null) return $default;
+                $val = trim((string)$raw);
+                return $val !== '' ? $val : $default;
+        }
     }
 }
