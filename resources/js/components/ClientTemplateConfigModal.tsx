@@ -33,6 +33,8 @@ import {
   CheckCheck,
   GripVertical,
   Move,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 
 export type ModuleType = "payroll" | "ssnit" | "petra" | "bank" | "gra" | "contract";
@@ -102,7 +104,8 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [dropPosition, setDropPosition] = useState<"before" | "after">("before");
 
-  // Modal dialog drag state (allows dragging the entire modal up and down on the screen)
+  // Modal sizing & drag state
+  const [isMaximized, setIsMaximized] = useState(false);
   const [dialogOffsetY, setDialogOffsetY] = useState(0);
   const [isDraggingDialog, setIsDraggingDialog] = useState(false);
   const dragStartYRef = React.useRef(0);
@@ -656,38 +659,46 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
       <DialogContent
-        className="max-w-4xl h-[90vh] max-h-[90vh] flex flex-col p-0 overflow-hidden shadow-2xl rounded-xl border border-gray-200"
-        style={{
-          transform: `translate(-50%, calc(-50% + ${dialogOffsetY}px))`,
-          transition: isDraggingDialog ? "none" : "transform 0.1s ease-out",
-        }}
+        className={`flex flex-col p-0 overflow-hidden shadow-2xl border transition-all duration-150 ${
+          isMaximized
+            ? "!fixed !inset-0 !w-screen !h-screen !max-w-none !max-h-none !rounded-none !border-0 z-50 !translate-x-0 !translate-y-0 !top-0 !left-0"
+            : "w-[96vw] max-w-[1650px] 2xl:max-w-[1800px] h-[94vh] max-h-[94vh] rounded-2xl border-gray-200"
+        }`}
+        style={
+          isMaximized
+            ? { transform: "none", top: 0, left: 0 }
+            : {
+                transform: `translate(-50%, calc(-50% + ${dialogOffsetY}px))`,
+                transition: isDraggingDialog ? "none" : "transform 0.1s ease-out",
+              }
+        }
       >
-        {/* Header - Draggable on screen */}
+        {/* Header - Draggable on screen & Maximize Control */}
         <DialogHeader
           onMouseDown={handleDialogHeaderMouseDown}
-          className="p-4 sm:p-5 pb-3 border-b bg-gray-50/90 shrink-0 cursor-grab active:cursor-grabbing select-none"
+          className="p-4 sm:p-5 pb-3 border-b bg-gray-50/95 shrink-0 cursor-grab active:cursor-grabbing select-none"
           title="Click and drag header to move modal up/down on your screen"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pr-8">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <div
-                  className="w-3.5 h-3.5 rounded-full border shadow-sm"
+                  className="w-4 h-4 rounded-full border shadow-sm"
                   style={{ backgroundColor: client?.color || "#3b82f6" }}
                 />
-                <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                <DialogTitle className="text-xl sm:text-2xl font-bold flex items-center gap-2">
                   <span>Excel Template Columns</span>
-                  <span className="text-muted-foreground font-normal text-sm">
+                  <span className="text-muted-foreground font-normal text-base">
                     ({client?.client_name})
                   </span>
-                  {dialogOffsetY !== 0 && (
+                  {dialogOffsetY !== 0 && !isMaximized && (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setDialogOffsetY(0);
                       }}
-                      className="ml-2 text-[11px] font-normal text-blue-600 hover:underline bg-blue-50 px-2 py-0.5 rounded border border-blue-200"
+                      className="ml-2 text-xs font-normal text-blue-600 hover:underline bg-blue-50 px-2 py-0.5 rounded border border-blue-200"
                       title="Reset modal position to center"
                     >
                       Reset position
@@ -695,9 +706,36 @@ export default function ClientTemplateConfigModal({ client, isOpen, onClose }: P
                   )}
                 </DialogTitle>
               </div>
-              <DialogDescription className="text-xs text-muted-foreground">
-                Select which columns appear on the Excel file downloaded by staff/clients to input data before uploading.
+              <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
+                Customize, drag & drop, and order the exact columns that appear when clients/staff download Excel templates to upload monthly payroll.
               </DialogDescription>
+            </div>
+
+            {/* Maximize / Restore Toggle Button */}
+            <div className="flex items-center gap-2" onMouseDown={(e) => e.stopPropagation()}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsMaximized(!isMaximized);
+                  setDialogOffsetY(0);
+                }}
+                className="h-8 px-2.5 text-xs font-medium bg-white text-gray-700 hover:text-blue-600 hover:border-blue-300 shadow-2xs"
+                title={isMaximized ? "Restore window size" : "Expand to Fullscreen"}
+              >
+                {isMaximized ? (
+                  <>
+                    <Minimize2 className="h-3.5 w-3.5 mr-1.5" />
+                    <span>Restore Size</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
+                    <span>Fullscreen</span>
+                  </>
+                )}
+              </Button>
             </div>
           </div>
 
